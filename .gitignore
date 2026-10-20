@@ -3,9 +3,13 @@ node_modules/
 dist/
 build/
 .gradle/
+.kotlin/
 local.properties
 *.apk
 *.aab
+*.jks
+*.keystore
+*.hprof
 *.log
 .env*
 test-results/
