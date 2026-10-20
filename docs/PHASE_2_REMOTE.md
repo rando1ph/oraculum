@@ -124,3 +124,24 @@ DSH 当时 load 5.53/5.40/5.33，可用内存约 435 MiB，swap 已用约 1341 M
 - **U／入口阻碍** 现有 DSH 仅有 IP HTTPS，无 Oraculum 独立域名；已向用户询问可用独立域名／子域名。相同 IP 的不同端口并不能隔离 Cookie，因此不把换端口当作完整身份隔离方案。正式入口确定前不改 Caddy、不签发证书、不建隧道。
 
 正式部署须另行审阅精确配置差异：保留现有入口，新增独立 host 与仅环回 SSH 端口；备份磁盘配置和运行中配置，验证配置后才获批 reload，评估既有长连接可能断开；失败恢复备份并验证旧入口。当前仅有候选设计，**没有执行备份写入、reload、SSH 配置改动或 systemd 操作**。缺少域名／授权时不宣称 2B 或 Phase 2 通过。
+
+## 2B 接续：新版 Android 鉴权实机验证（R）
+
+用户解锁并确认允许安装后，原命令 `adb install -r` 成功，未绕过系统授权。新 APK 在同一 HONOR 真机启动，经本机环回 Bridge + USB reverse 完成以下零新增模型调用的验证：
+
+- 初始 `/auth/session` 为 401，页面只显示配对表单、没有模型／私有会话内容。
+- 一次性码配对成功；Cookie 为 `oraculum_local`、HttpOnly、SameSite=Strict，页面 JS 无法读取。因本次仅走本地 HTTP，Secure=false，**不作为远程 TLS 证据**。
+- 页面重载后保留授权，从官方 Harness 恢复原生 thread `01a15ab7-a584-7ba3-827c-3cfc03b53f4a`、completed 状态与 `ORACULUM_ANDROID_OK`；历史缺口提示仍保留。
+- 已消费配对码重放返回 401；主机撤销后已打开的 socket 关闭，私有 UI 移除，HTTP 查询为 401。使用新码重新配对，获得新设备授权并恢复同一 thread。测试结束撤销全部本轮测试授权，不保留可用测试凭据。
+- 安装后 package flags 未启用 ALLOW_BACKUP；仅检查 Oraculum PID 的最近日志，未见 FATAL EXCEPTION 或 attached-destroy 警告。此检查不等于已执行云备份／设备迁移。
+
+新增可复验入口 `ORACULUM_ANDROID_CDP=http://127.0.0.1:<本次转发端口> pnpm test:auth:android`。需运行同一状态目录下的正常鉴权 Bridge、手机初始未配对、预先存在 2A fixture thread。脚本仅附着本应用 WebView，覆盖配对、重载、重放拒绝、撤销和重新配对；不输出码／Cookie 值，不在失败时截图或转储可能含凭据的断言。截图只在配对提交后采集。
+
+`pnpm check`、`pnpm test`（39/39）、`git diff --check` 通过；本步只有测试入口与文档变化，应用构建沿用上一已通过版本，实机安装的是该构建。
+
+| 忽略目录证据文件 | SHA-256 |
+| --- | --- |
+| auth-android.json | `2b0d1c9ce4a51dd5d20654cf33bede9620b9fa582d5739a4d94a89780c977f6a` |
+| auth-android-package.json | `c9ab02272ba931fa5b061e013a32794ed80496520e0dac878fc148dff4f76fbd` |
+
+另有配对成功／撤销后的真机截图；生成物不提交。APK 安装阻碍已解除；独立域名与正式配置授权仍待提供。2B 正式公网远程、2C 双端故障矩阵和整个阶段尚未验收，Status 保持 In progress。本步骤 commit／main 合并／push 状态写回原 Notion Task。
