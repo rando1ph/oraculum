@@ -9,11 +9,15 @@
     "check": "tsc --noEmit",
     "test": "vitest run",
     "bridge": "tsx bridge/src/main.ts",
-    "test:live": "tsx scripts/live-smoke.ts"
+    "test:live": "tsx scripts/live-smoke.ts",
+    "build": "pnpm --filter @oraculum/web build",
+    "desktop": "pnpm --filter @oraculum/desktop start",
+    "test:ui": "tsx scripts/ui-smoke.ts"
   },
   "devDependencies": {
     "@types/node": "24.19.2",
     "@types/ws": "8.18.2",
+    "@playwright/test": "1.64.1",
     "tsx": "4.23.15",
     "typescript": "5.9.3",
     "vitest": "3.2.7",
