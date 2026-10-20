@@ -6,6 +6,7 @@ import type { ThreadStartResponse } from '../../../.local/codex-protocol/v2/Thre
 import type { ThreadListResponse } from '../../../.local/codex-protocol/v2/ThreadListResponse';
 import { useSession } from './store';
 import { Item } from './content';
+import { SessionGate, checkSession } from './auth';
 import './style.css';
 
 const Diff = lazy(() => import('./diff').then(module => ({ default: module.Diff })));
@@ -71,6 +72,7 @@ function App() {
   }
   async function connect() {
     ++epoch.current; setSynced(false); setError('');
+    if (!await checkSession()) { client.current!.close(); throw new Error('设备需要重新配对'); }
     await client.current!.connect();
     const settings = await client.current!.request<LocalConfig>('bridge/config', {});
     workspace.current = settings.cwd;
@@ -100,7 +102,10 @@ function App() {
           void refresh().then(() => listThreads()).catch(report);
         }
       }
-    }, value => { setConnected(value); if (!value) setSynced(false); });
+    }, value => {
+      setConnected(value);
+      if (!value) { setSynced(false); void checkSession().catch(() => {}); }
+    });
     void connect().catch(report);
     return () => { ++epoch.current; client.current?.close(); };
   }, []);
@@ -131,7 +136,7 @@ function App() {
   const lastTurn = session.turns[session.lastTurnId ?? ''];
   return <main>
     <header className="flex items-center justify-between gap-4">
-      <div><h1>Oraculum <span>神谕</span></h1><small>LOCAL CODEX · PHASE 1</small></div>
+      <div><h1>Oraculum <span>神谕</span></h1><small>CODEX · {location.protocol === 'https:' ? 'HTTPS' : 'LOCAL'}</small></div>
       <div className="connection" role="status">{!connected ? '已断开' : synced ? '状态已查询' : '待查询状态'}<button disabled={sending || approving} onClick={() => void connect().catch(report)}>重新连接</button></div>
     </header>
     <div className={`workspace ${inspected ? 'with-inspector' : ''}`}>
@@ -210,4 +215,4 @@ function App() {
     </div>
   </main>;
 }
-createRoot(document.getElementById('root')!).render(<App/>);
+createRoot(document.getElementById('root')!).render(<SessionGate><App/></SessionGate>);

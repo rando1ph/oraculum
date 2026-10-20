@@ -12,17 +12,23 @@ import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.webkit.CookieManager
 import android.widget.Button
 import android.widget.LinearLayout
 import java.io.ByteArrayInputStream
 
 class MainActivity : Activity() {
     private lateinit var web: WebView
-    private val entry = "http://127.0.0.1:17860/"
+    private val remote = BuildConfig.ORACULUM_ORIGIN.takeIf { it.isNotEmpty() }?.let(Uri::parse)
+    private val entry = remote?.toString()?.plus("/") ?: "http://127.0.0.1:17860/"
 
-    private fun trusted(uri: Uri): Boolean =
-        BuildConfig.DEBUG && uri.scheme == "http" && uri.host == "127.0.0.1" &&
-            uri.port == 17860 && uri.userInfo == null
+    private fun trusted(uri: Uri): Boolean {
+        if (uri.userInfo != null) return false
+        val target = remote
+        return if (target != null) uri.scheme == "https" && uri.host == target.host &&
+            (if (uri.port == -1) 443 else uri.port) == (if (target.port == -1) 443 else target.port)
+        else BuildConfig.DEBUG && uri.scheme == "http" && uri.host == "127.0.0.1" && uri.port == 17860
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -49,6 +55,8 @@ class MainActivity : Activity() {
             settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
             settings.javaScriptCanOpenWindowsAutomatically = false
             settings.setSupportMultipleWindows(false)
+            settings.setGeolocationEnabled(false)
+            CookieManager.getInstance().setAcceptThirdPartyCookies(this, false)
             // No addJavascriptInterface, file picker, OS bridge, or credential API.
             webViewClient = object : WebViewClient() {
                 override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest) =
@@ -72,8 +80,8 @@ class MainActivity : Activity() {
         layout.addView(retry)
         layout.addView(web, LinearLayout.LayoutParams(-1, 0, 1f))
         setContentView(layout)
-        if (BuildConfig.DEBUG) web.loadUrl(entry) else retry.apply {
-            text = "Phase 0B 仅提供本地 debug 原型"
+        if (remote != null || BuildConfig.DEBUG) web.loadUrl(entry) else retry.apply {
+            text = "请先配置可信 HTTPS 入口"
             visibility = View.VISIBLE
             isEnabled = false
         }

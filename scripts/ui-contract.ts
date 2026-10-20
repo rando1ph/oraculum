@@ -51,7 +51,7 @@ const codex = {
   },
 };
 const service = new BridgeService(codex, cwd);
-const server = await createServer(service, 17861, resolve('apps/web/dist'));
+const server = await createServer(service, 17861, resolve('apps/web/dist'), { testOnlyUnauthenticated: true });
 const require = createRequire(resolve('apps/desktop/package.json'));
 const env = Object.fromEntries(Object.entries(process.env).filter((e): e is [string, string] => e[1] !== undefined));
 delete env.ELECTRON_RUN_AS_NODE;

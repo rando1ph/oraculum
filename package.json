@@ -11,6 +11,7 @@
     "check": "tsc --noEmit",
     "test": "vitest run",
     "bridge": "tsx bridge/src/main.ts",
+    "trust": "tsx bridge/src/trust.ts",
     "test:live": "tsx scripts/live-smoke.ts",
     "build": "pnpm --filter @oraculum/web build",
     "desktop": "pnpm --filter @oraculum/desktop start",
@@ -18,6 +19,7 @@
     "test:ui:mock": "tsx scripts/ui-contract.ts",
     "test:phase1": "tsx scripts/phase1-live.ts",
     "test:android": "tsx scripts/android-live.ts",
+    "test:auth:ui": "tsx scripts/auth-ui.ts",
     "test:history": "tsx scripts/history-probe.ts"
   },
   "devDependencies": {

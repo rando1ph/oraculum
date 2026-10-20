@@ -96,3 +96,31 @@ ORACULUM_ANDROID_CDP=http://127.0.0.1:<实际转发端口> pnpm test:android
 | android-lifecycle.json | `15da6ef86332c34f10d309678127ce56516084d08cf4456ee665d9d59324cde2` |
 
 另有 device-environment.json、android-native.jsonl、android-accept/decline/completed/restored.png、键盘截图与 app 专属日志。本步骤提交／main 合并／push 状态写回原 Task。**2A 的本地 ADB reverse 验收不能替代 2B 的正式 HTTPS/WSS 或 2C 的双端恢复验收。**
+
+2A 实施提交 `383ffdc293ed1fb0d32b3e172665b749b82843f2` 已安全合并并推送；远端完整 hash 核验一致。
+
+## 2B：现场只读复核与本地鉴权
+
+最新只读复核：DSH Caddy 2.11.7、SSH、dsh-web 均 active；Caddy 仍只有现有 IP 的 443 入口，转到 127.0.0.1:3444，既有 `/api/mobile-access`、`/relay` 拦截仍在。系统信任验证下匿名 HTTPS 为 401，`ssl_verify_result=0`。现有监听仍包含 22/443/3443、环回 2019/3080/3444；候选 17860/17861 未占用，**未据此保留端口或开放监听**。小新既有 CodeG reverse-tunnel 为 active，仍是远端环回 13080→本机 3080，代理 7897 不变。
+
+DSH 当时 load 5.53/5.40/5.33，可用内存约 435 MiB，swap 已用约 1341 MiB；属于瞬时观测，不作性能保证或擅自清理。SSH 当前 allowtcpforwarding=yes、gatewayports=no。Caddyfile 只读前后 SHA-256 均为 `802503ca76f80399f1d5daac930e0fc95a3eb3a2c4bab4d397b9d814ed7ed9de`；未输出密钥、认证配置或修改服务。原始脱敏摘要在 `.local/evidence/phase2/vps-readonly.json`。
+
+本地实现：
+
+- 正常 `pnpm bridge` **必须配置设备信任存储**；没有 trust 的 server 构造默认失败。旧测试夹具必须显式使用 testOnlyUnauthenticated，且不能启用远程 origin；这不是可配置的生产旁路。
+- 使用 Node 24 内置 SQLite，默认 `.local/runtime/`（0700），数据库 0600，拒绝目录／数据库 symlink 及宽松权限。只存配对码／会话凭据的 SHA-256 摘要和设备标签、ID、来源、有效期、撤销标志；不保存 OAuth、模型凭据或原生对话历史。未新增依赖。
+- 主机 `pnpm trust pair` 生成 256-bit 随机、5 分钟一次性码，私密写入 `.local/runtime/pairing.txt`，不输出码。新码替换旧的未使用码。`pnpm trust list` 只列安全设备元数据；`pnpm trust revoke <device-id>` 撤销。
+- UI 配对后获得 24 小时、绑定精确 origin 的 HttpOnly / SameSite=Strict Cookie；远程使用 Secure / `__Host-` 前缀。配对码不存 localStorage、URL 或日志。localhost 调试凭据仅适用于该本地 origin。
+- 未配对者不能访问会话 API 或 WebSocket。Host、Origin、cross-site 请求、远程 X-Forwarded-Proto 均受校验；远程必须显式配置 `ORACULUM_REMOTE_ORIGIN=https://<独立可信入口>`。代理必须覆盖转发头，Bridge 仍只监听 127.0.0.1。配对失败限 5 次／分钟。
+- 现有 socket 在每次收发前复核信任；撤销／过期后停止传输新事件与请求，最多一秒关闭空闲 socket。撤销不取消已经提交给官方 Harness 的任务。
+- Android 增加可构建时指定的精确 HTTPS origin（`-PoraculumOrigin=https://<入口>`），保持同源导航／资源限制、禁止混合内容和任意原生桥接；禁第三方 Cookie 和地理位置。未配置入口的 release 不加载任何本地页面。追加 Android 12+ 云备份／设备迁移排除规则，旧系统仍禁止 backup。
+
+本地验证：
+
+- **S** `pnpm check/test/build` 通过，39 项测试；覆盖一次性消费、过期、origin 绑定、撤销跨 DB 连接、权限与 symlink、匿名 WS、错误 Host/Origin/TLS 标头、重复 Cookie、限流、已连接 socket 撤销后无事件泄漏与拒绝重连。
+- **R** 实际 Electron + 正常鉴权 Bridge，零新模型调用：初始 401／无会话 UI；配对后通过原生查询恢复 2A thread；JS `document.cookie` 为空；重复码 401；主机撤销后 socket 关闭，界面移除私有会话并要求重新配对。见 `auth-electron.json` / `auth-electron-paired.png`。
+- **S** 原 Electron 模拟 UI 回归通过。Android APK 构建和 lint 通过；第一次构建因 Gradle Kotlin DSL 的 java 扩展名遮蔽 `java.net.URI` 失败，改为显式 import 后成功。
+- **U／设备阻碍** 新鉴权版 APK 的 `adb install -r` 返回 `INSTALL_FAILED_ABORTED: User rejected permissions`；未绕过或反复重试，已请用户解锁并确认系统安装授权。2A 已验收的版本保留；新备份／HTTPS 壳配置尚未实机复验。
+- **U／入口阻碍** 现有 DSH 仅有 IP HTTPS，无 Oraculum 独立域名；已向用户询问可用独立域名／子域名。相同 IP 的不同端口并不能隔离 Cookie，因此不把换端口当作完整身份隔离方案。正式入口确定前不改 Caddy、不签发证书、不建隧道。
+
+正式部署须另行审阅精确配置差异：保留现有入口，新增独立 host 与仅环回 SSH 端口；备份磁盘配置和运行中配置，验证配置后才获批 reload，评估既有长连接可能断开；失败恢复备份并验证旧入口。当前仅有候选设计，**没有执行备份写入、reload、SSH 配置改动或 systemd 操作**。缺少域名／授权时不宣称 2B 或 Phase 2 通过。

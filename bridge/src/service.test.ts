@@ -79,7 +79,7 @@ describe('PoC boundary and native routing', () => {
   });
   it('requires exact local host and same Origin before upgrade', async () => {
     const { service } = fixture();
-    const app = await createServer(service, 17860, '/missing-static-root');
+    const app = await createServer(service, 17860, '/missing-static-root', { testOnlyUnauthenticated: true });
     try {
       expect((await app.inject({ url: '/health', headers: { host: '127.0.0.1:17860' } })).statusCode).toBe(200);
       expect((await app.inject({ url: '/health', headers: { host: 'evil.test:17860' } })).statusCode).toBe(403);

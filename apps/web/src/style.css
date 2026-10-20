@@ -2,7 +2,13 @@
 :root { color-scheme: dark; --background: #000; --foreground: #edf1f7; --muted: #8a96a8; --line: #252a32; --accent: #8cc9ff; font-family: Inter, "Noto Sans CJK SC", system-ui, sans-serif; background: var(--background); color: var(--foreground); }
 * { box-sizing: border-box; }
 body { margin: 0; }
-button, select, textarea { font: inherit; color: inherit; background: #11151b; border: 1px solid var(--line); border-radius: 8px; }
+button, select, textarea, input { font: inherit; color: inherit; background: #11151b; border: 1px solid var(--line); border-radius: 8px; }
+.pairing { max-width: 560px; margin: 32px auto; padding: 24px; }
+.pairing h2 { margin-top: 28px; }
+.pairing p { color: var(--muted); line-height: 1.6; }
+.pairing label { margin-bottom: 16px; }
+.pairing input { min-width: 0; padding: 12px; }
+.pairing button { margin: 8px 8px 0 0; }
 button { padding: 9px 13px; cursor: pointer; min-height: 42px; }
 button:hover:enabled { border-color: var(--accent); }
 button:disabled { opacity: .42; cursor: default; }

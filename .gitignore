@@ -12,5 +12,7 @@ local.properties
 *.hprof
 *.log
 .env*
+trust.sqlite*
+pairing.txt*
 test-results/
 playwright-report/

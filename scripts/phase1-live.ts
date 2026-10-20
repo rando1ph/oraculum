@@ -46,7 +46,7 @@ async function startBackend() {
       ...(params.item.type === 'fileChange' ? { changes: params.item.changes } : {}) });
   });
   await codex.initialize();
-  server = await createServer(service, 17862, resolve('apps/web/dist'));
+  server = await createServer(service, 17862, resolve('apps/web/dist'), { testOnlyUnauthenticated: true });
   await server.listen({ host: '127.0.0.1', port: 17862 });
 }
 async function launch() {
