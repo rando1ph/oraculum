@@ -53,7 +53,7 @@ export class BridgeClient {
         reject(new Error('响应超时，执行结果未知；请查询状态，勿重复发送'));
       }, 65_000);
       this.pending.set(id, { resolve: value => resolve(value as T), reject, timer });
-      try { this.socket!.send(JSON.stringify({ id, method, params })); }
+      try { this.socket!.send(JSON.stringify({ id, method, params: method === 'turn/start' ? { ...params, operationId: id } : params })); }
       catch {
         clearTimeout(timer); this.pending.delete(id);
         reject(new Error('发送失败，结果未知；请查询状态，勿自动重试'));

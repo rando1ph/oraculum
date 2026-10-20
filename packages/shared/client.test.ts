@@ -24,6 +24,8 @@ it('rejects an unacknowledged operation on disconnect and never retransmits on r
   const client = new BridgeClient(vi.fn(), vi.fn());
   const connected = client.connect(); Socket.instances[0].open(); await connected;
   const request = client.request('turn/start', { threadId: 't', text: 'once' });
+  const wire = JSON.parse(Socket.instances[0].sent[0]);
+  expect(wire.params.operationId).toBe(wire.id);
   const rejection = expect(request).rejects.toThrow('未知');
   Socket.instances[0].close(); await rejection;
   const again = client.connect(); Socket.instances[1].open(); await again;

@@ -16,6 +16,7 @@ type State = {
   diffs: Record<string, string>;
   plan: string;
   sendBlocked: boolean;
+  receipts: NonNullable<Snapshot['receipts']>;
   reset: () => void;
   snapshot: (value: Snapshot) => void;
   older: (value: Snapshot) => void;
@@ -23,18 +24,18 @@ type State = {
   approval: (request: Approval) => void;
 };
 const empty = () => ({ thread: undefined, items: {}, turns: {}, pending: [], events: [], notices: [],
-  activeTurn: undefined, lastTurnId: undefined, history: undefined, sendBlocked: false, diffs: {}, plan: '' });
+  activeTurn: undefined, lastTurnId: undefined, history: undefined, sendBlocked: false, receipts: [], diffs: {}, plan: '' });
 export const useSession = create<State>((set, get) => ({
   ...empty(),
   reset: () => set(empty()),
-  snapshot: ({ thread, pending, history, sendBlocked }) => {
+  snapshot: ({ thread, pending, history, sendBlocked, receipts }) => {
     const same = get().thread?.id === thread.id;
     const items: State['items'] = same ? { ...get().items } : {};
     for (const turn of thread.turns) for (const item of turn.items) {
       items[itemKey(turn.id, item.id)] = { turnId: turn.id, item, source: 'native', complete: turn.status !== 'inProgress' };
     }
     // Retained live items are explicitly labelled; never persist them as history.
-    set({ ...(same ? {} : empty()), thread, pending, items, history, sendBlocked: !!sendBlocked,
+    set({ ...(same ? {} : empty()), thread, pending, items, history, sendBlocked: !!sendBlocked, receipts: receipts ?? [],
       turns: { ...(same ? get().turns : {}), ...Object.fromEntries(thread.turns.map(turn => [turn.id, turn])) },
       lastTurnId: thread.turns.at(-1)?.id,
       activeTurn: thread.turns.find(turn => turn.status === 'inProgress')?.id });
@@ -64,7 +65,7 @@ export const useSession = create<State>((set, get) => ({
       changes.activeTurn = event.method === 'turn/started' ? turn.id : state.activeTurn === turn.id ? undefined : state.activeTurn;
       if (event.method === 'turn/completed') {
         changes.pending = state.pending.filter(p => p.params.turnId !== turn.id);
-        changes.sendBlocked = false;
+        // Only a fresh Bridge snapshot can resolve persisted send uncertainty.
       }
     }
     if (event.method === 'thread/status/changed') changes.thread = { ...state.thread!, status: event.params.status };

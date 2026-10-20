@@ -38,3 +38,8 @@ it('does not replay overlapping deltas during a snapshot', () => {
   useSession.getState().event({ method: 'item/agentMessage/delta', params: { threadId: 't', turnId: 'u', itemId: 'i', delta: 'hello' } }, true);
   expect(useSession.getState().items[itemKey('u', 'i')].item).toMatchObject({ text: 'hello' });
 });
+it('does not unlock an unknown send when an unrelated native turn completes', () => {
+  useSession.setState({ sendBlocked: true });
+  emit('turn/completed', { threadId: 't', turn: { id: 'unrelated', status: 'completed' } });
+  expect(useSession.getState().sendBlocked).toBe(true);
+});

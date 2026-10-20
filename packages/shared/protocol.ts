@@ -28,6 +28,13 @@ export type Snapshot = {
   pending: Approval[];
   history?: { source: 'native-read' | 'native-pages'; warning: string; nextCursor?: string | null };
   sendBlocked?: boolean;
+  receipts?: SendReceipt[];
+};
+export type SendReceipt = {
+  operationId: string;
+  status: 'unknown' | 'accepted' | 'rejected' | 'completed' | 'failed' | 'interrupted';
+  turnId: string | null;
+  createdAt: number;
 };
 export type LocalConfig = {
   cwd: string;

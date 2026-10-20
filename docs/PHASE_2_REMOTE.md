@@ -135,13 +135,44 @@ DSH 当时 load 5.53/5.40/5.33，可用内存约 435 MiB，swap 已用约 1341 M
 - 已消费配对码重放返回 401；主机撤销后已打开的 socket 关闭，私有 UI 移除，HTTP 查询为 401。使用新码重新配对，获得新设备授权并恢复同一 thread。测试结束撤销全部本轮测试授权，不保留可用测试凭据。
 - 安装后 package flags 未启用 ALLOW_BACKUP；仅检查 Oraculum PID 的最近日志，未见 FATAL EXCEPTION 或 attached-destroy 警告。此检查不等于已执行云备份／设备迁移。
 
-新增可复验入口 `ORACULUM_ANDROID_CDP=http://127.0.0.1:<本次转发端口> pnpm test:auth:android`。需运行同一状态目录下的正常鉴权 Bridge、手机初始未配对、预先存在 2A fixture thread。脚本仅附着本应用 WebView，覆盖配对、重载、重放拒绝、撤销和重新配对；不输出码／Cookie 值，不在失败时截图或转储可能含凭据的断言。截图只在配对提交后采集。
+新增可复验入口 `ORACULUM_ANDROID_CDP=http://127.0.0.1:<本次转发端口> pnpm test:auth:android`。需运行同一状态目录下的正常鉴权 Bridge、手机初始未配对、预先存在已完成的受控测试 thread。脚本仅附着本应用 WebView，覆盖配对、重载、重放拒绝、撤销和重新配对；不输出码／Cookie 值，不在失败时截图或转储可能含凭据的断言。截图只在配对提交后采集。
 
 `pnpm check`、`pnpm test`（39/39）、`git diff --check` 通过；本步只有测试入口与文档变化，应用构建沿用上一已通过版本，实机安装的是该构建。
 
 | 忽略目录证据文件 | SHA-256 |
 | --- | --- |
-| auth-android.json | `2b0d1c9ce4a51dd5d20654cf33bede9620b9fa582d5739a4d94a89780c977f6a` |
+| auth-android-8db3c16.json（首轮鉴权证据归档） | `2b0d1c9ce4a51dd5d20654cf33bede9620b9fa582d5739a4d94a89780c977f6a` |
 | auth-android-package.json | `c9ab02272ba931fa5b061e013a32794ed80496520e0dac878fc148dff4f76fbd` |
 
 另有配对成功／撤销后的真机截图；生成物不提交。APK 安装阻碍已解除；独立域名与正式配置授权仍待提供。2B 正式公网远程、2C 双端故障矩阵和整个阶段尚未验收，Status 保持 In progress。本步骤 commit／main 合并／push 状态写回原 Notion Task。
+
+上述手机鉴权验证提交为 `8db3c16d2120c20fe4ff7196112f0ea1a3ae018a`，已安全快进 main 并普通 push，远端完整 hash 一致。
+
+## 可独立验证的本地恢复保护（正式 2B／2C 仍未验收）
+
+远程入口信息和服务变更授权尚未具备，依 Task 的边界继续完成本地部分：
+
+- 正常 Bridge 使用同一私密 SQLite 的 `send_receipts` 表，只记录操作 UUID、工作区／thread、已认证设备 ID、时间、状态及已确认的 turn ID。不保存提示词、工具内容、审批或对话副本；设备 ID 来自服务端会话，不能由 UI 冒充。
+- 客户端为每次显式 `turn/start` 创建操作 ID；Bridge 在调用官方 RPC **之前**同步事务记录 unknown。事务内检查该工作区／thread 是否仍有未确认发送，跨数据库连接也不能同时占用。同一操作 ID 永不再次执行；客户端断线／超时不自动重发。
+- 官方成功 ACK 只表示 accepted，不能当作完成；仅匹配 turn ID 的原生 completed／failed／interrupted 可确认终态。明确原生 RPC 拒绝记为 rejected；丢 ACK、进程退出、超时继续 unknown，Bridge 重启或无关轮次完成不能自动解除。没有已确认 turn ID 时宁可保持阻断，用户需核查并使用新会话，不提供强制清空／重试按钮。
+- UI 展示最近 20 条回执及各类状态。新发送仍需实时原生会话查询，持久回执不会代替原生历史。记录暂不自动清理，避免清理后旧 ID 被复用；规模管理留待真实使用量证据，不作 exactly-once 承诺。旧版本 Bridge 在回执写入前已执行的历史操作不在此保护范围内。
+- 测试夹具可显式构造无回执服务；正常启动始终注入回执存储。数据库失败时先阻断发送，不能降级为无回执执行。Git 回退此功能需要停用远程入口并重新评估发送保护，不能把删库当作安全回退。
+
+### 检查与实测
+
+**S** `pnpm check`、`pnpm test`（7 文件，48 tests）、`pnpm build`、实际 Electron 的模拟 UI 回归通过。新增覆盖：先记回执后发 RPC、丢 ACK 后重新构造 Bridge／独立 DB 连接仍阻断、匹配原生三种终态、RPC 拒绝后仅允许新操作、永久拒旧 ID、存储失败时不转发、未知结果不被无关 completion 清除。两个已认证 WebSocket 同时发送只转发一次；同时竞争审批只向原生回一次；App Server unavailable 后复用 request ID 的旧 token 被拒绝。以上故障与竞争为模拟原生端证据，非公网或实际崩溃承诺。
+
+**R** `pnpm test:recovery:local` 附着实际 Android WebView，同时启动实际 Electron，使用正常鉴权 Bridge + 官方 Codex 0.160.0，仅新增一轮 gpt-6-luna / low、无工具请求的受控回复：
+
+- thread `01a15ad4-9177-7870-b12b-0b71c346f83a`
+- turn `01a15ad4-9406-7773-b0d6-1227fb88e490`，completed
+- operation `bfa01aed-ef06-4020-bbf5-980ef1f028cd`
+- 两端的原生 user／assistant item ID 集合一致，最终标题 `ORACULUM_RECOVERY_OK`，回执均为「原生已确认完成」。
+- 停止本次测试 Bridge 及其 App Server，两端显示已断开；以原工作区／状态目录重启后，两端手动重新连接恢复同一 thread、turn、item 集合和同一条回执，没有重发。历史缺口提示保留。
+- 测试结束撤销本轮设备授权、关闭测试 Electron／Bridge、仅断开 CDP，不删除手机 App、配对或原生 thread。该脚本需要空闲 17860、现有 Oraculum CDP forward／ADB reverse 与受控工作区，重复运行会新增一轮真实推理。
+
+证据 `.local/evidence/phase2/recovery-local.json` SHA-256 `0b0837a41948b0ac3313795fb45b9562eb1ad16ba963a0a1489df26adf5679d4`，另有双端恢复截图，均不入 Git。本步未改变 Kotlin／manifest，沿用已实机安装的新鉴权 APK，加载本次构建的共享 UI。
+
+恢复功能加入后再次运行真机鉴权回归，通过配对／重放拒绝／撤销／重新配对，零新增模型调用，恢复本次 completed thread。鉴权脚本现在先重载，并验证当前已完成会话，不再依赖旧 2A 回复标题。最新 `auth-android.json` SHA-256 `013321b718f09b645b8f4c4fa11c17b2fdda96a11aed2584f09751ea6ddff286`；首轮证据已归档为 `auth-android-8db3c16.json`，原 SHA 不变。
+
+**U** 正式 HTTPS/WSS、独立 SSH tunnel、既有服务变更后健康回归、远程创建／继续／中断、实际 Wi-Fi 切换、锁屏与隧道重连、真实 pending 审批跨进程丢失仍待后续获批环境验收。正式入口不能由本地测试替代；整体 Phase 2 保持 In progress，等待入口信息／配置授权以及后续审阅。

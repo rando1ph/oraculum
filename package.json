@@ -21,6 +21,7 @@
     "test:android": "tsx scripts/android-live.ts",
     "test:auth:ui": "tsx scripts/auth-ui.ts",
     "test:auth:android": "tsx scripts/android-auth.ts",
+    "test:recovery:local": "tsx scripts/recovery-local.ts",
     "test:history": "tsx scripts/history-probe.ts"
   },
   "devDependencies": {

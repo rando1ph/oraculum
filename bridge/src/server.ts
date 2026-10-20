@@ -91,6 +91,7 @@ export async function createServer(service: BridgeService, port: number, webRoot
   }, (socket, request) => {
     const source = requestOrigin(request.headers);
     const token = tokenFrom(request.headers, source);
+    const deviceId = trust?.authenticate(token, source)?.id;
     const authorized = () => !trust || !!trust.authenticate(token, source);
     const forward = (event: BridgeEvent) => {
       if (!authorized()) { socket.close(1008, 'Device trust expired or revoked'); return; }
@@ -112,7 +113,7 @@ export async function createServer(service: BridgeService, port: number, webRoot
       if (seen.has(String(request.id)) || seen.size >= 500) { socket.close(1008, 'Duplicate ID or request limit'); return; }
       seen.add(String(request.id));
       let response: WireMessage;
-      try { response = { id: request.id, result: await service.dispatch(request.method!, request.params!) }; }
+      try { response = { id: request.id, result: await service.dispatch(request.method!, request.params!, deviceId ? { deviceId } : undefined) }; }
       catch (error) { response = { id: request.id, error: { code: -32000, message: error instanceof Error ? error.message : 'Request failed' } }; }
       if (authorized() && socket.readyState === 1) socket.send(JSON.stringify(response));
     });

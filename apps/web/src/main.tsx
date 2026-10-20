@@ -170,7 +170,13 @@ function App() {
             .then(value => { if (selected.current === id) useSession.getState().older(value); })
             .catch(report).finally(() => setLoadingHistory(false));
         }}>加载更早历史</button>}
-        {session.sendBlocked && <p role="alert" className="error">上次发送结果未知，禁止自动重发。请核查原生状态；无法确认时使用新会话。</p>}
+        {session.sendBlocked && <p role="alert" className="error">有发送尚未确认终态，禁止重发。请查询原生状态；结果仍未知时使用新会话。</p>}
+        {!!session.receipts.length && <details className="events"><summary>最近发送回执</summary>
+          {session.receipts.map(receipt => <p key={receipt.operationId} data-testid="send-receipt" data-operation-id={receipt.operationId}>
+            {{ unknown: '结果未知 · 禁止重发', accepted: 'Harness 已接收 · 待确认终态', rejected: '发送明确被拒绝', completed: '原生已确认完成', failed: '原生已确认失败', interrupted: '原生已确认中断' }[receipt.status]}
+            <small> · {receipt.turnId ?? '尚无已确认的轮次 ID'}</small>
+          </p>)}
+        </details>}
         {error && <p className="error" role="alert">{error}</p>}
         {session.notices.map((notice, i) => <p className="history-warning" key={i}>{notice}</p>)}
         {lastTurn?.error && <p className="error" role="alert">{lastTurn.status}：{lastTurn.error.message}</p>}

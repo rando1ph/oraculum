@@ -12,6 +12,7 @@ import type { ThreadListResponse } from '../../.local/codex-protocol/v2/ThreadLi
 import type { ThreadResumeResponse } from '../../.local/codex-protocol/v2/ThreadResumeResponse';
 import type { ConfigReadResponse } from '../../.local/codex-protocol/v2/ConfigReadResponse';
 import { readHistory } from './history';
+import type { ReceiptStore } from './receipts';
 
 export class BridgeService extends EventEmitter {
   readonly threads = new Set<string>();
@@ -23,7 +24,8 @@ export class BridgeService extends EventEmitter {
   private loaded = new Set<string>();
   private fresh = new Map<string, Thread>();
   private resuming = new Map<string, Promise<void>>();
-  constructor(readonly codex: Pick<Codex, 'request' | 'send'> & { on(event: string, listener: (...args: any[]) => void): unknown }, readonly cwd: string) {
+  constructor(readonly codex: Pick<Codex, 'request' | 'send'> & { on(event: string, listener: (...args: any[]) => void): unknown }, readonly cwd: string,
+    private receipts?: ReceiptStore) {
     super();
     codex.on('message', (message: WireMessage) => this.receive(message));
     codex.on('unavailable', (message: string) => {
@@ -59,9 +61,10 @@ export class BridgeService extends EventEmitter {
     }
     if (message.method === 'turn/completed') {
       const turnId = (params.turn as { id: string }).id;
+      this.receipts?.observe(this.cwd, threadId, params.turn as Parameters<ReceiptStore['observe']>[2]);
       if (this.activeTurns.get(threadId) === turnId) {
         this.busy.delete(threadId);
-        this.unknownSends.delete(threadId);
+        if (!this.receipts?.blocked(this.cwd, threadId)) this.unknownSends.delete(threadId);
         this.activeTurns.delete(threadId);
       }
       for (const [id, request] of this.pending) {
@@ -71,7 +74,7 @@ export class BridgeService extends EventEmitter {
     // Native notifications are the facts; no agent loop or tool execution here.
     this.emit('event', { type: 'event', event: message } as BridgeEvent);
   }
-  async dispatch(method: string, params: Record<string, unknown>): Promise<unknown> {
+  async dispatch(method: string, params: Record<string, unknown>, context?: { deviceId: string }): Promise<unknown> {
     if (method === 'bridge/config') {
       const { config } = await this.codex.request<ConfigReadResponse>('config/read', { cwd: this.cwd, includeLayers: false });
       // Only safe effective settings cross into the renderer, never raw config.
@@ -113,6 +116,7 @@ export class BridgeService extends EventEmitter {
       const fresh = this.fresh.get(threadId);
       const thread = fresh ?? (await this.codex.request<ThreadReadResponse>('thread/read', { threadId })).thread;
       const result = fresh ? { thread } : await readHistory(this.codex, thread, typeof params.cursor === 'string' ? params.cursor : undefined);
+      for (const turn of result.thread.turns) this.receipts?.observe(this.cwd, threadId, turn);
       const active = result.thread.turns.find(t => t.status === 'inProgress');
       // Older history pages must not change current execution controls.
       if (!params.cursor && revision === (this.revisions.get(threadId) ?? 0)) {
@@ -122,11 +126,12 @@ export class BridgeService extends EventEmitter {
         }
       }
       return { ...result, pending: [...this.pending.values()].filter(r => r.params.threadId === threadId),
-        sendBlocked: this.unknownSends.has(threadId),
+        sendBlocked: this.unknownSends.has(threadId) || !!this.receipts?.blocked(this.cwd, threadId),
+        receipts: this.receipts?.list(this.cwd, threadId),
       } satisfies Snapshot;
     }
     if (method === 'turn/start') {
-      if (this.busy.has(threadId)) throw new Error('Turn in progress or send result unknown; query state before continuing');
+      if (this.busy.has(threadId) || this.receipts?.blocked(this.cwd, threadId)) throw new Error('Turn in progress or send result unknown; query state before continuing');
       if (!this.loaded.has(threadId)) throw new Error('Select and resume the thread before starting a turn');
       if (typeof params.text !== 'string' || !params.text.trim() || params.text.length > 16000) throw new Error('Expected 1–16000 characters');
       const request: TurnStartParams = {
@@ -134,6 +139,10 @@ export class BridgeService extends EventEmitter {
         ...(typeof params.model === 'string' && params.model ? { model: params.model } : {}),
         ...(typeof params.effort === 'string' && params.effort ? { effort: params.effort } : {}),
       };
+      if (this.receipts) {
+        if (!context?.deviceId) throw new Error('Authenticated device context required');
+        this.receipts.reserve(params.operationId, this.cwd, threadId, context.deviceId);
+      }
       this.busy.add(threadId);
       this.unknownSends.add(threadId);
       const fresh = this.fresh.get(threadId);
@@ -141,11 +150,14 @@ export class BridgeService extends EventEmitter {
       // Deliberately keep unknown sends blocked. A timeout is not a safe retry.
       try {
         const result = await this.codex.request<TurnStartResponse>('turn/start', request);
+        this.receipts?.accepted(params.operationId as string, result.turn.id);
+        this.receipts?.observe(this.cwd, threadId, result.turn);
         this.unknownSends.delete(threadId);
         if (this.busy.has(threadId) && result.turn.status === 'inProgress') this.activeTurns.set(threadId, result.turn.id);
         return result;
       } catch (error) {
         if (error instanceof NativeRpcError) {
+          this.receipts?.rejected(params.operationId as string);
           this.busy.delete(threadId);
           this.unknownSends.delete(threadId);
           if (fresh) this.fresh.set(threadId, fresh);
