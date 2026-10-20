@@ -62,7 +62,7 @@ try {
       answered = true;
       evidence.approval = { method: approval.request.method, requestId: approval.request.id, itemId: approval.request.params.itemId, decision: 'decline' };
       // Declining cannot grant host privileges; exercising a real server request.
-      void rpc('bridge/approve', { threadId, requestId: approval.request.id, decision: 'decline' }).catch(error => { evidence.approvalError = error.message; });
+      void rpc('bridge/approve', { threadId, requestId: approval.request.id, bridgeToken: approval.request.bridgeToken, decision: 'decline' }).catch(error => { evidence.approvalError = error.message; });
     }
     return rawEvents.some(e => e.event?.method === 'turn/completed');
   }, 'native turn completion');

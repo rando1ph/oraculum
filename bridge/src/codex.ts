@@ -72,10 +72,10 @@ export class Codex extends EventEmitter {
       this.send({ id, method, params: params as Record<string, unknown> });
     });
   }
-  async initialize() {
+  async initialize(experimentalApi = false) {
     const result = await this.request('initialize', {
       clientInfo: { name: 'oraculum', title: 'Oraculum', version: '0.1.0' },
-      capabilities: { experimentalApi: false },
+      capabilities: { experimentalApi },
     });
     this.send({ method: 'initialized', params: {} });
     return result;

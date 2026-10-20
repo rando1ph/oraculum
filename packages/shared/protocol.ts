@@ -17,7 +17,7 @@ export type WireMessage = {
   result?: unknown;
   error?: { code: number; message: string };
 };
-export type Approval = Extract<ServerRequest, { method: 'item/commandExecution/requestApproval' | 'item/fileChange/requestApproval' }>;
+export type Approval = Extract<ServerRequest, { method: 'item/commandExecution/requestApproval' | 'item/fileChange/requestApproval' }> & { bridgeToken?: string };
 export type BridgeEvent =
   | { type: 'event'; event: ServerNotification }
   | { type: 'approval'; request: Approval }

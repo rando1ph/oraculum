@@ -61,3 +61,23 @@ nav button small { display: block; margin-top: 5px; }
 .markdown ul, .markdown ol { padding-left: 22px; list-style: revert; }
 .markdown blockquote { border-left: 2px solid var(--line); padding-left: 16px; color: var(--muted); }
 .markdown code { color: #b8d7ef; }
+.workspace.with-inspector { grid-template-columns: 210px minmax(360px, 1fr) minmax(320px, .8fr); max-width: 1900px; }
+.inspector { min-width: 0; padding: 24px 18px; border-left: 1px solid var(--line); }
+.inspector p { font-size: 12px; margin: 12px 0; }
+.file-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 10px 0; }
+.file-row span { overflow-wrap: anywhere; min-width: 0; }
+.file-row button { flex-shrink: 0; font-size: 12px; }
+.provenance { display: block; font-size: 10px; color: #68768a; margin: 3px 0 10px; }
+.command-text { color: #cad9eb; background: #10151c; padding: 10px; border-radius: 6px; }
+.tool summary { color: #bdcbdc; }
+.diff { margin-top: 12px; min-width: 0; }
+.diff > .copy { margin-bottom: 8px; }
+.turn-diff { margin: 8px 8px 0 0; font-size: 12px; }
+@media (max-width: 1100px) {
+  .workspace.with-inspector { grid-template-columns: 210px minmax(0, 1fr); }
+  .inspector { grid-column: 2; border-top: 1px solid var(--line); }
+}
+@media (max-width: 700px) {
+  .workspace.with-inspector { grid-template-columns: minmax(0, 1fr); }
+  .inspector { grid-column: 1; border-left: none; padding: 16px; }
+}

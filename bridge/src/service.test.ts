@@ -35,7 +35,9 @@ describe('PoC boundary and native routing', () => {
     const { service, codex } = fixture();
     codex.emit('message', { id: 99, method: 'item/commandExecution/requestApproval', params: { threadId: 'thread-1', itemId: 'same-item', turnId: 'turn-1' } });
     await expect(service.dispatch('bridge/approve', { threadId: 'thread-1', requestId: 'same-item', decision: 'accept' })).rejects.toThrow();
-    await service.dispatch('bridge/approve', { threadId: 'thread-1', requestId: 99, decision: 'decline' });
+    const bridgeToken = service.pending.get(99)!.bridgeToken;
+    await expect(service.dispatch('bridge/approve', { threadId: 'thread-1', requestId: 99, bridgeToken: 'stale', decision: 'accept' })).rejects.toThrow('expired');
+    await service.dispatch('bridge/approve', { threadId: 'thread-1', requestId: 99, bridgeToken, decision: 'decline' });
     expect(codex.send).toHaveBeenCalledExactlyOnceWith({ id: 99, result: { decision: 'decline' } });
     await expect(service.dispatch('bridge/approve', { threadId: 'thread-1', requestId: 99, decision: 'accept' })).rejects.toThrow();
   });
@@ -52,7 +54,24 @@ describe('PoC boundary and native routing', () => {
     codex.emit('message', { method: 'serverRequest/resolved', params: { threadId: 'thread-1', requestId: 2 } });
     expect(service.pending.size).toBe(0);
     codex.emit('message', { id: 3, method: 'account/chatgptAuthTokens/refresh', params: {} });
-    expect(codex.send).toHaveBeenCalledWith({ id: 3, error: { code: -32601, message: 'Interaction unsupported by Phase 0B client' } });
+    expect(codex.send).toHaveBeenCalledWith({ id: 3, error: { code: -32601, message: 'Interaction unsupported by Oraculum; no permission granted' } });
+  });
+  it('allows a file approval only with its current token and never reuses a resolved ID', async () => {
+    const { service, codex } = fixture();
+    codex.emit('message', { id: 'file-request', method: 'item/fileChange/requestApproval', params: { threadId: 'thread-1', turnId: 'u', itemId: 'patch' } });
+    const bridgeToken = service.pending.get('file-request')!.bridgeToken;
+    await service.dispatch('bridge/approve', { threadId: 'thread-1', requestId: 'file-request', bridgeToken, decision: 'accept' });
+    expect(codex.send).toHaveBeenCalledExactlyOnceWith({ id: 'file-request', result: { decision: 'accept' } });
+    await expect(service.dispatch('bridge/approve', { threadId: 'thread-1', requestId: 'file-request', bridgeToken, decision: 'accept' })).rejects.toThrow('no longer');
+  });
+  it.each(['item/tool/requestUserInput', 'mcpServer/elicitation/request', 'item/permissions/requestApproval'])('safely rejects unsupported %s and tells the UI', method => {
+    const { service, codex } = fixture();
+    const events: unknown[] = [];
+    service.on('event', e => events.push(e));
+    codex.emit('message', { id: 4, method, params: { threadId: 'thread-1', turnId: 'u' } });
+    expect(codex.send).toHaveBeenCalledWith({ id: 4, error: expect.objectContaining({ code: -32601 }) });
+    expect(events).toContainEqual({ type: 'notice', threadId: 'thread-1', message: expect.stringContaining('已安全拒绝') });
+    expect(service.pending.size).toBe(0);
   });
   it('requires exact local host and same Origin before upgrade', async () => {
     const { service } = fixture();
@@ -77,7 +96,8 @@ describe('native session and settings', () => {
   it('rechecks cwd before native resume and never accepts history or config from renderer', async () => {
     const { service, codex } = fixture();
     codex.request.mockImplementation(async method => method === 'thread/read'
-      ? { thread: { id: 'thread-1', cwd: '/controlled-workspace', turns: [] } } : {});
+      ? { thread: { id: 'thread-1', cwd: '/controlled-workspace', status: { type: 'idle' }, turns: [] } }
+      : method === 'thread/turns/list' ? { data: [], nextCursor: null } : {});
     await service.dispatch('bridge/subscribe', { threadId: 'thread-1', history: [], cwd: '/private', config: { sandbox_mode: 'danger-full-access' } });
     expect(codex.request).toHaveBeenCalledWith('thread/resume', {
       threadId: 'thread-1', cwd: '/controlled-workspace', sandbox: 'workspace-write', approvalPolicy: 'on-request', approvalsReviewer: 'user', excludeTurns: true,

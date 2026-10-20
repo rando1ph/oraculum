@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BridgeClient } from '../../../packages/shared/client';
 import type { BridgeEvent, LocalConfig, Model, Snapshot, Thread } from '../../../packages/shared/protocol';
@@ -8,6 +8,7 @@ import { useSession } from './store';
 import { Item } from './content';
 import './style.css';
 
+const Diff = lazy(() => import('./diff').then(module => ({ default: module.Diff })));
 function App() {
   const session = useSession();
   const [connected, setConnected] = useState(false);
@@ -22,6 +23,8 @@ function App() {
   const [error, setError] = useState('');
   const [sending, setSending] = useState(false);
   const [approving, setApproving] = useState(false);
+  const [inspected, setInspected] = useState<{ path: string; diff: string }>();
+  const [loadingHistory, setLoadingHistory] = useState(false);
   const client = useRef<BridgeClient>(null);
   const selected = useRef('');
   const workspace = useRef('');
@@ -48,7 +51,7 @@ function App() {
     const changed = selected.current !== id;
     selected.current = id;
     setSynced(false);
-    if (changed) { useSession.getState().reset(); setModel(''); setEffort(''); setError(''); }
+    if (changed) { useSession.getState().reset(); setModel(''); setEffort(''); setError(''); setInspected(undefined); }
     if (!id) { useSession.getState().reset(); setSynced(true); buffer.current = null; return; }
     buffer.current = [];
     try {
@@ -101,6 +104,7 @@ function App() {
     try {
       const result = await client.current!.request<ThreadStartResponse>('thread/start', { model });
       ++epoch.current; buffer.current = null; selected.current = result.thread.id;
+      setInspected(undefined);
       useSession.getState().reset();
       useSession.getState().snapshot({ thread: result.thread, pending: [] });
       localStorage.setItem(storageKey(), result.thread.id);
@@ -125,7 +129,7 @@ function App() {
       <div><h1>Oraculum <span>神谕</span></h1><small>LOCAL CODEX · PHASE 1</small></div>
       <div className="connection" role="status">{!connected ? '已断开' : synced ? '状态已查询' : '待查询状态'}<button disabled={sending || approving} onClick={() => void connect().catch(report)}>重新连接</button></div>
     </header>
-    <div className="workspace">
+    <div className={`workspace ${inspected ? 'with-inspector' : ''}`}>
       <aside>
         <h2>本地会话</h2>
         <button onClick={() => void createThread()} disabled={!connected || sending}>新建会话</button>
@@ -149,21 +153,37 @@ function App() {
           <span>当前配置：{session.thread?.model ?? '未知'} / {session.thread?.reasoningEffort ?? '未指定'}</span>
         </div>
         {session.history?.warning && <p className="history-warning">{session.history.warning}</p>}
+        {session.history?.nextCursor && <button disabled={loadingHistory || !connected} onClick={() => {
+          const id = selected.current;
+          setLoadingHistory(true);
+          void client.current!.request<Snapshot>('bridge/history', { threadId: id, cursor: session.history!.nextCursor })
+            .then(value => { if (selected.current === id) useSession.getState().older(value); })
+            .catch(report).finally(() => setLoadingHistory(false));
+        }}>加载更早历史</button>}
         {session.sendBlocked && <p role="alert" className="error">上次发送结果未知，禁止自动重发。请核查原生状态；无法确认时使用新会话。</p>}
         {error && <p className="error" role="alert">{error}</p>}
         {session.notices.map((notice, i) => <p className="history-warning" key={i}>{notice}</p>)}
         {lastTurn?.error && <p className="error" role="alert">{lastTurn.status}：{lastTurn.error.message}</p>}
+        {session.plan && <details className="tool"><summary>当前计划</summary><pre>{session.plan}</pre></details>}
         <div className="timeline" aria-label="会话时间线">
           {!Object.keys(session.items).length && <p className="empty">连接真正的 Codex。<br/><span>选择或新建会话，然后发送消息。</span></p>}
-          {Object.entries(session.items).map(([key, view]) => <div key={key} data-turn-id={view.turnId} data-item-id={view.item.id}><Item item={view.item}/></div>)}
+          {Object.entries(session.items).map(([key, view]) => <div key={key} data-turn-id={view.turnId} data-item-id={view.item.id}>
+            <Item item={view.item} showDiff={(path, diff) => setInspected({ path, diff })}/>
+            {view.source === 'live' && <small className="provenance">实时事件 · 未确认持久化</small>}
+          </div>)}
         </div>
+        {Object.entries(session.diffs).map(([turnId, diff]) => <button className="turn-diff" key={turnId} onClick={() => setInspected({ path: `轮次 ${turnId} · 实时汇总`, diff })}>查看轮次 Diff · {turnId.slice(-8)}</button>)}
         <section aria-label="待审批">
           {session.pending.map(request => <article className="approval" key={`${typeof request.id}:${request.id}`}>
-            <h2>需要审批</h2><p>{request.method}</p>
-            <pre>{JSON.stringify(request.params, null, 2)}</pre>
+            <h2>需要审批</h2><p>{request.method === 'item/fileChange/requestApproval' ? '文件变更审批' : '命令执行审批'}</p>
+            <small>原生 request ID：{String(request.id)} · {request.params.itemId}</small>
+            <p>{request.params.reason ?? 'Codex 请求确认本次操作'}</p>
+            {request.method === 'item/commandExecution/requestApproval' && <><pre>{request.params.command ?? '未提供命令内容'}</pre><small>{request.params.cwd}</small></>}
+            {request.method === 'item/fileChange/requestApproval' && request.params.grantRoot && <p className="error">此请求涉及写入目录权限：{request.params.grantRoot}</p>}
+            <details><summary>原生请求详情</summary><pre>{JSON.stringify(request.params, null, 2)}</pre></details>
             {(['accept', 'decline'] as const).map(decision => <button key={decision} disabled={!connected || !synced || approving} onClick={() => {
               setApproving(true);
-              void client.current!.request('bridge/approve', { threadId: selected.current, requestId: request.id, decision })
+              void client.current!.request('bridge/approve', { threadId: selected.current, requestId: request.id, bridgeToken: request.bridgeToken, decision })
                 .then(() => useSession.setState(s => ({ pending: s.pending.filter(p => p.id !== request.id) })))
                 .catch(report).finally(() => setApproving(false));
             }}>{decision === 'accept' ? '允许本次' : '拒绝'}</button>)}
@@ -176,6 +196,12 @@ function App() {
         </form>
         <details className="events"><summary>原生事件 · 最近 {session.events.length} 条</summary><pre>{session.events.join('\n')}</pre></details>
       </section>
+      {inspected && <section className="inspector" aria-label="文件 Diff 面板">
+        <div className="file-row"><h2>文件 Diff</h2><button onClick={() => setInspected(undefined)}>关闭面板</button></div>
+        <p className="path">{inspected.path}</p>
+        <small>Codex 原生差异 · 只读</small>
+        {inspected.diff ? <Suspense fallback={<p>正在加载 Diff…</p>}><Diff text={inspected.diff} label={`Diff ${inspected.path}`}/></Suspense> : <p>原生事件未提供 diff 内容。</p>}
+      </section>}
     </div>
   </main>;
 }

@@ -17,12 +17,13 @@ export async function createServer(service: BridgeService, port: number, webRoot
     }
   });
   app.addHook('onSend', async (_request, reply) => {
-    reply.header('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'");
+    // CodeMirror inserts stylesheet rules and inline geometry; script policy stays strict.
+    reply.header('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'");
     reply.header('X-Content-Type-Options', 'nosniff');
     reply.header('Cache-Control', 'no-store');
   });
   await app.register(websocket, { options: { maxPayload: 64 * 1024 } });
-  app.get('/health', async () => ({ protocol: 1, mode: 'local-poc' }));
+  app.get('/health', async () => ({ protocol: 1, mode: 'local', codex: '0.160.0' }));
   app.get('/ws', {
     websocket: true,
     preValidation: async (request, reply) => {

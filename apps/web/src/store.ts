@@ -12,14 +12,17 @@ type State = {
   notices: string[];
   activeTurn?: string;
   history?: Snapshot['history'];
+  diffs: Record<string, string>;
+  plan: string;
   sendBlocked: boolean;
   reset: () => void;
   snapshot: (value: Snapshot) => void;
+  older: (value: Snapshot) => void;
   event: (event: ServerNotification, skipDeltas?: boolean) => void;
   approval: (request: Approval) => void;
 };
 const empty = () => ({ thread: undefined, items: {}, turns: {}, pending: [], events: [], notices: [],
-  activeTurn: undefined, history: undefined, sendBlocked: false });
+  activeTurn: undefined, history: undefined, sendBlocked: false, diffs: {}, plan: '' });
 export const useSession = create<State>((set, get) => ({
   ...empty(),
   reset: () => set(empty()),
@@ -31,8 +34,18 @@ export const useSession = create<State>((set, get) => ({
     }
     // Retained live items are explicitly labelled; never persist them as history.
     set({ ...(same ? {} : empty()), thread, pending, items, history, sendBlocked: !!sendBlocked,
-      turns: Object.fromEntries(thread.turns.map(turn => [turn.id, turn])),
+      turns: { ...(same ? get().turns : {}), ...Object.fromEntries(thread.turns.map(turn => [turn.id, turn])) },
       activeTurn: thread.turns.find(turn => turn.status === 'inProgress')?.id });
+  },
+  older: snapshot => {
+    if (snapshot.thread.id !== get().thread?.id) return;
+    const items: State['items'] = {};
+    for (const turn of snapshot.thread.turns) for (const item of turn.items) {
+      items[itemKey(turn.id, item.id)] = { turnId: turn.id, item, source: 'native', complete: turn.status !== 'inProgress' };
+    }
+    set({ items: { ...items, ...get().items },
+      turns: { ...Object.fromEntries(snapshot.thread.turns.map(t => [t.id, t])), ...get().turns },
+      history: snapshot.history });
   },
   approval: request => {
     if (request.params.threadId !== get().thread?.id) return;
@@ -74,6 +87,8 @@ export const useSession = create<State>((set, get) => ({
       }
     }
     if (event.method === 'serverRequest/resolved') changes.pending = state.pending.filter(p => p.id !== event.params.requestId);
+    if (event.method === 'turn/diff/updated') changes.diffs = { ...state.diffs, [event.params.turnId]: event.params.diff };
+    if (event.method === 'turn/plan/updated') changes.plan = [event.params.explanation, ...event.params.plan.map(p => `${p.status} · ${p.step}`)].filter(Boolean).join('\n');
     if (event.method === 'error') changes.notices = [...state.notices, `${event.params.willRetry ? 'Codex 正在重试' : '错误'}：${event.params.error.message}`];
     set(changes);
   },

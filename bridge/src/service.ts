@@ -1,4 +1,5 @@
 import { EventEmitter } from 'node:events';
+import { randomUUID } from 'node:crypto';
 import { NativeRpcError, type Codex } from './codex';
 import type { Approval, RpcId, Snapshot, WireMessage, BridgeEvent, LocalConfig, Thread } from '../../packages/shared/protocol';
 import type { ThreadStartParams } from '../../.local/codex-protocol/v2/ThreadStartParams';
@@ -10,6 +11,7 @@ import type { ModelListResponse } from '../../.local/codex-protocol/v2/ModelList
 import type { ThreadListResponse } from '../../.local/codex-protocol/v2/ThreadListResponse';
 import type { ThreadResumeResponse } from '../../.local/codex-protocol/v2/ThreadResumeResponse';
 import type { ConfigReadResponse } from '../../.local/codex-protocol/v2/ConfigReadResponse';
+import { readHistory } from './history';
 
 export class BridgeService extends EventEmitter {
   readonly threads = new Set<string>();
@@ -33,14 +35,16 @@ export class BridgeService extends EventEmitter {
     if (message.method && message.id !== undefined) {
       if (threadId && this.threads.has(threadId) &&
         ['item/commandExecution/requestApproval', 'item/fileChange/requestApproval'].includes(message.method)) {
-        const request = message as Approval;
+        // Raw RPC ID is preserved, with a UI-only token to reject stale replies
+        // after an App Server restart that reuses its numeric request IDs.
+        const request = { ...message, bridgeToken: randomUUID() } as Approval;
         this.pending.set(request.id, request);
         this.emit('event', { type: 'approval', request } satisfies BridgeEvent);
       } else {
         // Fail closed on auth requests / unsupported interactions; no credentials
         // or privileged requests are forwarded to the renderer.
-        this.codex.send({ id: message.id, error: { code: -32601, message: 'Interaction unsupported by Phase 0B client' } });
-        this.emit('event', { type: 'unavailable', message: `Unsupported interaction: ${message.method}` } satisfies BridgeEvent);
+        this.codex.send({ id: message.id, error: { code: -32601, message: 'Interaction unsupported by Oraculum; no permission granted' } });
+        this.emit('event', { type: 'notice', threadId, message: `暂不支持 ${message.method}；已安全拒绝，未授予权限。` } satisfies BridgeEvent);
       }
       return;
     }
@@ -90,14 +94,15 @@ export class BridgeService extends EventEmitter {
     }
     const threadId = params.threadId;
     if (typeof threadId !== 'string' || !this.threads.has(threadId)) throw new Error('Thread is outside this workspace; refresh the native thread list');
-    if (method === 'bridge/subscribe') {
+    if (method === 'bridge/subscribe' || method === 'bridge/history') {
       await this.resume(threadId);
-      const thread = this.fresh.get(threadId) ??
-        (await this.codex.request<ThreadReadResponse>('thread/read', { threadId, includeTurns: true })).thread;
-      if (thread.turns.some(t => t.status === 'inProgress')) this.busy.add(threadId);
-      return { thread, pending: [...this.pending.values()].filter(r => r.params.threadId === threadId),
+      const fresh = this.fresh.get(threadId);
+      const thread = fresh ?? (await this.codex.request<ThreadReadResponse>('thread/read', { threadId })).thread;
+      const result = fresh ? { thread } : await readHistory(this.codex, thread, typeof params.cursor === 'string' ? params.cursor : undefined);
+      if (result.thread.turns.some(t => t.status === 'inProgress')) this.busy.add(threadId);
+      else if (thread.status.type !== 'active' && !this.unknownSends.has(threadId)) this.busy.delete(threadId);
+      return { ...result, pending: [...this.pending.values()].filter(r => r.params.threadId === threadId),
         sendBlocked: this.unknownSends.has(threadId),
-        history: { source: 'native-read', warning: '部分历史未能恢复：原生历史可能缺少审批、拒绝和工具事件。待审批仅在当前 Bridge 生命周期有效。' },
       } satisfies Snapshot;
     }
     if (method === 'turn/start') {
@@ -131,13 +136,14 @@ export class BridgeService extends EventEmitter {
     if (method === 'bridge/approve') {
       const request = this.pending.get(params.requestId as RpcId);
       if (!request || request.params.threadId !== threadId) throw new Error('Approval no longer pending');
+      if (params.bridgeToken !== request.bridgeToken) throw new Error('Approval expired or belongs to another Bridge session');
       if (!['accept', 'decline', 'cancel'].includes(String(params.decision))) throw new Error('Unsupported decision');
       // Remove synchronously before writing; never apply a reply twice.
       this.pending.delete(request.id);
       this.codex.send({ id: request.id, result: { decision: params.decision } });
       return { submitted: true };
     }
-    throw new Error('Method not exposed by Phase 0B');
+    throw new Error('Method not exposed by Oraculum');
   }
   private async resume(threadId: string) {
     if (this.loaded.has(threadId)) return;
