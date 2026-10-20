@@ -7,8 +7,19 @@ if (url.protocol !== 'http:' || url.hostname !== '127.0.0.1' || url.username || 
 }
 app.setPath('userData', path.join(app.getPath('appData'), 'oraculum-phase0b'));
 app.whenReady().then(async () => {
-  session.defaultSession.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
-  session.defaultSession.setPermissionCheckHandler(() => false);
+  // Copy buttons may write text. Clipboard reads and every other permission stay denied.
+  const allowCopy = (contents, permission, details) => {
+    try {
+      return permission === 'clipboard-sanitized-write' && details.isMainFrame &&
+        new URL(details.requestingUrl).origin === url.origin &&
+        contents && new URL(contents.getURL()).origin === url.origin;
+    } catch { return false; }
+  };
+  session.defaultSession.setPermissionRequestHandler((contents, permission, callback, details) => {
+    callback(Boolean(allowCopy(contents, permission, details)));
+  });
+  session.defaultSession.setPermissionCheckHandler((contents, permission, requestingOrigin, details) =>
+    requestingOrigin === url.origin && Boolean(allowCopy(contents, permission, details)));
   const window = new BrowserWindow({
     width: 1180, height: 850, backgroundColor: '#000000', title: 'Oraculum · 神谕',
     webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true, webviewTag: false },

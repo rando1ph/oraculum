@@ -2,6 +2,7 @@ import { spawn, execFileSync, type ChildProcessWithoutNullStreams } from 'node:c
 import { EventEmitter } from 'node:events';
 import { createInterface } from 'node:readline';
 import type { WireMessage, RpcId } from '../../packages/shared/protocol';
+import { assertCodexVersion } from './version';
 
 export class NativeRpcError extends Error {
   constructor(message: string, readonly code: number) { super(message); }
@@ -14,9 +15,7 @@ export class Codex extends EventEmitter {
   alive = true;
   constructor(cwd: string) {
     super();
-    if (execFileSync('codex', ['--version'], { encoding: 'utf8' }).trim() !== 'codex-cli 0.160.0') {
-      throw new Error('Codex version changed. Regenerate and review the protocol before running.');
-    }
+    assertCodexVersion(execFileSync('codex', ['--version'], { encoding: 'utf8' }));
     // Read only MCP names; override enabled flags in a TOML value, because the
     // CLI splits dotted override keys even inside quoted server names.
     const names: string[] = JSON.parse(execFileSync('python3', ['-c',

@@ -11,6 +11,7 @@ type State = {
   events: string[];
   notices: string[];
   activeTurn?: string;
+  lastTurnId?: string;
   history?: Snapshot['history'];
   diffs: Record<string, string>;
   plan: string;
@@ -22,7 +23,7 @@ type State = {
   approval: (request: Approval) => void;
 };
 const empty = () => ({ thread: undefined, items: {}, turns: {}, pending: [], events: [], notices: [],
-  activeTurn: undefined, history: undefined, sendBlocked: false, diffs: {}, plan: '' });
+  activeTurn: undefined, lastTurnId: undefined, history: undefined, sendBlocked: false, diffs: {}, plan: '' });
 export const useSession = create<State>((set, get) => ({
   ...empty(),
   reset: () => set(empty()),
@@ -35,6 +36,7 @@ export const useSession = create<State>((set, get) => ({
     // Retained live items are explicitly labelled; never persist them as history.
     set({ ...(same ? {} : empty()), thread, pending, items, history, sendBlocked: !!sendBlocked,
       turns: { ...(same ? get().turns : {}), ...Object.fromEntries(thread.turns.map(turn => [turn.id, turn])) },
+      lastTurnId: thread.turns.at(-1)?.id,
       activeTurn: thread.turns.find(turn => turn.status === 'inProgress')?.id });
   },
   older: snapshot => {
@@ -58,6 +60,7 @@ export const useSession = create<State>((set, get) => ({
     if (event.method === 'turn/started' || event.method === 'turn/completed') {
       const turn = event.params.turn;
       changes.turns = { ...state.turns, [turn.id]: turn };
+      if (event.method === 'turn/started' || !state.activeTurn || state.activeTurn === turn.id) changes.lastTurnId = turn.id;
       changes.activeTurn = event.method === 'turn/started' ? turn.id : state.activeTurn === turn.id ? undefined : state.activeTurn;
       if (event.method === 'turn/completed') {
         changes.pending = state.pending.filter(p => p.params.turnId !== turn.id);

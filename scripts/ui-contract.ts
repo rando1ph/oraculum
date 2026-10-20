@@ -77,6 +77,12 @@ try {
   await expect(page.getByLabel('文件 Diff 面板')).toBeVisible();
   await expect(page.locator('.cm-content')).toContainText('a+b');
   expect(await page.locator('.cm-content').getAttribute('contenteditable')).not.toBe('true');
+  await page.locator('.inspector .copy').click();
+  await expect(page.locator('.inspector .copy')).toHaveText('已复制');
+  expect(await page.evaluate(async () => {
+    try { await navigator.clipboard.readText(); return 'unexpectedly allowed'; }
+    catch { return 'denied'; }
+  })).toBe('denied');
   await page.screenshot({ path: '.local/evidence/phase1/simulated-diff.png', fullPage: true });
   await page.getByRole('button', { name: '允许本次', exact: true }).click();
   await expect(page.getByTestId('last-turn-status')).toHaveText('completed');
@@ -85,11 +91,17 @@ try {
   await expect(page.getByRole('status')).toContainText('状态已查询');
   await expect(page.locator('.history-warning').first()).toContainText('部分历史未能恢复');
   expect(await page.locator('[data-item-id="file"]').count()).toBe(1);
+  turn.status = 'failed'; turn.error = { message: 'Simulated provider failure' };
+  emit('turn/started', { turn: { ...turn, status: 'inProgress' } });
+  emit('error', { error: turn.error, willRetry: false });
+  emit('turn/completed', { turn });
+  await expect(page.getByTestId('last-turn-status')).toHaveText('failed');
+  await expect(page.getByRole('alert')).toContainText('Simulated provider failure');
   await page.setViewportSize({ width: 393, height: 851 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.screenshot({ path: '.local/evidence/phase1/simulated-mobile.png', fullPage: true });
   expect(errors).toEqual([]);
-  evidence.result = 'passed'; evidence.checks = ['Markdown/XSS', 'command output', 'read-only CodeMirror diff', 'allow approval', 'native snapshot', 'item dedup', '393px layout'];
+  evidence.result = 'passed'; evidence.checks = ['Markdown/XSS', 'command output', 'read-only CodeMirror diff and copy', 'allow approval', 'native snapshot', 'item dedup', 'failed turn and error', '393px layout'];
   console.log(JSON.stringify(evidence, null, 2));
 } catch (error) { evidence.failure = String(error); throw error; }
 finally { await app?.close(); await server.close(); await writeFile('.local/evidence/phase1/ui-contract.json', JSON.stringify(evidence, null, 2)); }

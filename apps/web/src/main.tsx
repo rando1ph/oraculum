@@ -94,7 +94,12 @@ function App() {
     client.current = new BridgeClient(message => {
       if (message.type === 'unavailable') { setError(message.message); setSynced(false); return; }
       if (buffer.current) buffer.current.push(message);
-      else apply(message);
+      else {
+        apply(message);
+        if (message.type === 'event' && message.event.method === 'turn/completed' && message.event.params.threadId === selected.current) {
+          void refresh().then(() => listThreads()).catch(report);
+        }
+      }
     }, value => { setConnected(value); if (!value) setSynced(false); });
     void connect().catch(report);
     return () => { ++epoch.current; client.current?.close(); };
@@ -123,7 +128,7 @@ function App() {
     } finally { setSending(false); }
   }
   const active = !!session.activeTurn || session.thread?.status.type === 'active';
-  const lastTurn = Object.values(session.turns).at(-1);
+  const lastTurn = session.turns[session.lastTurnId ?? ''];
   return <main>
     <header className="flex items-center justify-between gap-4">
       <div><h1>Oraculum <span>神谕</span></h1><small>LOCAL CODEX · PHASE 1</small></div>
@@ -150,7 +155,7 @@ function App() {
           <span data-testid="thread-id">{session.thread?.id ?? '尚未选择会话'}</span>
           <span data-testid="turn-status">{!synced && session.thread ? '状态未确认' : active ? '执行中' : session.thread ? '空闲' : '—'}</span>
           <span data-testid="last-turn-status">{lastTurn?.status}</span>
-          <span>当前配置：{session.thread?.model ?? '未知'} / {session.thread?.reasoningEffort ?? '未指定'}</span>
+          <span>最近查询配置：{session.thread?.model ?? '未知'} / {session.thread?.reasoningEffort ?? '未指定'}</span>
         </div>
         {session.history?.warning && <p className="history-warning">{session.history.warning}</p>}
         {session.history?.nextCursor && <button disabled={loadingHistory || !connected} onClick={() => {

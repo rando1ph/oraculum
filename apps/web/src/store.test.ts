@@ -20,8 +20,10 @@ it('does not clear another active turn on late completion and exposes native fai
   emit('turn/started', { threadId: 't', turn: { id: 'new', status: 'inProgress' } });
   emit('turn/completed', { threadId: 't', turn: { id: 'old', status: 'interrupted' } });
   expect(useSession.getState().activeTurn).toBe('new');
+  expect(useSession.getState().lastTurnId).toBe('new');
   emit('turn/completed', { threadId: 't', turn: { id: 'new', status: 'failed', error: { message: 'provider error' } } });
   expect(useSession.getState().activeTurn).toBeUndefined();
+  expect(useSession.getState().lastTurnId).toBe('new');
   expect(useSession.getState().turns.new).toMatchObject({ status: 'failed', error: { message: 'provider error' } });
 });
 it('keeps observed-only items labelled live until selection changes', () => {

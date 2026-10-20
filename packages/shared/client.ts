@@ -10,7 +10,16 @@ export class BridgeClient {
     this.socket = socket;
     socket.onmessage = ({ data }) => {
       if (this.socket !== socket) return;
-      const message = JSON.parse(data) as WireMessage | BridgeEvent;
+      let message: WireMessage | BridgeEvent;
+      try {
+        message = JSON.parse(data) as WireMessage | BridgeEvent;
+        if (!message || typeof message !== 'object') throw new Error('Invalid response');
+      } catch {
+        this.onConnection(false);
+        this.rejectPending();
+        socket.close(1002, 'Invalid Bridge response');
+        return;
+      }
       if ('type' in message) { this.onEvent(message); return; }
       const request = this.pending.get(String(message.id));
       if (!request) return;
@@ -19,14 +28,20 @@ export class BridgeClient {
       if (message.error) request.reject(new Error(message.error.message));
       else request.resolve(message.result);
     };
-    socket.onclose = () => {
-      if (this.socket !== socket) return;
-      this.onConnection(false);
-      this.rejectPending();
-    };
     return new Promise((resolve, reject) => {
-      socket.onopen = () => { if (this.socket === socket) { this.onConnection(true); resolve(); } };
-      socket.onerror = () => reject(new Error('无法连接本机 Bridge'));
+      const timer = setTimeout(() => { socket.close(); reject(new Error('Bridge 连接超时')); }, 10_000);
+      socket.onopen = () => {
+        clearTimeout(timer);
+        if (this.socket === socket) { this.onConnection(true); resolve(); }
+        else reject(new Error('连接已被替换'));
+      };
+      socket.onclose = () => {
+        clearTimeout(timer); reject(new Error('Bridge 连接已关闭'));
+        if (this.socket !== socket) return;
+        this.onConnection(false);
+        this.rejectPending();
+      };
+      socket.onerror = () => { clearTimeout(timer); reject(new Error('无法连接本机 Bridge')); };
     });
   }
   request<T>(method: string, params: object): Promise<T> {
@@ -38,7 +53,11 @@ export class BridgeClient {
         reject(new Error('响应超时，执行结果未知；请查询状态，勿重复发送'));
       }, 65_000);
       this.pending.set(id, { resolve: value => resolve(value as T), reject, timer });
-      this.socket!.send(JSON.stringify({ id, method, params }));
+      try { this.socket!.send(JSON.stringify({ id, method, params })); }
+      catch {
+        clearTimeout(timer); this.pending.delete(id);
+        reject(new Error('发送失败，结果未知；请查询状态，勿自动重试'));
+      }
     });
   }
   private rejectPending() {

@@ -2,6 +2,7 @@ import { EventEmitter } from 'node:events';
 import { describe, it, expect, vi } from 'vitest';
 import { BridgeService } from './service';
 import { createServer } from './server';
+import { NativeRpcError } from './codex';
 
 function fixture() {
   const codex = Object.assign(new EventEmitter(), {
@@ -43,6 +44,9 @@ describe('PoC boundary and native routing', () => {
   });
   it('keeps an unknown send blocked instead of silently resending', async () => {
     const { service, codex } = fixture();
+    codex.request.mockResolvedValue({ thread: { id: 'thread-1' } });
+    await service.dispatch('thread/start', {});
+    codex.request.mockClear();
     codex.request.mockRejectedValue(new Error('response timeout'));
     await expect(service.dispatch('turn/start', { threadId: 'thread-1', text: 'hello' })).rejects.toThrow('timeout');
     await expect(service.dispatch('turn/start', { threadId: 'thread-1', text: 'hello' })).rejects.toThrow('unknown');
@@ -113,5 +117,50 @@ describe('native session and settings', () => {
     const { service, codex } = fixture();
     codex.request.mockResolvedValue({ config: { model: 'catalog-model', model_reasoning_effort: 'high', model_provider: 'openai', secret: 'must-not-leak', instructions: 'private' } });
     expect(await service.dispatch('bridge/config', {})).toEqual({ cwd: '/controlled-workspace', model: 'catalog-model', effort: 'high', provider: 'openai', sandbox: 'workspace-write', approvalPolicy: 'on-request', restrictedTools: true });
+  });
+});
+
+describe('turn ownership and recovery safety', () => {
+  it('never lets an old snapshot resurrect a completed turn', async () => {
+    const { service, codex } = fixture();
+    const thread = { id: 'thread-1', cwd: '/controlled-workspace', status: { type: 'active' }, turns: [] };
+    const turn = { id: 'current', status: 'inProgress', items: [] };
+    codex.request.mockImplementation(async method => {
+      if (method === 'thread/start' || method === 'thread/read') return { thread };
+      if (method === 'turn/start') return { turn };
+      if (method === 'thread/turns/list') return { data: [turn], nextCursor: null };
+      if (method === 'thread/items/list') {
+        codex.emit('message', { method: 'turn/completed', params: { threadId: thread.id, turn: { ...turn, status: 'completed' } } });
+        return { data: [], nextCursor: null };
+      }
+      return {};
+    });
+    await service.dispatch('thread/start', {});
+    await service.dispatch('turn/start', { threadId: thread.id, text: 'one' });
+    await service.dispatch('bridge/subscribe', { threadId: thread.id });
+    await expect(service.dispatch('turn/interrupt', { threadId: thread.id, turnId: turn.id })).rejects.toThrow('active');
+    await expect(service.dispatch('turn/start', { threadId: thread.id, text: 'two' })).resolves.toEqual({ turn });
+  });
+  it('permits a manual next send after an explicit native rejection, but requires resume for listed threads', async () => {
+    const { service, codex } = fixture();
+    await expect(service.dispatch('turn/start', { threadId: 'thread-1', text: 'first' })).rejects.toThrow('resume');
+    codex.request.mockResolvedValue({ thread: { id: 'thread-1' } });
+    await service.dispatch('thread/start', {});
+    codex.request.mockRejectedValueOnce(new NativeRpcError('model unavailable', -32602));
+    await expect(service.dispatch('turn/start', { threadId: 'thread-1', text: 'first' })).rejects.toThrow('model unavailable');
+    codex.request.mockResolvedValue({ turn: { id: 'u', status: 'inProgress' } });
+    await expect(service.dispatch('turn/start', { threadId: 'thread-1', text: 'manual retry' })).resolves.toMatchObject({ turn: { id: 'u' } });
+  });
+  it('does not let a late completion unlock another running turn', async () => {
+    const { service, codex } = fixture();
+    codex.emit('message', { method: 'turn/started', params: { threadId: 'thread-1', turn: { id: 'current', status: 'inProgress' } } });
+    codex.emit('message', { method: 'turn/completed', params: { threadId: 'thread-1', turn: { id: 'old', status: 'completed' } } });
+    await expect(service.dispatch('turn/start', { threadId: 'thread-1', text: 'duplicate' })).rejects.toThrow('progress');
+  });
+  it('rejects interrupt for a turn that is not the observed active turn', async () => {
+    const { service, codex } = fixture();
+    codex.emit('message', { method: 'turn/started', params: { threadId: 'thread-1', turn: { id: 'current', status: 'inProgress' } } });
+    await expect(service.dispatch('turn/interrupt', { threadId: 'thread-1', turnId: 'old' })).rejects.toThrow('active');
+    expect(codex.request).not.toHaveBeenCalled();
   });
 });

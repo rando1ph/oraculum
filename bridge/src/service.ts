@@ -17,6 +17,8 @@ export class BridgeService extends EventEmitter {
   readonly threads = new Set<string>();
   readonly pending = new Map<RpcId, Approval>();
   private busy = new Set<string>();
+  private activeTurns = new Map<string, string>();
+  private revisions = new Map<string, number>();
   private unknownSends = new Set<string>();
   private loaded = new Set<string>();
   private fresh = new Map<string, Thread>();
@@ -49,11 +51,22 @@ export class BridgeService extends EventEmitter {
       return;
     }
     if (!threadId || !this.threads.has(threadId)) return;
+    this.revisions.set(threadId, (this.revisions.get(threadId) ?? 0) + 1);
     if (message.method === 'serverRequest/resolved') this.pending.delete(params.requestId as RpcId);
+    if (message.method === 'turn/started') {
+      this.activeTurns.set(threadId, (params.turn as { id: string }).id);
+      this.busy.add(threadId);
+    }
     if (message.method === 'turn/completed') {
-      this.busy.delete(threadId);
-      this.unknownSends.delete(threadId);
-      for (const [id, request] of this.pending) if (request.params.threadId === threadId) this.pending.delete(id);
+      const turnId = (params.turn as { id: string }).id;
+      if (this.activeTurns.get(threadId) === turnId) {
+        this.busy.delete(threadId);
+        this.unknownSends.delete(threadId);
+        this.activeTurns.delete(threadId);
+      }
+      for (const [id, request] of this.pending) {
+        if (request.params.threadId === threadId && request.params.turnId === turnId) this.pending.delete(id);
+      }
     }
     // Native notifications are the facts; no agent loop or tool execution here.
     this.emit('event', { type: 'event', event: message } as BridgeEvent);
@@ -96,17 +109,25 @@ export class BridgeService extends EventEmitter {
     if (typeof threadId !== 'string' || !this.threads.has(threadId)) throw new Error('Thread is outside this workspace; refresh the native thread list');
     if (method === 'bridge/subscribe' || method === 'bridge/history') {
       await this.resume(threadId);
+      const revision = this.revisions.get(threadId) ?? 0;
       const fresh = this.fresh.get(threadId);
       const thread = fresh ?? (await this.codex.request<ThreadReadResponse>('thread/read', { threadId })).thread;
       const result = fresh ? { thread } : await readHistory(this.codex, thread, typeof params.cursor === 'string' ? params.cursor : undefined);
-      if (result.thread.turns.some(t => t.status === 'inProgress')) this.busy.add(threadId);
-      else if (thread.status.type !== 'active' && !this.unknownSends.has(threadId)) this.busy.delete(threadId);
+      const active = result.thread.turns.find(t => t.status === 'inProgress');
+      // Older history pages must not change current execution controls.
+      if (!params.cursor && revision === (this.revisions.get(threadId) ?? 0)) {
+        if (active) { this.busy.add(threadId); this.activeTurns.set(threadId, active.id); }
+        else if (thread.status.type !== 'active' && !this.unknownSends.has(threadId)) {
+          this.busy.delete(threadId); this.activeTurns.delete(threadId);
+        }
+      }
       return { ...result, pending: [...this.pending.values()].filter(r => r.params.threadId === threadId),
         sendBlocked: this.unknownSends.has(threadId),
       } satisfies Snapshot;
     }
     if (method === 'turn/start') {
       if (this.busy.has(threadId)) throw new Error('Turn in progress or send result unknown; query state before continuing');
+      if (!this.loaded.has(threadId)) throw new Error('Select and resume the thread before starting a turn');
       if (typeof params.text !== 'string' || !params.text.trim() || params.text.length > 16000) throw new Error('Expected 1–16000 characters');
       const request: TurnStartParams = {
         threadId, input: [{ type: 'text', text: params.text, text_elements: [] }],
@@ -115,22 +136,25 @@ export class BridgeService extends EventEmitter {
       };
       this.busy.add(threadId);
       this.unknownSends.add(threadId);
+      const fresh = this.fresh.get(threadId);
       this.fresh.delete(threadId);
       // Deliberately keep unknown sends blocked. A timeout is not a safe retry.
       try {
         const result = await this.codex.request<TurnStartResponse>('turn/start', request);
         this.unknownSends.delete(threadId);
+        if (this.busy.has(threadId) && result.turn.status === 'inProgress') this.activeTurns.set(threadId, result.turn.id);
         return result;
       } catch (error) {
         if (error instanceof NativeRpcError) {
           this.busy.delete(threadId);
           this.unknownSends.delete(threadId);
+          if (fresh) this.fresh.set(threadId, fresh);
         }
         throw error;
       }
     }
     if (method === 'turn/interrupt') {
-      if (typeof params.turnId !== 'string') throw new Error('Missing turnId');
+      if (typeof params.turnId !== 'string' || this.activeTurns.get(threadId) !== params.turnId) throw new Error('Turn is not the observed active turn; query state');
       return this.codex.request('turn/interrupt', { threadId, turnId: params.turnId });
     }
     if (method === 'bridge/approve') {
@@ -152,12 +176,12 @@ export class BridgeService extends EventEmitter {
     const resume = (async () => {
       const { thread } = await this.codex.request<ThreadReadResponse>('thread/read', { threadId });
       if (thread.cwd !== this.cwd) throw new Error('Thread is outside this workspace');
-      this.loaded.add(threadId);
       try {
         await this.codex.request<ThreadResumeResponse>('thread/resume', {
           threadId, cwd: this.cwd, sandbox: 'workspace-write', approvalPolicy: 'on-request',
           approvalsReviewer: 'user', excludeTurns: true,
         });
+        this.loaded.add(threadId);
       } catch (error) { this.loaded.delete(threadId); throw error; }
     })();
     this.resuming.set(threadId, resume);
