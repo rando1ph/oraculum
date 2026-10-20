@@ -1,0 +1,6 @@
+{
+  "name": "@oraculum/shared",
+  "private": true,
+  "type": "module",
+  "exports": "./protocol.ts"
+}

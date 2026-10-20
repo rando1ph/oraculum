@@ -1,0 +1,22 @@
+{
+  "name": "oraculum",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.34.7",
+  "engines": { "node": ">=24 <25" },
+  "scripts": {
+    "protocol": "node scripts/generate-protocol.mjs",
+    "check": "tsc --noEmit",
+    "test": "vitest run",
+    "bridge": "tsx bridge/src/main.ts",
+    "test:live": "tsx scripts/live-smoke.ts"
+  },
+  "devDependencies": {
+    "@types/node": "24.19.2",
+    "@types/ws": "8.18.2",
+    "tsx": "4.23.15",
+    "typescript": "5.9.3",
+    "vitest": "3.2.7",
+    "ws": "8.22.0"
+  }
+}

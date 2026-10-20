@@ -1,0 +1,7 @@
+packages:
+  - bridge
+  - packages/*
+  - apps/*
+onlyBuiltDependencies:
+  - esbuild
+  - electron
