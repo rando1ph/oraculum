@@ -5,6 +5,7 @@ import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
 import android.view.View
+import android.view.ViewGroup
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
@@ -79,6 +80,7 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
+        (web.parent as? ViewGroup)?.removeView(web)
         web.destroy()
         super.onDestroy()
     }

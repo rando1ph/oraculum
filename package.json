@@ -17,6 +17,7 @@
     "test:ui": "tsx scripts/ui-smoke.ts",
     "test:ui:mock": "tsx scripts/ui-contract.ts",
     "test:phase1": "tsx scripts/phase1-live.ts",
+    "test:android": "tsx scripts/android-live.ts",
     "test:history": "tsx scripts/history-probe.ts"
   },
   "devDependencies": {
