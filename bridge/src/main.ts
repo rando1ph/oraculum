@@ -1,14 +1,20 @@
-import { mkdtemp, mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, realpath } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { resolve, join } from 'node:path';
+import { resolve, join, sep } from 'node:path';
 import { Codex } from './codex';
 import { BridgeService } from './service';
 import { createServer } from './server';
 
 const root = join(homedir(), '.cache/oraculum/workspaces');
 await mkdir(root, { recursive: true, mode: 0o700 });
-const cwd = await mkdtemp(join(root, 'poc-'));
-await writeFile(join(cwd, 'fixture.txt'), 'ORACULUM_FIXTURE_OK\n');
+// A stable, controlled workspace lets native threads survive Bridge restarts.
+// Phase 1 deliberately does not expose a renderer-selected arbitrary host path.
+const requested = resolve(process.env.ORACULUM_WORKSPACE ?? join(root, 'local'));
+const realRoot = await realpath(root);
+if (!requested.startsWith(realRoot + sep)) throw new Error('Workspace must be inside the Oraculum test workspace root');
+await mkdir(requested, { recursive: true, mode: 0o700 });
+const cwd = await realpath(requested);
+if (!cwd.startsWith(realRoot + sep)) throw new Error('Workspace symlink escapes the Oraculum test workspace root');
 const codex = new Codex(cwd);
 const service = new BridgeService(codex, cwd);
 try {

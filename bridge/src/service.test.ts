@@ -65,3 +65,33 @@ describe('PoC boundary and native routing', () => {
     } finally { await app.close(); }
   });
 });
+
+describe('native session and settings', () => {
+  it('lists only the fixed workspace and uses the native opaque cursor', async () => {
+    const { service, codex } = fixture();
+    codex.request.mockResolvedValue({ data: [{ id: 'ours', cwd: '/controlled-workspace' }, { id: 'other', cwd: '/private' }], nextCursor: 'opaque' });
+    expect(await service.dispatch('thread/list', { cwd: '/private', cursor: 'cursor' })).toMatchObject({ data: [{ id: 'ours' }], nextCursor: 'opaque' });
+    expect(codex.request).toHaveBeenCalledWith('thread/list', expect.objectContaining({ cwd: '/controlled-workspace', cursor: 'cursor' }));
+    expect(service.threads.has('other')).toBe(false);
+  });
+  it('rechecks cwd before native resume and never accepts history or config from renderer', async () => {
+    const { service, codex } = fixture();
+    codex.request.mockImplementation(async method => method === 'thread/read'
+      ? { thread: { id: 'thread-1', cwd: '/controlled-workspace', turns: [] } } : {});
+    await service.dispatch('bridge/subscribe', { threadId: 'thread-1', history: [], cwd: '/private', config: { sandbox_mode: 'danger-full-access' } });
+    expect(codex.request).toHaveBeenCalledWith('thread/resume', {
+      threadId: 'thread-1', cwd: '/controlled-workspace', sandbox: 'workspace-write', approvalPolicy: 'on-request', approvalsReviewer: 'user', excludeTurns: true,
+    });
+  });
+  it('does not resume a listed thread whose cwd no longer matches', async () => {
+    const { service, codex } = fixture();
+    codex.request.mockResolvedValue({ thread: { cwd: '/private' } });
+    await expect(service.dispatch('bridge/subscribe', { threadId: 'thread-1' })).rejects.toThrow('outside');
+    expect(codex.request).toHaveBeenCalledTimes(1);
+  });
+  it('projects only safe effective configuration', async () => {
+    const { service, codex } = fixture();
+    codex.request.mockResolvedValue({ config: { model: 'catalog-model', model_reasoning_effort: 'high', model_provider: 'openai', secret: 'must-not-leak', instructions: 'private' } });
+    expect(await service.dispatch('bridge/config', {})).toEqual({ cwd: '/controlled-workspace', model: 'catalog-model', effort: 'high', provider: 'openai', sandbox: 'workspace-write', approvalPolicy: 'on-request', restrictedTools: true });
+  });
+});

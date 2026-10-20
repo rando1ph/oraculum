@@ -3,6 +3,8 @@ export type { ServerNotification } from '../../.local/codex-protocol/ServerNotif
 export type { ServerRequest } from '../../.local/codex-protocol/ServerRequest';
 export type { Thread } from '../../.local/codex-protocol/v2/Thread';
 export type { Model } from '../../.local/codex-protocol/v2/Model';
+export type { Turn } from '../../.local/codex-protocol/v2/Turn';
+export type { ThreadItem } from '../../.local/codex-protocol/v2/ThreadItem';
 import type { ServerNotification } from '../../.local/codex-protocol/ServerNotification';
 import type { ServerRequest } from '../../.local/codex-protocol/ServerRequest';
 import type { Thread } from '../../.local/codex-protocol/v2/Thread';
@@ -19,5 +21,20 @@ export type Approval = Extract<ServerRequest, { method: 'item/commandExecution/r
 export type BridgeEvent =
   | { type: 'event'; event: ServerNotification }
   | { type: 'approval'; request: Approval }
+  | { type: 'notice'; threadId?: string; message: string }
   | { type: 'unavailable'; message: string };
-export type Snapshot = { thread: Thread; pending: Approval[] };
+export type Snapshot = {
+  thread: Thread;
+  pending: Approval[];
+  history?: { source: 'native-read' | 'native-pages'; warning: string; nextCursor?: string | null };
+  sendBlocked?: boolean;
+};
+export type LocalConfig = {
+  cwd: string;
+  model: string | null;
+  effort: string | null;
+  provider: string | null;
+  approvalPolicy: 'on-request';
+  sandbox: 'workspace-write';
+  restrictedTools: boolean;
+};

@@ -3,6 +3,10 @@ import { EventEmitter } from 'node:events';
 import { createInterface } from 'node:readline';
 import type { WireMessage, RpcId } from '../../packages/shared/protocol';
 
+export class NativeRpcError extends Error {
+  constructor(message: string, readonly code: number) { super(message); }
+}
+
 export class Codex extends EventEmitter {
   private child: ChildProcessWithoutNullStreams;
   private sequence = 0;
@@ -42,7 +46,7 @@ export class Codex extends EventEmitter {
     if (!request) return;
     clearTimeout(request.timer);
     this.pending.delete(message.id);
-    if (message.error) request.reject(new Error(message.error.message));
+    if (message.error) request.reject(new NativeRpcError(message.error.message, message.error.code));
     else request.resolve(message.result);
   }
   private fail(error: Error) {
@@ -70,7 +74,7 @@ export class Codex extends EventEmitter {
   }
   async initialize() {
     const result = await this.request('initialize', {
-      clientInfo: { name: 'oraculum_phase0b', title: 'Oraculum local PoC', version: '0.0.1' },
+      clientInfo: { name: 'oraculum', title: 'Oraculum', version: '0.1.0' },
       capabilities: { experimentalApi: false },
     });
     this.send({ method: 'initialized', params: {} });

@@ -50,3 +50,14 @@ textarea { width: 100%; resize: vertical; border: 0; background: transparent; pa
   .timeline { max-height: 45vh; }
   form small { max-width: 130px; }
 }
+nav button small { display: block; margin-top: 5px; }
+.path { overflow-wrap: anywhere; }
+.history-warning { font-size: 12px; color: #d6b780; border-left: 2px solid #725831; padding: 8px 12px; background: #14110b; }
+.copy { font-size: 11px; min-height: 28px; padding: 3px 8px; color: var(--muted); }
+.code-block { padding: 10px; border: 1px solid var(--line); border-radius: 8px; margin: 10px 0; }
+.markdown { font-size: 14px; line-height: 1.7; overflow-wrap: anywhere; }
+.markdown p { white-space: normal; }
+.markdown h1, .markdown h2, .markdown h3 { margin: 14px 0 8px; font-size: 17px; }
+.markdown ul, .markdown ol { padding-left: 22px; list-style: revert; }
+.markdown blockquote { border-left: 2px solid var(--line); padding-left: 16px; color: var(--muted); }
+.markdown code { color: #b8d7ef; }
