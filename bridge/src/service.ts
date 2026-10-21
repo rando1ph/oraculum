@@ -13,10 +13,13 @@ import type { ThreadResumeResponse } from '../../.local/codex-protocol/v2/Thread
 import type { ConfigReadResponse } from '../../.local/codex-protocol/v2/ConfigReadResponse';
 import { readHistory } from './history';
 import type { ReceiptStore } from './receipts';
+import type { ProjectDirectories } from './projects';
+import { basename, dirname } from 'node:path';
 
 export class BridgeService extends EventEmitter {
   readonly threads = new Set<string>();
   readonly pending = new Map<RpcId, Approval>();
+  private threadProjects = new Map<string, string>();
   private busy = new Set<string>();
   private activeTurns = new Map<string, string>();
   private revisions = new Map<string, number>();
@@ -25,7 +28,7 @@ export class BridgeService extends EventEmitter {
   private fresh = new Map<string, Thread>();
   private resuming = new Map<string, Promise<void>>();
   constructor(readonly codex: Pick<Codex, 'request' | 'send'> & { on(event: string, listener: (...args: any[]) => void): unknown }, readonly cwd: string,
-    private receipts?: ReceiptStore) {
+    private receipts?: ReceiptStore, private projects?: ProjectDirectories) {
     super();
     codex.on('message', (message: WireMessage) => this.receive(message));
     codex.on('unavailable', (message: string) => {
@@ -61,10 +64,11 @@ export class BridgeService extends EventEmitter {
     }
     if (message.method === 'turn/completed') {
       const turnId = (params.turn as { id: string }).id;
-      this.receipts?.observe(this.cwd, threadId, params.turn as Parameters<ReceiptStore['observe']>[2]);
+      const cwd = this.threadCwd(threadId);
+      this.receipts?.observe(cwd, threadId, params.turn as Parameters<ReceiptStore['observe']>[2]);
       if (this.activeTurns.get(threadId) === turnId) {
         this.busy.delete(threadId);
-        if (!this.receipts?.blocked(this.cwd, threadId)) this.unknownSends.delete(threadId);
+        if (!this.receipts?.blocked(cwd, threadId)) this.unknownSends.delete(threadId);
         this.activeTurns.delete(threadId);
       }
       for (const [id, request] of this.pending) {
@@ -75,10 +79,14 @@ export class BridgeService extends EventEmitter {
     this.emit('event', { type: 'event', event: message } as BridgeEvent);
   }
   async dispatch(method: string, params: Record<string, unknown>, context?: { deviceId: string }): Promise<unknown> {
+    if (method === 'bridge/projects') {
+      return this.projects?.list() ?? { root: dirname(this.cwd), projects: [{ cwd: this.cwd, name: basename(this.cwd) }] };
+    }
     if (method === 'bridge/config') {
-      const { config } = await this.codex.request<ConfigReadResponse>('config/read', { cwd: this.cwd, includeLayers: false });
+      const cwd = await this.projectCwd(params.cwd);
+      const { config } = await this.codex.request<ConfigReadResponse>('config/read', { cwd, includeLayers: false });
       // Only safe effective settings cross into the renderer, never raw config.
-      return { cwd: this.cwd, model: config.model, effort: config.model_reasoning_effort,
+      return { cwd, model: config.model, effort: config.model_reasoning_effort,
         provider: config.model_provider, approvalPolicy: 'on-request', sandbox: 'workspace-write',
         restrictedTools: true } satisfies LocalConfig;
     }
@@ -86,37 +94,48 @@ export class BridgeService extends EventEmitter {
       return this.codex.request<ModelListResponse>('model/list', { limit: 100, includeHidden: false, cursor: typeof params.cursor === 'string' ? params.cursor : undefined });
     }
     if (method === 'thread/list' || method === 'bridge/threads') {
+      const cwd = await this.projectCwd(params.cwd);
       const page = await this.codex.request<ThreadListResponse>('thread/list', {
-        cwd: this.cwd, limit: 30, sortKey: 'updated_at', modelProviders: [],
+        cwd, limit: 30, sortKey: 'updated_at', modelProviders: [],
         cursor: typeof params.cursor === 'string' ? params.cursor : undefined,
       });
-      page.data = page.data.filter(thread => thread.cwd === this.cwd);
-      for (const thread of page.data) this.threads.add(thread.id);
+      page.data = page.data.filter(thread => thread.cwd === cwd);
+      for (const thread of page.data) this.track(thread.id, cwd);
       if (!params.cursor) {
-        page.data = [...this.fresh.values()].filter(t => !page.data.some(p => p.id === t.id)).concat(page.data);
+        page.data = [...this.fresh.values()].filter(t => this.threadCwd(t.id) === cwd && !page.data.some(p => p.id === t.id)).concat(page.data);
       }
       return method === 'bridge/threads' ? page.data.map(t => t.id) : page;
     }
     if (method === 'thread/start') {
+      const cwd = await this.projectCwd(params.cwd);
       const request: ThreadStartParams = {
-        cwd: this.cwd, sandbox: 'workspace-write', approvalPolicy: 'on-request', approvalsReviewer: 'user',
+        cwd, sandbox: 'workspace-write', approvalPolicy: 'on-request', approvalsReviewer: 'user',
         ...(typeof params.model === 'string' && params.model ? { model: params.model } : {}),
       };
       const response = await this.codex.request<ThreadStartResponse>('thread/start', request);
-      this.threads.add(response.thread.id);
+      if (response.thread.cwd !== cwd) throw new Error('Native thread started outside the selected project');
+      this.track(response.thread.id, cwd);
       this.loaded.add(response.thread.id);
       this.fresh.set(response.thread.id, response.thread);
       return response;
     }
     const threadId = params.threadId;
     if (typeof threadId !== 'string' || !this.threads.has(threadId)) throw new Error('Thread is outside this workspace; refresh the native thread list');
+    // A turn/approval/history request cannot reassign an existing thread by
+    // supplying a different cwd. Its project came from the validated native list.
+    const cwd = this.threadCwd(threadId);
+    const needsDirectory = ['bridge/subscribe', 'bridge/history', 'turn/start'].includes(method) ||
+      (method === 'bridge/approve' && params.decision === 'accept');
+    // Even if a directory disappears, Stop and Decline remain available.
+    if (needsDirectory && this.projects && await this.projects.resolve(cwd) !== cwd) throw new Error('Project directory changed; refresh the native thread list');
     if (method === 'bridge/subscribe' || method === 'bridge/history') {
       await this.resume(threadId);
       const revision = this.revisions.get(threadId) ?? 0;
       const fresh = this.fresh.get(threadId);
       const thread = fresh ?? (await this.codex.request<ThreadReadResponse>('thread/read', { threadId })).thread;
+      if (thread.cwd !== cwd) throw new Error('Thread is outside this workspace');
       const result = fresh ? { thread } : await readHistory(this.codex, thread, typeof params.cursor === 'string' ? params.cursor : undefined);
-      for (const turn of result.thread.turns) this.receipts?.observe(this.cwd, threadId, turn);
+      for (const turn of result.thread.turns) this.receipts?.observe(cwd, threadId, turn);
       const active = result.thread.turns.find(t => t.status === 'inProgress');
       // Older history pages must not change current execution controls.
       if (!params.cursor && revision === (this.revisions.get(threadId) ?? 0)) {
@@ -126,12 +145,12 @@ export class BridgeService extends EventEmitter {
         }
       }
       return { ...result, pending: [...this.pending.values()].filter(r => r.params.threadId === threadId),
-        sendBlocked: this.unknownSends.has(threadId) || !!this.receipts?.blocked(this.cwd, threadId),
-        receipts: this.receipts?.list(this.cwd, threadId),
+        sendBlocked: this.unknownSends.has(threadId) || !!this.receipts?.blocked(cwd, threadId),
+        receipts: this.receipts?.list(cwd, threadId),
       } satisfies Snapshot;
     }
     if (method === 'turn/start') {
-      if (this.busy.has(threadId) || this.receipts?.blocked(this.cwd, threadId)) throw new Error('Turn in progress or send result unknown; query state before continuing');
+      if (this.busy.has(threadId) || this.receipts?.blocked(cwd, threadId)) throw new Error('Turn in progress or send result unknown; query state before continuing');
       if (!this.loaded.has(threadId)) throw new Error('Select and resume the thread before starting a turn');
       if (typeof params.text !== 'string' || !params.text.trim() || params.text.length > 16000) throw new Error('Expected 1–16000 characters');
       const request: TurnStartParams = {
@@ -141,7 +160,7 @@ export class BridgeService extends EventEmitter {
       };
       if (this.receipts) {
         if (!context?.deviceId) throw new Error('Authenticated device context required');
-        this.receipts.reserve(params.operationId, this.cwd, threadId, context.deviceId);
+        this.receipts.reserve(params.operationId, cwd, threadId, context.deviceId);
       }
       this.busy.add(threadId);
       this.unknownSends.add(threadId);
@@ -151,7 +170,7 @@ export class BridgeService extends EventEmitter {
       try {
         const result = await this.codex.request<TurnStartResponse>('turn/start', request);
         this.receipts?.accepted(params.operationId as string, result.turn.id);
-        this.receipts?.observe(this.cwd, threadId, result.turn);
+        this.receipts?.observe(cwd, threadId, result.turn);
         this.unknownSends.delete(threadId);
         if (this.busy.has(threadId) && result.turn.status === 'inProgress') this.activeTurns.set(threadId, result.turn.id);
         return result;
@@ -181,16 +200,29 @@ export class BridgeService extends EventEmitter {
     }
     throw new Error('Method not exposed by Oraculum');
   }
+  private projectCwd(value: unknown) {
+    return this.projects ? this.projects.resolve(value) : Promise.resolve(this.cwd);
+  }
+  private threadCwd(threadId: string) {
+    return this.threadProjects.get(threadId) ?? this.cwd;
+  }
+  private track(threadId: string, cwd: string) {
+    const known = this.threadProjects.get(threadId);
+    if (known && known !== cwd) throw new Error('Native thread changed project unexpectedly');
+    this.threads.add(threadId);
+    this.threadProjects.set(threadId, cwd);
+  }
   private async resume(threadId: string) {
     if (this.loaded.has(threadId)) return;
     const existing = this.resuming.get(threadId);
     if (existing) return existing;
     const resume = (async () => {
+      const cwd = this.threadCwd(threadId);
       const { thread } = await this.codex.request<ThreadReadResponse>('thread/read', { threadId });
-      if (thread.cwd !== this.cwd) throw new Error('Thread is outside this workspace');
+      if (thread.cwd !== cwd) throw new Error('Thread is outside this workspace');
       try {
         await this.codex.request<ThreadResumeResponse>('thread/resume', {
-          threadId, cwd: this.cwd, sandbox: 'workspace-write', approvalPolicy: 'on-request',
+          threadId, cwd, sandbox: 'workspace-write', approvalPolicy: 'on-request',
           approvalsReviewer: 'user', excludeTurns: true,
         });
         this.loaded.add(threadId);

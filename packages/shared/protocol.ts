@@ -45,3 +45,7 @@ export type LocalConfig = {
   sandbox: 'workspace-write';
   restrictedTools: boolean;
 };
+export type ProjectList = {
+  root: string;
+  projects: { name: string; cwd: string }[];
+};

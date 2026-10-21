@@ -26,7 +26,7 @@ describe('PoC boundary and native routing', () => {
   });
   it('scopes cwd, sandbox and reviewer independently of UI params', async () => {
     const { service, codex } = fixture();
-    codex.request.mockResolvedValue({ thread: { id: 'thread-2' } });
+    codex.request.mockResolvedValue({ thread: { id: 'thread-2', cwd: '/controlled-workspace' } });
     await service.dispatch('thread/start', { cwd: '/etc', approvalPolicy: 'never' });
     expect(codex.request).toHaveBeenCalledWith('thread/start', {
       cwd: '/controlled-workspace', sandbox: 'workspace-write', approvalPolicy: 'on-request', approvalsReviewer: 'user',
@@ -44,7 +44,7 @@ describe('PoC boundary and native routing', () => {
   });
   it('keeps an unknown send blocked instead of silently resending', async () => {
     const { service, codex } = fixture();
-    codex.request.mockResolvedValue({ thread: { id: 'thread-1' } });
+    codex.request.mockResolvedValue({ thread: { id: 'thread-1', cwd: '/controlled-workspace' } });
     await service.dispatch('thread/start', {});
     codex.request.mockClear();
     codex.request.mockRejectedValue(new Error('response timeout'));
@@ -144,7 +144,7 @@ describe('turn ownership and recovery safety', () => {
   it('permits a manual next send after an explicit native rejection, but requires resume for listed threads', async () => {
     const { service, codex } = fixture();
     await expect(service.dispatch('turn/start', { threadId: 'thread-1', text: 'first' })).rejects.toThrow('resume');
-    codex.request.mockResolvedValue({ thread: { id: 'thread-1' } });
+    codex.request.mockResolvedValue({ thread: { id: 'thread-1', cwd: '/controlled-workspace' } });
     await service.dispatch('thread/start', {});
     codex.request.mockRejectedValueOnce(new NativeRpcError('model unavailable', -32602));
     await expect(service.dispatch('turn/start', { threadId: 'thread-1', text: 'first' })).rejects.toThrow('model unavailable');

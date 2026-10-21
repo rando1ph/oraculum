@@ -6,11 +6,13 @@ import { BridgeService } from './service';
 import { createServer } from './server';
 import { TrustStore, defaultStateDir } from './trust-store';
 import { ReceiptStore } from './receipts';
+import { ProjectDirectories } from './projects';
 
 const root = join(homedir(), '.cache/oraculum/workspaces');
 await mkdir(root, { recursive: true, mode: 0o700 });
 // A stable, controlled workspace lets native threads survive Bridge restarts.
-// Phase 1 deliberately does not expose a renderer-selected arbitrary host path.
+// Project selection stays within this managed root; arbitrary host paths are
+// never accepted from the renderer.
 const requested = resolve(process.env.ORACULUM_WORKSPACE ?? join(root, 'local'));
 const realRoot = await realpath(root);
 if (!requested.startsWith(realRoot + sep)) throw new Error('Workspace must be inside the Oraculum test workspace root');
@@ -19,7 +21,7 @@ const cwd = await realpath(requested);
 if (!cwd.startsWith(realRoot + sep)) throw new Error('Workspace symlink escapes the Oraculum test workspace root');
 const trust = new TrustStore(defaultStateDir());
 const codex = new Codex(cwd);
-const service = new BridgeService(codex, cwd, new ReceiptStore(trust.db));
+const service = new BridgeService(codex, cwd, new ReceiptStore(trust.db), new ProjectDirectories(realRoot, cwd));
 try {
   await codex.initialize();
   const port = Number(process.env.ORACULUM_PORT ?? 17860);
