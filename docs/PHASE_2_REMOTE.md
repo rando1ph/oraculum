@@ -2,7 +2,7 @@
 
 实施日期：2026-10-21（Asia/Shanghai）。**阶段 In progress；2A USB 真机 Smoke 已取得实测通过证据，整体 Phase 2 尚未验收。**
 
-**最新入口决策（取代下文历史记录中的“等待独立域名”）**：用户已决定优先复用 DSH 现有公网 IP:443。新的只读审计、同源风险、精确 Caddy 候选、应用适配、备份／回滚与批准边界见 [IP:443 审阅方案](PHASE_2_IP443_PLAN.md)；[完整候选配置](phase2-ip443.Caddyfile) 未部署。当前等待方案审阅与单独服务变更批准，不再以缺少域名为阻碍。
+**最新入口决策（取代下文历史记录中的“等待独立域名”）**：用户已决定优先复用 DSH 现有公网 IP:443。新的只读审计、同源风险、精确 Caddy 候选、应用适配、备份／回滚与批准边界见 [IP:443 审阅方案](PHASE_2_IP443_PLAN.md)；[完整候选配置](phase2-ip443.Caddyfile) 未部署。用户已接受同源信任关系，通用产品适配见下方 A 收尾记录及 [配置说明](REMOTE_CONFIGURATION.md)；部署仍待最新现场复核与一次明确批准，不再以缺少域名为阻碍。
 
 - [Project 正典](https://app.notion.com/p/3ff5421e690b81bdae14c0675f0b3acf)
 - [Phase 2 Task／实施顺序与验收入口](https://app.notion.com/p/3ff5421e690b81adba14c1594346bc1d)
@@ -178,3 +178,31 @@ DSH 当时 load 5.53/5.40/5.33，可用内存约 435 MiB，swap 已用约 1341 M
 恢复功能加入后再次运行真机鉴权回归，通过配对／重放拒绝／撤销／重新配对，零新增模型调用，恢复本次 completed thread。鉴权脚本现在先重载，并验证当前已完成会话，不再依赖旧 2A 回复标题。最新 `auth-android.json` SHA-256 `013321b718f09b645b8f4c4fa11c17b2fdda96a11aed2584f09751ea6ddff286`；首轮证据已归档为 `auth-android-8db3c16.json`，原 SHA 不变。
 
 **U** 正式 HTTPS/WSS、独立 SSH tunnel、既有服务变更后健康回归、远程创建／继续／中断、实际 Wi-Fi 切换、锁屏与隧道重连、真实 pending 审批跨进程丢失仍待后续获批环境验收。正式入口不能由本地测试替代；整体 Phase 2 保持 In progress，等待入口信息／配置授权以及后续审阅。
+
+
+## A 收尾：通用远程入口与本地兼容（2026-10-21）
+
+依据 Project 2.1 和 Task A–D，产品现在支持 `ORACULUM_REMOTE_ORIGIN` + `ORACULUM_REMOTE_BASE_PATH`（默认 `/`），Android 使用对应 Gradle 参数。部署 IP、代理和路径没有进入产品源码。配置、迁移及验证方式见 [REMOTE_CONFIGURATION.md](REMOTE_CONFIGURATION.md)。
+
+- Web 统一相对目录 URL，Vite 同一构建支持本地／远程根路径与任意规范子路径，含动态 Diff chunk。
+- Bridge 按来源验证根路径／远程路径，保留 Host、Origin、TLS、重复 Cookie、限流、撤销；远程 Cookie 为 `__Secure-oraculum_session` 且 Path=配置值，信任绑定 origin + base。配对／注销只过期自身旧名称与祖先路径 Cookie，避免路径迁移残留重复 Cookie。
+- Android 构建配置 origin/base、精确 HTTPS host/port 与规范路径检查，阻止跨路径／编码穿越导航；保持系统证书验证、无任意 JS 原生桥接、无文件访问、禁混合内容和备份。默认 debug 的本地入口不变。远程 APK 已构建，尚未安装／进行正式公网验收。
+- 修复新关闭回归发现的 WS 生命周期问题：在 Bridge preClose 立即取消认证计时器并移除订阅，阻断关闭后的授权查询／事件，避免数据库已关闭后回调访问；没有改动官方 Harness 执行逻辑。
+- **S** `pnpm check`、55/55 tests（8 文件）、`pnpm build` 通过。覆盖新增配置拒绝、原始 HTTP 路径穿越、根／子路径 auth 与 WS、来源／Cookie 混用、迁移重配对、注销／撤销及关闭资源清理；既有发送回执／并发测试仍通过。
+- **S** 实际 Electron + 模拟原生事件 UI 回归；实际 Chromium + 临时环回 TLS 反代分别验证远程 `/` 和 `/team/console/`。配对、Secure/HttpOnly/Strict Cookie、HTTP/WSS、样式与 Diff 懒加载、审批、读取原生模拟快照、重载及撤销通过。夹具为自签证书，仅隔离测试浏览器接受例外，不改 OS／Android／产品 TLS；不能当作公网证书验收。
+- **R** 本地与部署参数两种 APK assembleDebug / lintDebug 通过，最终 0 errors / 5 warnings（既有 API／资源提示）。本地新版 `adb install -r` 成功；HONOR Android 15 的真实 WebView 经 USB reverse 配对、原生历史重载、重复码 401、撤销断开与重新配对通过，0 新模型调用。真实 Electron 同样完成配对／撤销并恢复同一 thread `01a15ad4-9177-7870-b12b-0b71c346f83a`；这些仍属于本地证据。
+- 初次类型检查补全路由 config 和 TLS socket 类型；目录穿越探针改用原始 HTTP，避免注入库先规范化路径。TLS 夹具的域名别名无法连接而直接环回 IP 可达，改为直接环回 IP；隔离 Chromium 的复制权限明确为仅写入。手机首次启动早于测试 Bridge，出现网络错误页，Bridge 就绪后重载成功；未重新安装或绕过权限。
+- **U** 正式 VPS 写入／隧道、公网 Android TLS/WSS、脱离 USB 的移动数据、实际远程审批／双端与故障矩阵、DSH 已配对客户端回归，须在 B 批准后执行；本步不宣称 Phase 2 完成。
+
+证据位于忽略目录 `.local/evidence/phase2/configurable-entry/`：
+
+| 文件 | SHA-256 |
+| --- | --- |
+| auth-android.json | `4bd514a6e5997f4c173e6de25f1e7024b41d448efae0f77ead0ec492a9f9f319` |
+| auth-electron.json | `f473e8f2b7ee29d92cba68d7a1da223614a115ad929a6025779b427a46b264ca` |
+| ui-contract-.json | `da2b33c90d4db8dbc6fb388f180a507ce2334b2b3d1092322ed149ed24d46929` |
+| ui-contract-team-console-.json | `cb7d6e27bfdec4e2a3ffe713138fc403e39f0267a000cf35ad0108ba42ef2eef` |
+| local-debug.apk | `b293b5350642f8435f10fc4bab00f77565bd079ca3a92b0f978890da70b70db2` |
+| remote-debug.apk | `70a6e1580670fc99f3dd4fdf264362896f856b943869d92ae5083d2f717e2024` |
+
+本步按测试→Conventional Commit→安全合并 main→正常 push 执行，完整 Git hash 及 push 核验写回原 Task。原工作区未提交 AGENTS 保留；当前工作区 AGENTS 最小补充产品／部署边界。Phase 2 保持 In progress。

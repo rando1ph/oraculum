@@ -1,8 +1,9 @@
 import { useEffect, useState, type ReactNode } from 'react';
+import { appUrl } from '../../../packages/shared/entry';
 import { useSession } from './store';
 
 export async function checkSession() {
-  const response = await fetch('/auth/session', { cache: 'no-store' });
+  const response = await fetch(appUrl('auth/session'), { cache: 'no-store' });
   if (response.status === 401) {
     window.dispatchEvent(new Event('oraculum-auth-required'));
     return false;
@@ -42,7 +43,7 @@ export function SessionGate({ children }: { children: ReactNode }) {
       setBusy(true); setError('');
       const submitted = code.trim();
       setCode('');
-      void fetch('/auth/pair', {
+      void fetch(appUrl('auth/pair'), {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ label, code: submitted }),
       }).then(async response => {

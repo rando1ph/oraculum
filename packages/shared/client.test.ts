@@ -9,7 +9,7 @@ class Socket {
   onerror?: () => void;
   onmessage?: (event: { data: string }) => void;
   sent: string[] = [];
-  constructor(_url: string) { Socket.instances.push(this); }
+  constructor(readonly url: string) { Socket.instances.push(this); }
   send(data: string) { this.sent.push(data); }
   close() { this.readyState = 3; this.onclose?.(); }
   open() { this.readyState = 1; this.onopen?.(); }
@@ -17,9 +17,16 @@ class Socket {
 beforeEach(() => {
   vi.useFakeTimers(); Socket.instances = [];
   vi.stubGlobal('WebSocket', Socket);
-  vi.stubGlobal('location', { protocol: 'http:', host: '127.0.0.1:17860' });
+  vi.stubGlobal('location', { href: 'http://127.0.0.1:17860/' });
 });
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
+it('connects WSS under the configured page directory rather than the origin root', async () => {
+  vi.stubGlobal('location', { href: 'https://example.test:9443/team/console/' });
+  const client = new BridgeClient(vi.fn(), vi.fn());
+  const connected = client.connect();
+  expect(Socket.instances[0].url).toBe('wss://example.test:9443/team/console/ws');
+  Socket.instances[0].open(); await connected; client.close();
+});
 it('rejects an unacknowledged operation on disconnect and never retransmits on reconnect', async () => {
   const client = new BridgeClient(vi.fn(), vi.fn());
   const connected = client.connect(); Socket.instances[0].open(); await connected;

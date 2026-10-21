@@ -24,7 +24,10 @@ try {
   await codex.initialize();
   const port = Number(process.env.ORACULUM_PORT ?? 17860);
   if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error('Invalid port');
-  const app = await createServer(service, port, resolve('apps/web/dist'), { trust, remoteOrigin: process.env.ORACULUM_REMOTE_ORIGIN });
+  const app = await createServer(service, port, resolve('apps/web/dist'), {
+    trust, remoteOrigin: process.env.ORACULUM_REMOTE_ORIGIN,
+    remoteBasePath: process.env.ORACULUM_REMOTE_BASE_PATH,
+  });
   await app.listen({ host: '127.0.0.1', port });
   console.log(JSON.stringify({ url: `http://127.0.0.1:${port}`, workspace: cwd, codex: '0.160.0' }));
   let closing = false;

@@ -1,12 +1,16 @@
 // Deterministic Electron UI checks. All Codex messages in this file are simulated.
 import { EventEmitter } from 'node:events';
-import { _electron as electron, expect, type ElectronApplication } from '@playwright/test';
+import { _electron as electron, chromium, expect, type ElectronApplication, type Browser } from '@playwright/test';
 import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { BridgeService } from '../bridge/src/service';
 import { createServer } from '../bridge/src/server';
 import type { WireMessage } from '../packages/shared/protocol';
+import { TrustStore } from '../bridge/src/trust-store';
+import { loopbackTlsFixture } from './loopback-tls-fixture';
+import { basePath } from '../packages/shared/entry';
 
 const cwd = '/controlled-workspace';
 const thread: any = { id: 'ui-thread', name: '模拟会话', preview: '', cwd, model: 'fixture-model', reasoningEffort: 'low', status: { type: 'idle' }, turns: [] };
@@ -51,18 +55,38 @@ const codex = {
   },
 };
 const service = new BridgeService(codex, cwd);
-const server = await createServer(service, 17861, resolve('apps/web/dist'), { testOnlyUnauthenticated: true });
+const remoteBase = process.env.ORACULUM_TEST_REMOTE_BASE;
+const proxy = remoteBase ? await loopbackTlsFixture(17861) : undefined;
+const state = proxy ? await mkdtemp(resolve(tmpdir(), 'oraculum-ui-trust-')) : undefined;
+const trust = state ? new TrustStore(state) : undefined;
+const server = await createServer(service, 17861, resolve('apps/web/dist'), proxy
+  ? { trust, remoteOrigin: proxy.origin, remoteBasePath: remoteBase }
+  : { testOnlyUnauthenticated: true });
 const require = createRequire(resolve('apps/desktop/package.json'));
 const env = Object.fromEntries(Object.entries(process.env).filter((e): e is [string, string] => e[1] !== undefined));
 delete env.ELECTRON_RUN_AS_NODE;
 env.ORACULUM_URL = 'http://127.0.0.1:17861';
 let app: ElectronApplication | undefined;
+let browser: Browser | undefined;
 const evidence: Record<string, unknown> = { simulated: true, date: new Date().toISOString() };
 try {
   await mkdir('.local/evidence/phase1', { recursive: true });
   await server.listen({ host: '127.0.0.1', port: 17861 });
-  app = await electron.launch({ executablePath: require('electron'), args: [resolve('apps/desktop/main.cjs')], env });
-  const page = await app.firstWindow();
+  if (proxy) browser = await chromium.launch({ args: ['--no-proxy-server'] });
+  else app = await electron.launch({ executablePath: require('electron'), args: [resolve('apps/desktop/main.cjs')], env });
+  const page = browser ? await browser.newPage({ ignoreHTTPSErrors: true }) : await app!.firstWindow();
+  const paths: string[] = [];
+  page.on('request', req => paths.push(new URL(req.url()).pathname));
+  const sockets: string[] = [];
+  page.on('websocket', ws => sockets.push(new URL(ws.url()).pathname));
+  if (proxy) {
+    await page.context().grantPermissions(['clipboard-write'], { origin: proxy.origin });
+    await page.goto(proxy.origin + basePath(remoteBase));
+    await expect(page.getByRole('heading', { name: '信任此设备', exact: true })).toBeVisible();
+    await page.getByLabel('设备名称', { exact: true }).fill('Isolated HTTPS fixture');
+    await page.getByLabel('配对码', { exact: true }).fill(trust!.createPairing().code);
+    await page.getByRole('button', { name: '配对并连接', exact: true }).click();
+  }
   const errors: string[] = []; page.on('pageerror', e => errors.push(e.message));
   await expect(page.getByRole('status')).toContainText('状态已查询');
   await page.getByLabel('消息', { exact: true }).fill('Controlled UI fixture');
@@ -101,7 +125,33 @@ try {
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.screenshot({ path: '.local/evidence/phase1/simulated-mobile.png', fullPage: true });
   expect(errors).toEqual([]);
+  if (proxy) {
+    expect(paths.every(path => path.startsWith(basePath(remoteBase)))).toBe(true);
+    expect(paths.some(path => /\/assets\/diff-.*\.js$/.test(path))).toBe(true);
+    expect(sockets).toEqual([basePath(remoteBase) + 'ws']);
+    const cookies = await page.context().cookies();
+    expect(cookies).toEqual([expect.objectContaining({ name: '__Secure-oraculum_session', path: basePath(remoteBase), secure: true, httpOnly: true, sameSite: 'Strict' })]);
+    expect(await page.evaluate(() => document.cookie)).toBe('');
+    await page.reload();
+    await expect(page.getByRole('status')).toContainText('状态已查询');
+    await expect(page.getByTestId('thread-id')).toHaveText(thread.id);
+    trust!.revoke(trust!.list()[0].id);
+    await expect(page.getByRole('heading', { name: '信任此设备', exact: true })).toBeVisible({ timeout: 10_000 });
+    evidence.remote = { base: basePath(remoteBase), transport: 'loopback TLS fixture with isolated test-browser certificate exception; not public TLS', resources: paths, sockets, reload: true, revoked: true };
+  }
   evidence.result = 'passed'; evidence.checks = ['Markdown/XSS', 'command output', 'read-only CodeMirror diff and copy', 'allow approval', 'native snapshot', 'item dedup', 'failed turn and error', '393px layout'];
   console.log(JSON.stringify(evidence, null, 2));
-} catch (error) { evidence.failure = String(error); throw error; }
-finally { await app?.close(); await server.close(); await writeFile('.local/evidence/phase1/ui-contract.json', JSON.stringify(evidence, null, 2)); }
+} catch (error) {
+  // Authenticated fixtures may fail while a secret is in an input: do not dump
+  // Playwright call arguments or page snapshots into logs/evidence.
+  evidence.failure = proxy ? (error instanceof Error ? error.name : 'Error') : String(error);
+  if (proxy) { console.error('HTTPS UI fixture failed; sensitive assertion details omitted.'); process.exitCode = 1; }
+  else throw error;
+}
+finally {
+  await app?.close(); await browser?.close(); await server.close(); await proxy?.close(); trust?.close();
+  if (state) await rm(state, { recursive: true });
+  const dir = proxy ? '.local/evidence/phase2/configurable-entry' : '.local/evidence/phase1';
+  await mkdir(dir, { recursive: true });
+  await writeFile(`${dir}/ui-contract${proxy ? basePath(remoteBase).replaceAll('/', '-') : ''}.json`, JSON.stringify(evidence, null, 2));
+}

@@ -20,12 +20,16 @@ import java.io.ByteArrayInputStream
 class MainActivity : Activity() {
     private lateinit var web: WebView
     private val remote = BuildConfig.ORACULUM_ORIGIN.takeIf { it.isNotEmpty() }?.let(Uri::parse)
-    private val entry = remote?.toString()?.plus("/") ?: "http://127.0.0.1:17860/"
+    private val basePath = if (remote != null) BuildConfig.ORACULUM_BASE_PATH else "/"
+    private val entry = remote?.toString()?.plus(basePath) ?: "http://127.0.0.1:17860/"
 
     private fun trusted(uri: Uri): Boolean {
         if (uri.userInfo != null) return false
+        val path = uri.encodedPath ?: return false
+        if (!Regex("^/[A-Za-z0-9._~/-]*$").matches(path) || path.contains("//") ||
+            path.split('/').any { it == "." || it == ".." } || !path.startsWith(basePath)) return false
         val target = remote
-        return if (target != null) uri.scheme == "https" && uri.host == target.host &&
+        return if (target != null) uri.scheme == "https" && uri.host.equals(target.host, ignoreCase = true) &&
             (if (uri.port == -1) 443 else uri.port) == (if (target.port == -1) 443 else target.port)
         else BuildConfig.DEBUG && uri.scheme == "http" && uri.host == "127.0.0.1" && uri.port == 17860
     }
@@ -42,7 +46,7 @@ class MainActivity : Activity() {
             }
         }
         val retry = Button(this).apply {
-            text = "无法加载本机界面 · 检查 ADB reverse 后重试"
+            text = if (remote != null) "无法连接服务器 · 检查网络后重试" else "无法加载本机界面 · 检查 ADB reverse 后重试"
             visibility = View.GONE
             setOnClickListener { web.loadUrl(entry) }
         }
@@ -73,6 +77,13 @@ class MainActivity : Activity() {
 
                 override fun onPageFinished(view: WebView, url: String) {
                     if (trusted(Uri.parse(url)) && view.title == "Oraculum · 神谕") retry.visibility = View.GONE
+                }
+
+                override fun onPageStarted(view: WebView, url: String, favicon: android.graphics.Bitmap?) {
+                    if (!trusted(Uri.parse(url))) {
+                        view.stopLoading()
+                        retry.visibility = View.VISIBLE
+                    }
                 }
             }
         }

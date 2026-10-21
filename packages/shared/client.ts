@@ -1,4 +1,5 @@
 import type { BridgeEvent, WireMessage } from './protocol';
+import { appUrl } from './entry';
 
 export class BridgeClient {
   private socket?: WebSocket;
@@ -6,7 +7,9 @@ export class BridgeClient {
   constructor(private onEvent: (event: BridgeEvent) => void, private onConnection: (connected: boolean) => void) {}
   connect(): Promise<void> {
     this.close();
-    const socket = new WebSocket(`${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/ws`);
+    const url = appUrl('ws');
+    url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+    const socket = new WebSocket(url.href);
     this.socket = socket;
     socket.onmessage = ({ data }) => {
       if (this.socket !== socket) return;
@@ -41,7 +44,7 @@ export class BridgeClient {
         this.onConnection(false);
         this.rejectPending();
       };
-      socket.onerror = () => { clearTimeout(timer); reject(new Error('无法连接本机 Bridge')); };
+      socket.onerror = () => { clearTimeout(timer); reject(new Error('无法连接 Bridge')); };
     });
   }
   request<T>(method: string, params: object): Promise<T> {

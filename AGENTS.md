@@ -17,6 +17,7 @@ https://app.notion.com/p/3ff5421e690b81bdae14c0675f0b3acf
 - Prioritize usability, visual quality, stability, and maintainability.
 - Preserve unrestricted UI customization through the approved Live UI architecture.
 - Follow the principle of least complexity. Avoid unnecessary abstractions, dependencies, and infrastructure.
+- Keep product configuration portable: HTTPS Origin and Base Path (default `/`) are deployment/build inputs. Never hardcode this user's VPS, IP, proxy, SSH alias, or `/oraculum/` path into product logic; preserve local root-path operation.
 
 ## Engineering Workflow
 
