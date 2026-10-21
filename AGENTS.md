@@ -30,9 +30,11 @@ https://app.notion.com/p/3ff5421e690b81bdae14c0675f0b3acf
 
 ## Git Workflow
 
+- Develop only on `main` in `~/Projects/Oraculum`. Do not create branches or worktrees per Phase or task. Fetch and verify `origin/main` before starting; use fast-forward-only updates and stop on divergence.
 - After each independent, verifiable implementation step, run relevant tests and safety checks, review staged changes, and create a focused Conventional Commit.
-- Safely merge each completed step into `main`, then push `origin/main` for review. This publication workflow is authorized by the Notion Project decision dated 2026-10-21.
-- Protect existing uncommitted user changes. Do not overwrite, discard, or include them in a task commit without authorization; use an isolated worktree when needed.
+- Commit completed steps directly on `main`, then normally push `origin/main` for review under the Notion Project's authorized publication workflow. Verify local and remote commit IDs match.
+- Protect existing uncommitted user changes. Inspect and preserve them before integration; stop and report changes whose ownership or intended treatment is unclear. Do not create an isolated worktree to bypass this requirement.
+- Remove old branches only after verifying all their commits are in `origin/main`. Remove old worktrees only after preserving private/untracked data and confirming no running service or process depends on their paths; otherwise retain them and report the blocker. Retained worktrees are not development workspaces.
 - Never force-push, rewrite existing history, bypass branch protections, or overwrite remote commits. Stop synchronization and report unresolved conflicts, failing checks, or suspected secrets.
 - Never commit secrets, credentials, sensitive logs, caches, temporary files, or generated build artifacts.
 - Record test evidence, limitations, commit hashes, merge results, and verified push status in the relevant Notion Task after each completed step.
