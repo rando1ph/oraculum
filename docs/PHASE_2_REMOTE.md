@@ -2,6 +2,8 @@
 
 实施日期：2026-10-21（Asia/Shanghai）。**阶段 In progress；2A USB 真机 Smoke 已取得实测通过证据，整体 Phase 2 尚未验收。**
 
+**最新入口决策（取代下文历史记录中的“等待独立域名”）**：用户已决定优先复用 DSH 现有公网 IP:443。新的只读审计、同源风险、精确 Caddy 候选、应用适配、备份／回滚与批准边界见 [IP:443 审阅方案](PHASE_2_IP443_PLAN.md)；[完整候选配置](phase2-ip443.Caddyfile) 未部署。当前等待方案审阅与单独服务变更批准，不再以缺少域名为阻碍。
+
 - [Project 正典](https://app.notion.com/p/3ff5421e690b81bdae14c0675f0b3acf)
 - [Phase 2 Task／实施顺序与验收入口](https://app.notion.com/p/3ff5421e690b81adba14c1594346bc1d)
 - 严格按 2A 真机 → 2B 安全远程入口 → 2C 双端与恢复 → 2D 交接；ADB reverse 不是公网 HTTPS/WSS 证据。

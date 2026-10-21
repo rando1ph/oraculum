@@ -1,0 +1,41 @@
+{
+	admin 127.0.0.1:2019
+	auto_https disable_redirects
+	default_sni 47.107.28.193
+	servers {
+		protocols h1 h2
+	}
+}
+
+https://47.107.28.193 {
+	tls {
+		issuer acme {
+			dir https://acme-v02.api.letsencrypt.org/directory
+			profile shortlived
+			disable_http_challenge
+		}
+	}
+	@management path /api/mobile-access /api/mobile-access/* /relay /relay/*
+	route {
+		respond @management 403
+		redir /oraculum /oraculum/ 308
+		handle /oraculum/* {
+			reverse_proxy 127.0.0.1:17860 {
+				header_up Host {http.request.hostport}
+				header_up X-Forwarded-Proto https
+				header_up -Authorization
+				header_up -Proxy-Authorization
+				header_up -X-DSH-Mobile-CSRF
+				header_up Cookie "(^|;[[:blank:]]*)(__Host-dsh_ma_session|__Host-dsh_ma_csrf|__Host-dsh_ma_device_id|dsh_ma_session|dsh_ma_csrf|dsh_ma_device)=[^;]*" ""
+				header_up Cookie "^[;[:blank:]]+|[;[:blank:]]+$" ""
+			}
+		}
+		handle {
+			reverse_proxy 127.0.0.1:3444 {
+				header_up Host {http.request.hostport}
+				header_up Cookie "(^|;[[:blank:]]*)(__Secure-oraculum_session|__Host-oraculum)=[^;]*" ""
+				header_up Cookie "^[;[:blank:]]+|[;[:blank:]]+$" ""
+			}
+		}
+	}
+}
