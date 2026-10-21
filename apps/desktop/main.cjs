@@ -3,9 +3,9 @@ const path = require('node:path');
 const origin = process.env.ORACULUM_URL || 'http://127.0.0.1:17860';
 const url = new URL(origin);
 if (url.protocol !== 'http:' || url.hostname !== '127.0.0.1' || url.username || url.password || url.pathname !== '/') {
-  throw new Error('Phase 0B only loads a local loopback Bridge');
+  throw new Error('Oraculum Desktop only loads a local loopback Bridge');
 }
-app.setPath('userData', path.join(app.getPath('appData'), 'oraculum-phase0b'));
+app.setPath('userData', process.env.ORACULUM_USER_DATA_DIR || path.join(app.getPath('appData'), 'oraculum-phase0b'));
 app.whenReady().then(async () => {
   // Copy buttons may write text. Clipboard reads and every other permission stay denied.
   const allowCopy = (contents, permission, details) => {
@@ -21,7 +21,8 @@ app.whenReady().then(async () => {
   session.defaultSession.setPermissionCheckHandler((contents, permission, requestingOrigin, details) =>
     requestingOrigin === url.origin && Boolean(allowCopy(contents, permission, details)));
   const window = new BrowserWindow({
-    width: 1180, height: 850, backgroundColor: '#000000', title: 'Oraculum · 神谕',
+    width: 1440, height: 960, minWidth: 720, minHeight: 560, autoHideMenuBar: true,
+    icon: path.join(__dirname, '../../design/reference/02_Brand_OracleEye_App_Icon.png'), backgroundColor: '#000000', title: 'Oraculum · 神谕',
     webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true, webviewTag: false },
   });
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));

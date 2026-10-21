@@ -36,7 +36,7 @@ const codex = {
       setTimeout(() => {
         emit('turn/started', { turn });
         emit('thread/status/changed', { status: thread.status });
-        completeItem({ type: 'userMessage', id: 'user', content: [{ type: 'text', text: params.text }] });
+        completeItem({ type: 'userMessage', id: 'user', content: params.input });
         completeItem({ type: 'agentMessage', id: 'message', text: '## 验证结果\n\n**Markdown** 与代码：\n\n```js\nconst sum = (a, b) => a + b;\n```\n\n<script>window.BAD=true</script>\n[unsafe](javascript:alert(1))' });
         completeItem({ type: 'commandExecution', id: 'command', command: 'node --test', cwd, status: 'completed', exitCode: 0, durationMs: 42, aggregatedOutput: 'tests 1\npass 1\nfail 0' });
         completeItem({ type: 'fileChange', id: 'file', status: 'completed', changes: [{ path: 'sum.js', kind: { type: 'update', move_path: null }, diff: patch }] });
@@ -66,6 +66,8 @@ const require = createRequire(resolve('apps/desktop/package.json'));
 const env = Object.fromEntries(Object.entries(process.env).filter((e): e is [string, string] => e[1] !== undefined));
 delete env.ELECTRON_RUN_AS_NODE;
 env.ORACULUM_URL = 'http://127.0.0.1:17861';
+const profile = await mkdtemp(resolve(tmpdir(), 'oraculum-ui-contract-profile-'));
+env.ORACULUM_USER_DATA_DIR = profile;
 let app: ElectronApplication | undefined;
 let browser: Browser | undefined;
 const evidence: Record<string, unknown> = { simulated: true, date: new Date().toISOString() };
@@ -150,6 +152,7 @@ try {
 }
 finally {
   await app?.close(); await browser?.close(); await server.close(); await proxy?.close(); trust?.close();
+  await rm(profile, { recursive: true, force: true });
   if (state) await rm(state, { recursive: true });
   const dir = proxy ? '.local/evidence/phase2/configurable-entry' : '.local/evidence/phase1';
   await mkdir(dir, { recursive: true });
