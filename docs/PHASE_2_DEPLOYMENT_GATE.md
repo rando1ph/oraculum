@@ -1,6 +1,6 @@
 # B：一次部署批准清单
 
-状态：**待用户明确批准，尚未执行任何 VPS 写入、Caddy reload 或 SSH -R。** 对应 [原 Phase 2 Task 的 B/C 要求](https://app.notion.com/p/3ff5421e690b81adba14c1594346bc1d)。用户已接受同源信任关系，A 产品适配已发布为 `1a0b793e63ae62ecade5c1bf4c7020096c3d0788`，不再重复选型审批。
+状态：**2026-10-21 用户已明确批准本文件限定的一次受控部署及回滚；已执行备份、原候选 reload 和独立 SSH -R；首次验收发现 Bridge 拒绝升级连接的生命周期缺陷，已按批准方案完整回滚，修复发布后以同一候选重新部署，公网链路与隧道恢复通过。** 最新收尾结果见 [PHASE_2_CLOSEOUT.md](PHASE_2_CLOSEOUT.md)。下方 15:15 的现场数据是批准前历史快照；实际执行前已重新核验。 对应 [原 Phase 2 Task 的 B/C 要求](https://app.notion.com/p/3ff5421e690b81adba14c1594346bc1d)。用户已接受同源信任关系，A 产品适配已发布为 `1a0b793e63ae62ecade5c1bf4c7020096c3d0788`，不再重复选型审批。
 
 ## 本次最新现场复核
 
@@ -14,14 +14,14 @@
 - 资源：load 5.75/5.88/5.97，可用内存约 290 MiB、swap 已用约 2065 MiB。不会在 VPS 运行 Codex 或新增守护进程；仍须在 reload 前复查，明显恶化则停止。
 - 证据忽略目录 `configurable-entry/predeploy-vps.json` SHA-256 `956bfdac0367b3d7dfa32c2cbd754bb5ffea1b12d8839331e851af644bc4ac3c`；`predeploy-public.json` SHA-256 `f903f2983f0e24b83d32c8f6c6903d433e61c1ff07fa1fe0fa70fe3b597029bd`。已认证 DSH 客户端仍须在部署窗口做实际回归，匿名探针不能替代。
 
-## 申请批准的精确范围
+## 已批准的精确范围（本轮验收范围修订见第 6 项）
 
 1. 复用现有 Caddyfile 的候选 [phase2-ip443.Caddyfile](phase2-ip443.Caddyfile)，完整逐行差异见 [既有方案第 3 节](PHASE_2_IP443_PLAN.md#3-精确-caddy-差异)。**本次相对已审候选无新增 diff**，目标 SHA-256 为 `a7c80dad7c968832fd3e13019a2e952088eea94350be73b98cac70806c7f5492`。新增 `/oraculum/` 专用分支和双向已知 Cookie 过滤；保留 management 403、DSH fallback、443、TLS 和证书策略。与 A 的新 Cookie 名称及保留前缀行为相符，本机同版本 adapt 再次通过。
 2. 经批准后在 VPS 创建唯一 `/root/oraculum-backups/<UTC>/`（0700，umask 077），备份原 Caddyfile、owner/mode/hash、运行配置 JSON（0600）、版本和健康摘要；记录实际路径。备份及运行配置不进 Git/Notion，不复制 TLS 私钥或用户会话。
 3. 候选上传到该目录核对 hash；安全暂存到 `/etc/caddy/Caddyfile.oraculum.candidate`（root:caddy 0640），以 caddy 身份、HOME=/var/lib/caddy 执行 `/usr/local/bin/caddy validate --config /etc/caddy/Caddyfile.oraculum.candidate --adapter caddyfile`。保留现有证书 storage，不主动换证书／重签。
 4. 小新以正常 Bridge 启动临时验收进程，配置为下方值；只监听 127.0.0.1:17860，保留已有私密信任／回执数据库，官方 App Server 仍为本地 stdio。建立下方单独前台 SSH -R，并记录本机 PID；复查远端只监听 127.0.0.1:17860。
 5. 再核对原配置／运行配置无漂移，按 root:root 0644 在同一文件系统原子替换 `/etc/caddy/Caddyfile`，执行 `/usr/local/bin/caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile --address 127.0.0.1:2019`。不 restart Caddy／DSH，不改 SSH 身份、sshd、systemd、防火墙或 DNS，不新增公网端口。
-6. 安装已构建的远程 APK，按 C 逐项验证；需要时停止／重启本次 SSH、Bridge 及其 App Server，模拟自身链路故障。不得停止、重启或清理 CodeG/DSH/PROXY。任何关键回归按下方方案恢复原 Caddyfile；该恢复也纳入本次批准范围。
+6. 按用户本轮修订，使用实际公网 HTTPS/WSS 验证 Bridge、独立设备认证、官方 Codex 基本端到端及本次隧道恢复；Android 公网真机验收明确延期，不安装或重复测试 APK。需要时停止／重启本次 SSH、Bridge 及其 App Server，模拟自身链路故障。不得停止、重启或清理 CodeG/DSH/PROXY。任何关键回归按下方方案恢复原 Caddyfile；该恢复也纳入本次批准范围。
 
 ```text
 本机工作目录：/home/randolph/Projects/Oraculum-phase2
@@ -56,6 +56,8 @@ ssh -NT -o BatchMode=yes -o StrictHostKeyChecking=yes \
 
 先记录 DSH 现有已配对客户端的登录／WS／会话可达性，再验证部署后与 Oraculum 隧道关闭时仍正常；不提取 DSH Cookie／设备凭据或假造已认证证据。
 
-手机须安装部署 APK 后拔 USB、移除本次 ADB reverse、关闭 Wi-Fi 并使用移动数据。公网路径要验证首次配对、创建／继续／中断真实 Codex、流式消息、允许／拒绝审批、与 Electron 相同 Thread/Turn/Item；再覆盖切网络、短暂断网、锁屏重开、隧道与 Bridge/App Server 重启、未知不自动重发和审批失效。手机切换到移动网络后可能需要用户直接操作界面，不能以失去 ADB 控制为理由把 USB 测试改称公网通过。
+2026-10-21 用户正式调整本阶段收尾范围：**Android 脱离 USB/ADB reverse、关闭 Wi-Fi、移动数据或独立外网真机验收延期，不再阻碍本次 Phase 2 收尾。** 保留已验收的 Android 本地真机、认证与双端恢复；不重复开发，也不以桌面公网浏览器冒充 Android 公网结果。
+
+本轮验证实际公网 HTTPS/WSS、独立设备配对／撤销、官方 Codex 基本真实会话与审批、与本地 Electron 的原生状态一致性，以及本次 SSH 隧道中断／恢复。既有服务须做前后及隧道断开期间回归。没有可访问的 DSH 已登录客户端时，明确区分服务／匿名协议检查与未完成的人工登录态回归，不提取凭据补证。不要求额外长期日常测试，不开展 Phase 3。
 
 记录 R/S/U 证据和残留边界，完整结果写回原 Task、按步骤 commit→merge→push；未经正式审阅，Phase 2 不标 Done。

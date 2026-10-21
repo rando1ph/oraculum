@@ -214,3 +214,5 @@ DSH 当时 load 5.53/5.40/5.33，可用内存约 435 MiB，swap 已用约 1341 M
 已按批准方案回滚 Caddy 到原 SHA-256 `802503ca76f80399f1d5daac930e0fc95a3eb3a2c4bab4d397b9d814ed7ed9de`，运行配置与磁盘一致，所有公网基线探针、证书、CodeG PID 与部署前一致。只停止本次已记录的 SSH/Bridge PID。原件保存在 VPS `/root/oraculum-backups/20261021T153746Z/`（0700，文件0600），未改变 SSH 身份、证书、防火墙或其他服务。
 
 最小修复仅将 WebSocket 插件注册移到安全拒绝钩子之前，使插件的 `onResponse` 正确关闭被拒绝的升级连接；不放宽任何 Host/Origin/认证限制，不改路由方案。新增真实 TCP 回归覆盖错误 Origin、缺少转发 TLS、非规范路径、远程路径外访问：旧代码复现连接不关闭，修复后关闭且不调用 Harness。`pnpm check`、56/56 tests、Web build 通过。公网重新验收结果另见本轮收尾报告；此修复记录本身不等于公网验收通过。
+
+本轮最终受控部署、真实公网验收、回滚记录与用户修订的延期范围见 [PHASE_2_CLOSEOUT.md](PHASE_2_CLOSEOUT.md)。历史段落中的“公网尚未获批／Android公网硬门槛”已由该报告及最新Notion决定替代；DSH已登录客户端人工回归状态仍单独列出。
