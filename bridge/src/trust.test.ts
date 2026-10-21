@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { EventEmitter, once } from 'node:events';
 import { request as httpRequest } from 'node:http';
+import { createConnection } from 'node:net';
 import { TrustStore } from './trust-store';
 import { createServer } from './server';
 import type { BridgeService } from './service';
@@ -82,6 +83,30 @@ async function fixture(remoteBasePath = '/') {
   return { app, trust, service, headers, pair };
 }
 describe('HTTP and WebSocket authentication boundary', () => {
+  it('closes real upgrade sockets rejected before authentication so proxies cannot pool unusable connections', async () => {
+    const { app, service } = await fixture('/console/');
+    app.server.on('connection', socket => { cleanups.push(() => { socket.destroy(); }); });
+    const address = await app.listen({ host: '127.0.0.1', port: 0 });
+    for (const [path, extra, status] of [
+      ['/console/ws', 'Origin: https://foreign.invalid\r\nX-Forwarded-Proto: https\r\n', 403],
+      ['/console/ws', 'Origin: https://oraculum.example\r\n', 403],
+      ['/console/../ws', 'X-Forwarded-Proto: https\r\n', 400],
+      ['/ws', 'X-Forwarded-Proto: https\r\n', 404],
+    ] as const) {
+      const response = await new Promise<string>((resolve, reject) => {
+        const socket = createConnection(Number(new URL(address).port), '127.0.0.1');
+        let received = '';
+        socket.setTimeout(1000, () => { socket.destroy(); reject(new Error('Rejected upgrade left an unusable connection open')); });
+        socket.on('error', reject);
+        socket.on('data', bytes => { received += bytes.toString(); });
+        socket.on('close', () => resolve(received));
+        socket.on('connect', () => socket.write(`GET ${path} HTTP/1.1\r\nHost: oraculum.example\r\n${extra}Connection: Upgrade\r\nUpgrade: websocket\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n`));
+      });
+      expect(response).toMatch(new RegExp(`^HTTP/1.1 ${status} `));
+    }
+    expect(service.dispatch).not.toHaveBeenCalled();
+    expect(service.listenerCount('event')).toBe(0);
+  });
   it('fails closed if no trust store was configured', async () => {
     const service = new EventEmitter() as BridgeService;
     await expect(createServer(service, 17864, '/missing')).rejects.toThrow('trust is required');

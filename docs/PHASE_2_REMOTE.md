@@ -206,3 +206,11 @@ DSH 当时 load 5.53/5.40/5.33，可用内存约 435 MiB，swap 已用约 1341 M
 | remote-debug.apk | `70a6e1580670fc99f3dd4fdf264362896f856b943869d92ae5083d2f717e2024` |
 
 本步按测试→Conventional Commit→安全合并 main→正常 push 执行，完整 Git hash 及 push 核验写回原 Task。原工作区未提交 AGENTS 保留；当前工作区 AGENTS 最小补充产品／部署边界。Phase 2 保持 In progress。
+
+## 公网预验收发现的升级连接缺陷与受控回滚（2026-10-21）
+
+用户已批准 `PHASE_2_DEPLOYMENT_GATE.md` 限定部署，并明确延期 Android 公网真机验收。首次按原候选部署后，公网负向 WSS 检查发现：非法 Origin 被早期 `onRequest` 拒绝时，WebSocket 插件尚未标记升级请求，拒绝响应留下不可再处理 HTTP 的 keep-alive 连接。Caddy 复用该上游连接会超时；仅修改测试客户端连接池不能解决。此前三次完整取证均在模型调用前失败，不能算通过。
+
+已按批准方案回滚 Caddy 到原 SHA-256 `802503ca76f80399f1d5daac930e0fc95a3eb3a2c4bab4d397b9d814ed7ed9de`，运行配置与磁盘一致，所有公网基线探针、证书、CodeG PID 与部署前一致。只停止本次已记录的 SSH/Bridge PID。原件保存在 VPS `/root/oraculum-backups/20261021T153746Z/`（0700，文件0600），未改变 SSH 身份、证书、防火墙或其他服务。
+
+最小修复仅将 WebSocket 插件注册移到安全拒绝钩子之前，使插件的 `onResponse` 正确关闭被拒绝的升级连接；不放宽任何 Host/Origin/认证限制，不改路由方案。新增真实 TCP 回归覆盖错误 Origin、缺少转发 TLS、非规范路径、远程路径外访问：旧代码复现连接不关闭，修复后关闭且不调用 Harness。`pnpm check`、56/56 tests、Web build 通过。公网重新验收结果另见本轮收尾报告；此修复记录本身不等于公网验收通过。

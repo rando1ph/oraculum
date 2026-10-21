@@ -46,6 +46,9 @@ export async function createServer(service: BridgeService, port: number, webRoot
     closing = true;
     for (const cleanup of connections) cleanup();
   });
+  // Mark upgraded requests before any rejecting hook. The plugin's onResponse
+  // must close rejected upgrade sockets; they cannot serve pooled HTTP traffic.
+  await app.register(websocket, { options: { maxPayload: 64 * 1024 } });
   app.addHook('onRequest', async (request, reply) => {
     const source = requestOrigin(request.headers);
     const isRemote = !!remote && request.headers.host === remote.host;
@@ -75,7 +78,6 @@ export async function createServer(service: BridgeService, port: number, webRoot
     reply.header('X-Content-Type-Options', 'nosniff');
     reply.header('Cache-Control', 'no-store');
   });
-  await app.register(websocket, { options: { maxPayload: 64 * 1024 } });
   let failures = 0;
   let windowStart = Date.now();
   for (const base of new Set(['/', ...(remote ? [remoteBase] : [])])) {
