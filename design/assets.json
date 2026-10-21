@@ -1,0 +1,68 @@
+{
+  "specification": "https://app.notion.com/p/3ff5421e690b81bdae14c0675f0b3acf",
+  "section": "6.5",
+  "approved": "2026-10-21",
+  "note": "Unmodified approved reference originals. Reference screen contents are illustrative; product data comes from Codex. Brand originals are imported directly by Vite.",
+  "assets": [
+    {
+      "file": "01_Brand_OracleEye_Full_Logo.png",
+      "source": "https://drive.google.com/file/d/1sfWD_rbhOwtTIkxk9YwkkLinsHZ3L4Xp/view",
+      "sha256": "26f5c5d065a9bed3e1da9df2b9ae8c1cd285e9980d64f57f75286a85ec04d159",
+      "bytes": 848850
+    },
+    {
+      "file": "02_Brand_OracleEye_App_Icon.png",
+      "source": "https://drive.google.com/file/d/1ikoS_faKvg1ppDg11RM86gcMgSxMOQnG/view",
+      "sha256": "2e1fd181f14e0f69d492467841e554a049f5c251915be6f7fd78d7a7ba1c2f54",
+      "bytes": 1029244
+    },
+    {
+      "file": "03_Brand_OracleEye_Simplified_Icon.png",
+      "source": "https://drive.google.com/file/d/1CzhdsPYQUk0xpnQPKTcmJm5mdzX7XxNP/view",
+      "sha256": "ad27fa54919526a4bf00c28e630ccf183b3486b096209842af10dab9e2eb3630",
+      "bytes": 859283
+    },
+    {
+      "file": "04_Ubuntu_Desktop_Main_Workspace.png",
+      "source": "https://drive.google.com/file/d/1By5zRN6jt4K5RlJon_vCshB8mI_lrIrY/view",
+      "sha256": "90dd3e73b107eaaa68d263283c5a9fde8c10ea70dbbec86139fb9790f71a5a59",
+      "bytes": 1627046
+    },
+    {
+      "file": "05_Android_Conversation_Main_v0.2.png",
+      "source": "https://drive.google.com/file/d/1nrYIgkC00Ghc_TdZv7PrmwNPA6xuSYcI/view",
+      "sha256": "f09a3cc6e756f938e68f4bc9a3181fc0bc1b58746190fa2701fa78a36e91f127",
+      "bytes": 1740583
+    },
+    {
+      "file": "06_Android_Operation_Command_Approval.png",
+      "source": "https://drive.google.com/file/d/1M7fgZ1nOzw0ph4VdWcvDyFOSSI2hFtW_/view",
+      "sha256": "76b60c796c0b0c9b47f184e82a4a90dc6006a63ed20596dcea2f546897d07aaf",
+      "bytes": 1510958
+    },
+    {
+      "file": "07_Android_Operation_File_Diff.png",
+      "source": "https://drive.google.com/file/d/1UiJXcpvSxF3HlE4vTWUh03UulVYXH0nV/view",
+      "sha256": "b086201807c802e722f82912ec829a4aa94f56cfd23498b7bd0566404b8ccded",
+      "bytes": 1564710
+    },
+    {
+      "file": "08_Android_Navigation_Session_Drawer.png",
+      "source": "https://drive.google.com/file/d/1AfBwc3rHlvN2An-Vnr74TK9UEFBVYZbO/view",
+      "sha256": "20c0447afdb0e4d57c6a40157efe77a61ade1b313b1d8b558607bbb526c04427",
+      "bytes": 1386903
+    },
+    {
+      "file": "09_Android_Composer_Keyboard_Expanded.png",
+      "source": "https://drive.google.com/file/d/1ZP8xJso3UGQ-NXGv1QWMQbuoi5rqYtU0/view",
+      "sha256": "e6b4994364ad1be8821e46c74fda19809cf90b5233a6f47f991acd296638fbf9",
+      "bytes": 1643650
+    },
+    {
+      "file": "10_Android_Settings_Model_Reasoning.png",
+      "source": "https://drive.google.com/file/d/1YsJLu823xjxYu3KmWcGwZpWQapMygFNA/view",
+      "sha256": "41fc912c2abf414798487f766fe8d520cf814084018a68836f65e45a039ad55f",
+      "bytes": 171741
+    }
+  ]
+}
