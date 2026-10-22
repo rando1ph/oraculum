@@ -40,3 +40,17 @@ android {
     }
     kotlinOptions { jvmTarget = "17" }
 }
+
+dependencies {
+    implementation("androidx.webkit:webkit:1.12.1")
+    testImplementation("junit:junit:4.13.2")
+}
+
+// Reuse the approved original without duplicating or redesigning the brand asset.
+val prepareBrandIcon by tasks.registering(Copy::class) {
+    from(rootProject.file("../../design/reference/02_Brand_OracleEye_App_Icon.png"))
+    into(layout.buildDirectory.dir("generated/brand/res/drawable-nodpi"))
+    rename { "oracle_eye.png" }
+}
+android.sourceSets["main"].res.srcDir(layout.buildDirectory.dir("generated/brand/res"))
+tasks.named("preBuild").configure { dependsOn(prepareBrandIcon) }
