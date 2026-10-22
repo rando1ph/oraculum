@@ -29,7 +29,12 @@
     "test:phase3:mobile": "tsx scripts/phase3-mobile-contract.ts",
     "test:phase3:android": "tsx scripts/phase3-android.ts",
     "test:themes:ui": "tsx scripts/themes-ui-contract.ts",
-    "test:themes:live": "tsx scripts/themes-live.ts"
+    "test:themes:live": "tsx scripts/themes-live.ts",
+    "test:native:config": "tsx scripts/native-config.ts",
+    "test:native:elicitation": "tsx scripts/native-elicitation.ts",
+    "test:native:capabilities": "tsx scripts/native-capabilities-live.ts",
+    "test:native:ui": "tsx scripts/native-requests-ui.ts",
+    "test:native:devices": "tsx scripts/native-requests-live.ts"
   },
   "devDependencies": {
     "@types/node": "24.19.2",
