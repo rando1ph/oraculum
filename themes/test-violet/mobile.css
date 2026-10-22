@@ -1,0 +1,3 @@
+[data-theme-slot="content"] { padding-inline: 14px; }
+[data-theme-slot="conversation"] { border-radius: 0px; }
+[data-theme-slot="navigation"] { border-radius: 0px; }

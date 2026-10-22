@@ -1,0 +1,24 @@
+/* Acceptance fixture, not a second official visual design. */
+:root {
+  --background: #100c18;
+  --surface: #191223;
+  --surface-raised: #241a32;
+  --surface-hover: #30213e;
+  --foreground: #f0e7ff;
+  --muted: #bca8ce;
+  --subtle: #9680ac;
+  --line: #49345d;
+  --line-bright: #796090;
+  --accent: #dbb3ff;
+  --accent-strong: #c78aff;
+  --accent-soft: #30213e;
+  --radius: 16px;
+  --font-sans: "Noto Sans CJK SC", system-ui, sans-serif;
+}
+[data-theme-slot="navigation"] { background-color: var(--surface); border-radius: 18px; }
+[data-theme-slot="header"] { background-color: var(--surface-raised); }
+[data-theme-slot="conversation"] { border-radius: 18px; }
+[data-theme-slot="user-message"] { background-color: var(--surface-raised); border-radius: 18px; }
+[data-theme-slot="tool"] { background-color: var(--surface); border-radius: 14px; margin-block: 12px; }
+[data-theme-slot="content"] { max-width: 900px; padding-inline: 24px; }
+[data-theme-slot="decoration"] { background-image: linear-gradient(145deg, #572880, #100c18); }

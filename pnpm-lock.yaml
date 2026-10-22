@@ -87,6 +87,9 @@ importers:
       fastify:
         specifier: 5.12.7
         version: 5.12.7
+      postcss:
+        specifier: 8.5.31
+        version: 8.5.31
       ws:
         specifier: 8.22.0
         version: 8.22.0

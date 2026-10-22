@@ -6,9 +6,10 @@ import { existsSync } from 'node:fs';
 import type { BridgeService } from './service';
 import type { BridgeEvent, WireMessage } from '../../packages/shared/protocol';
 import type { TrustStore } from './trust-store';
+import type { Themes } from './themes';
 
 export async function createServer(service: BridgeService, port: number, webRoot: string,
-  options: { trust?: TrustStore; remoteOrigin?: string; remoteBasePath?: string; testOnlyUnauthenticated?: boolean } = {}) {
+  options: { trust?: TrustStore; themes?: Themes; remoteOrigin?: string; remoteBasePath?: string; testOnlyUnauthenticated?: boolean } = {}) {
   if (!options.trust && !options.testOnlyUnauthenticated) throw new Error('Device trust is required; unauthenticated mode is only for explicit loopback test fixtures');
   const app = Fastify({ logger: false, bodyLimit: 64 * 1024 });
   const host = `127.0.0.1:${port}`;
@@ -113,6 +114,36 @@ export async function createServer(service: BridgeService, port: number, webRoot
       reply.header('Set-Cookie', cookies(source, '', 0));
       return { loggedOut: true };
     });
+    // Theme endpoints share the exact device trust and entry scope of the WS.
+    // Installation takes a candidate directory name, never an arbitrary path.
+    const themeAuth = async (request: FastifyRequest, reply: FastifyReply) => {
+      const source = requestOrigin(request.headers);
+      if (trust && !trust.authenticate(tokenFrom(request.headers, source), scope(source))) return reply.code(401).send({ error: 'Device authentication required' });
+      if (request.method !== 'GET' && request.headers.origin !== source) return reply.code(403).send({ error: 'Origin required' });
+    };
+    const themeRoute = { config, preValidation: themeAuth };
+    app.get(base + 'themes', themeRoute, async (_request, reply) => {
+      try { return options.themes ? await options.themes.catalog() : { installed: [], sources: [] }; }
+      catch (error) { return reply.code(400).send({ error: options.themes!.message(error) }); }
+    });
+    app.post(base + 'themes/install', themeRoute, async (request, reply) => {
+      if (!options.themes) return reply.code(503).send({ error: '主题存储未配置' });
+      try { return await options.themes.install((request.body as { directory?: unknown } | null)?.directory); }
+      catch (error) { return reply.code(400).send({ error: options.themes.message(error) }); }
+    });
+    app.get<{ Params: { id: string } }>(base + 'themes/:id/bundle', themeRoute, async (request, reply) => {
+      if (!options.themes) return reply.code(404).send({ error: '主题不存在' });
+      try { return await options.themes.bundle(request.params.id, base); }
+      catch (error) { return reply.code(400).send({ error: options.themes.message(error) }); }
+    });
+    const themeAsset = async (request: FastifyRequest<{ Params: { id: string; '*': string } }>, reply: FastifyReply) => {
+      if (!options.themes) return reply.code(404).send({ error: '主题不存在' });
+      try {
+        const asset = await options.themes.asset(request.params.id, 'assets/' + request.params['*']);
+        return reply.type(asset.type).send(asset.bytes);
+      } catch (error) { return reply.code(400).send({ error: options.themes.message(error) }); }
+    };
+    app.get<{ Params: { id: string; '*': string } }>(base + 'themes/:id/assets/*', themeRoute, themeAsset);
     app.get(base + 'ws', {
       config,
       websocket: true,

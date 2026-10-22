@@ -8,6 +8,7 @@ https://app.notion.com/p/3ff5421e690b81bdae14c0675f0b3acf
 
 - Read the Notion Project and relevant Task before starting substantive work.
 - Notion takes precedence over historical conversations and local documentation for project decisions.
+- For theme development, read `docs/THEMING.md` (Theme API v1 authoring and safety contract).
 - If Notion is inaccessible, report the limitation. Do not invent requirements or alter established architectural decisions.
 
 ## Core Principles

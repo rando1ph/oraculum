@@ -7,6 +7,7 @@ import { createServer } from './server';
 import { TrustStore, defaultStateDir } from './trust-store';
 import { ReceiptStore } from './receipts';
 import { ProjectDirectories } from './projects';
+import { Themes } from './themes';
 
 const root = join(homedir(), '.cache/oraculum/workspaces');
 await mkdir(root, { recursive: true, mode: 0o700 });
@@ -28,7 +29,7 @@ try {
   const port = Number(process.env.ORACULUM_PORT ?? 17860);
   if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error('Invalid port');
   const app = await createServer(service, port, resolve('apps/web/dist'), {
-    trust, remoteOrigin: process.env.ORACULUM_REMOTE_ORIGIN,
+    trust, themes: new Themes(), remoteOrigin: process.env.ORACULUM_REMOTE_ORIGIN,
     remoteBasePath: process.env.ORACULUM_REMOTE_BASE_PATH,
   });
   await app.listen({ host: '127.0.0.1', port });
