@@ -22,7 +22,8 @@ export type BridgeEvent =
   | { type: 'event'; event: ServerNotification }
   | { type: 'approval'; request: Approval }
   | { type: 'notice'; threadId?: string; message: string }
-  | { type: 'unavailable'; message: string };
+  | { type: 'unavailable'; message: string }
+  | { type: 'projectsChanged' };
 export type Snapshot = {
   thread: Thread;
   pending: Approval[];
@@ -47,5 +48,11 @@ export type LocalConfig = {
 };
 export type ProjectList = {
   root: string;
-  projects: { name: string; cwd: string }[];
+  projects: { name: string; cwd: string; available?: boolean }[];
+};
+
+export type DirectoryListing = {
+  roots: string[]; cwd: string; parent: string | null;
+  directories: { name: string; cwd: string }[];
+  nextCursor: string | null; canRegister: boolean;
 };

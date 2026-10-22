@@ -82,6 +82,14 @@ export class BridgeService extends EventEmitter {
     if (method === 'bridge/projects') {
       return this.projects?.list() ?? { root: dirname(this.cwd), projects: [{ cwd: this.cwd, name: basename(this.cwd) }] };
     }
+    if (['bridge/browse', 'bridge/registerProject', 'bridge/unregisterProject'].includes(method)) {
+      if (!this.projects) throw new Error('Host directory browsing is unavailable');
+      if (method === 'bridge/browse') return this.projects.browse(params.path, params.cursor);
+      const result = method === 'bridge/registerProject'
+        ? await this.projects.register(params.path) : await this.projects.unregister(params.cwd);
+      this.emit('event', { type: 'projectsChanged' } satisfies BridgeEvent);
+      return result;
+    }
     if (method === 'bridge/config') {
       const cwd = await this.projectCwd(params.cwd);
       const { config } = await this.codex.request<ConfigReadResponse>('config/read', { cwd, includeLayers: false });
@@ -221,10 +229,12 @@ export class BridgeService extends EventEmitter {
       const { thread } = await this.codex.request<ThreadReadResponse>('thread/read', { threadId });
       if (thread.cwd !== cwd) throw new Error('Thread is outside this workspace');
       try {
-        await this.codex.request<ThreadResumeResponse>('thread/resume', {
+        if (this.projects) await this.projects.resolve(cwd);
+        const resumed = await this.codex.request<ThreadResumeResponse>('thread/resume', {
           threadId, cwd, sandbox: 'workspace-write', approvalPolicy: 'on-request',
           approvalsReviewer: 'user', excludeTurns: true,
         });
+        if (resumed.thread.cwd !== cwd) throw new Error('Native thread resumed outside the selected project');
         this.loaded.add(threadId);
       } catch (error) { this.loaded.delete(threadId); throw error; }
     })();

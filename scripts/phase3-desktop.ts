@@ -1,3 +1,4 @@
+import { DatabaseSync } from 'node:sqlite';
 // Opt-in acceptance using the real Ubuntu Electron window and official Codex.
 // Exactly two controlled model turns; generated fixtures/evidence stay outside Git.
 import { _electron as electron, expect, type ElectronApplication, type Page } from '@playwright/test';
@@ -112,7 +113,9 @@ try {
     }
     return nativeRequest<T>(method, params);
   };
-  service = new BridgeService(codex, cwd, undefined, new ProjectDirectories(projectsRoot, cwd));
+  const projects = new ProjectDirectories(projectsRoot, cwd, new DatabaseSync(':memory:'));
+  await projects.register(cwd); await projects.register(secondProject);
+  service = new BridgeService(codex, cwd, undefined, projects);
   service.on('event', (message: BridgeEvent) => {
     if (message.type === 'approval') pending = message.request;
     if (message.type !== 'event') return;

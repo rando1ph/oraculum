@@ -99,7 +99,7 @@ describe('native session and settings', () => {
   });
   it('rechecks cwd before native resume and never accepts history or config from renderer', async () => {
     const { service, codex } = fixture();
-    codex.request.mockImplementation(async method => method === 'thread/read'
+    codex.request.mockImplementation(async method => method === 'thread/read' || method === 'thread/resume'
       ? { thread: { id: 'thread-1', cwd: '/controlled-workspace', status: { type: 'idle' }, turns: [] } }
       : method === 'thread/turns/list' ? { data: [], nextCursor: null } : {});
     await service.dispatch('bridge/subscribe', { threadId: 'thread-1', history: [], cwd: '/private', config: { sandbox_mode: 'danger-full-access' } });

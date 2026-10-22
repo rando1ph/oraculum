@@ -1,3 +1,4 @@
+import { DatabaseSync } from 'node:sqlite';
 // Reopen an existing real acceptance thread for visual review. No model turns.
 // Usage: pnpm exec tsx scripts/phase3-desktop-review.ts <acceptance.json>
 import { _electron as electron, expect, type ElectronApplication, type Page } from '@playwright/test';
@@ -81,7 +82,9 @@ try {
     }
     return nativeRequest<T>(method, params);
   };
-  const service = new BridgeService(codex, original.cwd, undefined, new ProjectDirectories(dirname(original.cwd), original.cwd));
+  const projects = new ProjectDirectories(dirname(original.cwd), original.cwd, new DatabaseSync(':memory:'));
+  await projects.register(original.cwd);
+  const service = new BridgeService(codex, original.cwd, undefined, projects);
   await codex.initialize();
   server = await createServer(service, port, resolve('apps/web/dist'), { testOnlyUnauthenticated: true });
   await server.listen({ host: '127.0.0.1', port });

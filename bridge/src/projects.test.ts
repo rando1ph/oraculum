@@ -19,13 +19,14 @@ async function fixture() {
   const second = join(root, 'beta');
   const outside = join(temp, 'private');
   await Promise.all([first, second, outside].map(path => mkdir(path, { recursive: true })));
-  const projects = new ProjectDirectories(root, first);
   const codex = Object.assign(new EventEmitter(), {
     request: vi.fn(async (_method: string, _params: Record<string, unknown>): Promise<any> => ({})),
     send: vi.fn(),
   });
   const db = new DatabaseSync(':memory:');
   cleanup.push(() => db.close());
+  const projects = new ProjectDirectories(root, first, db);
+  await projects.register(first); await projects.register(second);
   const receipts = new ReceiptStore(db);
   const service = new BridgeService({
     on: codex.on.bind(codex), send: codex.send,
@@ -40,8 +41,8 @@ describe('managed project directory boundary', () => {
     await symlink(first, join(root, 'alias'));
     await symlink(outside, join(root, 'escape'));
     await writeFile(join(root, 'not-a-directory'), 'private');
-    expect(await projects.list()).toEqual({ root, projects: [{ cwd: first, name: 'alpha' }, { cwd: second, name: 'beta' }] });
-    expect(await projects.resolve(join(root, 'alias'))).toBe(first);
+    expect(await projects.list()).toEqual({ root, projects: [{ cwd: first, name: 'alpha', available: true }, { cwd: second, name: 'beta', available: true }] });
+    expect(await projects.register(join(root, 'alias'))).toEqual({ cwd: first, name: 'alpha' });
     await expect(projects.resolve(join(root, 'escape'))).rejects.toThrow('escapes');
     await expect(projects.resolve(join(root, 'not-a-directory'))).rejects.toThrow('directory');
     await expect(projects.resolve(outside)).rejects.toThrow('outside');
@@ -122,4 +123,33 @@ describe('managed project directory boundary', () => {
     await service.dispatch('bridge/approve', { threadId: 'beta-session', requestId: 'pending', bridgeToken, decision: 'decline' });
     expect(codex.send).toHaveBeenCalledWith({ id: 'pending', result: { decision: 'decline' } });
   });
+});
+
+it('revokes directory operations while keeping observed Stop and Decline available', async () => {
+  const { second, projects, service, codex } = await fixture();
+  codex.request.mockResolvedValue({ thread: { id: 'removed-project', cwd: second } });
+  await service.dispatch('thread/start', { cwd: second });
+  codex.emit('message', { method: 'turn/started', params: { threadId: 'removed-project', turn: { id: 'active', status: 'inProgress' } } });
+  codex.emit('message', { id: 'pending', method: 'item/commandExecution/requestApproval', params: { threadId: 'removed-project', turnId: 'active' } });
+  const bridgeToken = service.pending.get('pending')!.bridgeToken;
+  await projects.unregister(second);
+  codex.request.mockClear();
+  for (const method of ['thread/list', 'thread/start', 'bridge/config', 'bridge/subscribe', 'bridge/history', 'turn/start']) {
+    await expect(service.dispatch(method, { cwd: second, threadId: 'removed-project', text: 'blocked' })).rejects.toThrow('registered');
+  }
+  await expect(service.dispatch('bridge/approve', { threadId: 'removed-project', requestId: 'pending', bridgeToken, decision: 'accept' })).rejects.toThrow('registered');
+  expect(codex.request).not.toHaveBeenCalled();
+  await service.dispatch('turn/interrupt', { threadId: 'removed-project', turnId: 'active' });
+  await service.dispatch('bridge/approve', { threadId: 'removed-project', requestId: 'pending', bridgeToken, decision: 'decline' });
+  expect(codex.send).toHaveBeenCalledWith({ id: 'pending', result: { decision: 'decline' } });
+});
+
+it('rejects a native resume response that changes project', async () => {
+  const { second, outside, codex, service } = await fixture();
+  const thread = { id: 'resume-mismatch', cwd: second, status: { type: 'idle' }, turns: [] };
+  codex.request.mockImplementation(async method => method === 'thread/list' ? { data: [thread], nextCursor: null }
+    : { thread: { ...thread, cwd: method === 'thread/resume' ? outside : second } });
+  await service.dispatch('thread/list', { cwd: second });
+  await expect(service.dispatch('bridge/subscribe', { threadId: thread.id })).rejects.toThrow('outside');
+  await expect(service.dispatch('turn/start', { threadId: thread.id, text: 'blocked' })).rejects.toThrow('resume');
 });

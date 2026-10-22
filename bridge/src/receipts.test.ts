@@ -31,7 +31,7 @@ function fixture(receipts: ReceiptStore) {
   const codex = Object.assign(new EventEmitter(), {
     request: vi.fn(async (method: string): Promise<any> => {
       if (method === 'turn/start') return start();
-      if (method === 'thread/start' || method === 'thread/read') return { thread };
+      if (method === 'thread/start' || method === 'thread/read' || method === 'thread/resume') return { thread };
       if (method === 'thread/turns/list') return { data: turns, nextCursor: null };
       if (method === 'thread/items/list') return { data: [], nextCursor: null };
       return {};
