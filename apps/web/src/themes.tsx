@@ -4,13 +4,16 @@ import { DEFAULT_THEME, defaultTheme, THEME_API, themeId, type ThemeBundle, type
 import { androidShell } from './mobile';
 
 const preferenceKey = `oraculum.theme:${appUrl('').pathname}`;
-const forcedDefault = new URL(location.href).searchParams.get('theme') === 'default';
+let forcedDefault = new URL(location.href).searchParams.get('theme') === 'default';
 if (forcedDefault) {
   try { localStorage.setItem(preferenceKey, DEFAULT_THEME); } catch { /* The current launch still bypasses the saved theme. */ }
   const url = new URL(location.href); url.searchParams.delete('theme'); history.replaceState(null, '', url);
 }
 const savedTheme = () => {
-  try { const id = localStorage.getItem(preferenceKey); return !forcedDefault && id && themeId.test(id) ? id : DEFAULT_THEME; }
+  // Consume the native recovery intent once. A later explicit selection must
+  // survive an authentication remount within this same document.
+  if (forcedDefault) { forcedDefault = false; return DEFAULT_THEME; }
+  try { const id = localStorage.getItem(preferenceKey); return id && themeId.test(id) ? id : DEFAULT_THEME; }
   catch { return DEFAULT_THEME; }
 };
 async function request<T>(path: string, body?: object): Promise<T> {

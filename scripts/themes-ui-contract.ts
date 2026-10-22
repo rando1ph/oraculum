@@ -127,6 +127,13 @@ try {
   await ready(desktop);
   await expect(desktop.locator('.app-shell')).toHaveAttribute('data-theme-id', 'oracle-eye'); await expect(desktop.getByLabel('消息', { exact: true })).toBeVisible();
   await record('native Electron menu recovers a completely hidden page');
+  await select(desktop, 'test-violet');
+  await desktop.evaluate(() => window.dispatchEvent(new Event('oraculum-auth-required')));
+  await expect(desktop.getByRole('heading', { name: '信任此设备', exact: true })).toBeVisible();
+  await expect(desktop.locator('style[data-oraculum-theme]')).toHaveCount(0);
+  await desktop.getByRole('button', { name: '重新检查连接', exact: true }).click(); await ready(desktop);
+  await expect(desktop.locator('.app-shell')).toHaveAttribute('data-theme-id', 'test-violet');
+  await record('new selection after native recovery survives auth remount; pairing stays unthemed');
   expect(calls).not.toContain('turn/start'); expect(errors).toEqual([]);
 } catch (error) { console.error(error); process.exitCode = 1; }
 finally {
