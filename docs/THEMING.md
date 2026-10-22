@@ -94,3 +94,5 @@ v1 保留已批准的 OLED 宿主 chrome：表面相对亮度不超过 0.06；fo
 至少检查：375/390px、实际 Android 竖/横屏及键盘、字号放大、长消息、Diff、旧主题未知的新按钮；正常 Send/Stop/Allow/Decline 可见且可点；双端独立选择、刷新/进程重启、缺失/损坏/不兼容和恶意覆盖拒绝；最后用原生入口在页面完全被遮挡时恢复默认。
 
 `themes/test-violet/` 是唯一验收测试主题，`themes/template/` 是最小作者模板；均不自动安装。真实设备证据与限制写回 Phase 3 Task，不能把模拟协议或参考图当作实机成果。
+
+`pnpm test:themes:live` 使用当前 USB HONOR 的本机入口、隔离认证 Bridge 和两轮受控官方 Codex 测试（无副作用 Allow/Decline、Stop）。现有 17860 服务存在时拒绝运行；原设备登录/存储在私有证据目录备份并恢复。传入已有 `.local/evidence/phase3/themes-live/.../acceptance.json` 可复查同一真实会话、主题/恢复和截图，禁止新建会话或模型轮次。发生清理失败须保留原报告/私有备份，核验实际状态后再报告恢复，不能删掉失败证据。

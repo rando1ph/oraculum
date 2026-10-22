@@ -28,7 +28,8 @@
     "test:phase3:review": "tsx scripts/phase3-desktop-review.ts",
     "test:phase3:mobile": "tsx scripts/phase3-mobile-contract.ts",
     "test:phase3:android": "tsx scripts/phase3-android.ts",
-    "test:themes:ui": "tsx scripts/themes-ui-contract.ts"
+    "test:themes:ui": "tsx scripts/themes-ui-contract.ts",
+    "test:themes:live": "tsx scripts/themes-live.ts"
   },
   "devDependencies": {
     "@types/node": "24.19.2",
