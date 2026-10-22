@@ -28,12 +28,21 @@ app.whenReady().then(async () => {
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   // A native menu/accelerator cannot be covered by theme CSS. Reload only the
   // configured trusted entry; renderer receives no IPC or OS capability.
+  const restoreDefaultTheme = () => {
+    const recovery = new URL(url.href); recovery.searchParams.set('theme', 'default');
+    void window.loadURL(recovery.href);
+  };
+  // Shift+0 produces ')' on common Linux keyboard layouts. Match the physical
+  // key in the native process; menu accelerator matching alone can miss it.
+  window.webContents.on('before-input-event', (event, input) => {
+    if (input.type === 'keyDown' && !input.isAutoRepeat && input.control && input.shift && !input.alt && !input.meta && input.code === 'Digit0') {
+      event.preventDefault();
+      restoreDefaultTheme();
+    }
+  });
   Menu.setApplicationMenu(Menu.buildFromTemplate([
     { label: '神谕', submenu: [
-      { id: 'restore-default-theme', label: '恢复默认主题', accelerator: 'CommandOrControl+Shift+0', click: () => {
-        const recovery = new URL(url.href); recovery.searchParams.set('theme', 'default');
-        void window.loadURL(recovery.href);
-      } },
+      { id: 'restore-default-theme', label: '恢复默认主题', accelerator: 'CommandOrControl+Shift+0', click: restoreDefaultTheme },
       { type: 'separator' }, { role: 'quit', label: '退出' },
     ] },
     { role: 'editMenu', label: '编辑' }, { role: 'viewMenu', label: '视图' },

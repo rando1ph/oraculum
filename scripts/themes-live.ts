@@ -1,5 +1,5 @@
 // Opt-in actual HONOR USB WebView + Ubuntu Electron + official Codex.
-// Isolated authenticated Bridge; two bounded turns (harmless approvals + stop).
+// Isolated authenticated Bridge; two bounded turns (fixture Diff, harmless approvals + stop).
 // No production server, user project, remote deployment or global Codex edits.
 import { _electron as electron, chromium, expect, type Browser, type ElectronApplication, type Page, type Cookie } from '@playwright/test';
 import { createRequire } from 'node:module';
@@ -48,9 +48,9 @@ const evidence: Record<string, any> = { real: true, simulated: false, date: new 
   transport: 'HONOR Android 15 USB ADB reverse + Ubuntu Electron, isolated authenticated Bridge, official Codex App Server',
   checks: [], screenshots: [], requests: [], approvals: [], turns: [], items: [], cleanupErrors: [] };
 const prompt = [
-  '这是 Oraculum Theme API v1 真实设备验收。仅执行下列两个无副作用命令，不读写文件、不使用 Skills/MCP/web/子代理，不执行其他命令。',
+  '这是 Oraculum Trusted CSS 真实设备验收。工作目录是专用空测试目录。先仅用 apply_patch 创建 theme-proof.txt，内容为两行 Theme API v1 和 Trusted CSS。只允许写此文件，不读其他文件。不使用 Skills/MCP/web/子代理。然后仅执行以下两个无副作用命令，不执行其他命令。',
   '依次请求独立 shell 审批 sandbox_permissions=require_escalated：准确命令 `printf ORACULUM_3C_ALLOW`，justification="Oraculum theme allow test"；然后准确命令 `printf ORACULUM_3C_DECLINE`，justification="Oraculum theme decline test"。第二条会被拒绝，不得重试或绕过。',
-  '结束时使用 Markdown 标题 `## 主题验收执行记录`，简洁报告实际允许和拒绝结果。不要声称界面验收通过。',
+  '结束时使用 Markdown 标题 `## 主题验收执行记录`，报告文件和允许/拒绝结果，再写 12 段每段两句的中文 CSS 主题使用建议，供真实滚动检查。不要声称界面验收通过。',
 ].join('\n');
 const stopPrompt = 'Controlled Oraculum theme stop test. Only run `sleep 30` in cwd, then say done. Do not read/write files, request approvals, or use Skills/MCP/web/subagents.';
 const nativeRequest = codex.request.bind(codex);
@@ -76,6 +76,7 @@ let forwarded: string | undefined, savedCookies: Cookie[] | undefined;
 let savedStorage: { local: Record<string, string>; session: Record<string, string> } | undefined;
 const errors: string[] = [];
 let step = 'setup', authenticated = false;
+let restoreFixture: (() => Promise<void>) | undefined;
 const ready = (page: Page) => expect(page.getByRole('status', { includeHidden: true })).toContainText('状态已查询', { timeout: 30_000 });
 const currentTheme = (page: Page, id: string) => expect(page.locator('.app-shell')).toHaveAttribute('data-theme-id', id);
 async function attach() {
@@ -137,8 +138,8 @@ async function nativeRecoveryTap() {
 const require = createRequire(resolve('apps/desktop/package.json'));
 const env = Object.fromEntries(Object.entries(process.env).filter((e): e is [string, string] => e[1] !== undefined)); delete env.ELECTRON_RUN_AS_NODE;
 Object.assign(env, { ORACULUM_URL: origin, ORACULUM_USER_DATA_DIR: join(output, 'electron') });
-async function launchDesktop() {
-  app = await electron.launch({ executablePath: require('electron'), args: [resolve('apps/desktop/main.cjs')], env });
+async function launchDesktop(x11 = false) {
+  app = await electron.launch({ executablePath: require('electron'), args: [...(x11 ? ['--ozone-platform=x11'] : []), resolve('apps/desktop/main.cjs')], env });
   desktop = await app.firstWindow(); desktop.on('pageerror', e => errors.push(e.message));
 }
 try {
@@ -175,19 +176,23 @@ try {
   evidence.electron = await app!.evaluate(() => ({ electron: process.versions.electron, chromium: process.versions.chrome }));
   step = 'install and independent preferences';
   await settings(phone); await phone.getByText('从主机主题目录安装', { exact: true }).click();
-  if (!review) await phone.getByRole('button', { name: '安装 Violet · 验收测试', exact: true }).click();
+  for (const name of ['Violet · 验收测试', '香港雨夜 · CSS 验收', 'Minimal Light · CSS 验收']) {
+    const install = phone.getByRole('button', { name: `安装 ${name}`, exact: true });
+    if (await install.isEnabled()) await install.click();
+    await expect(phone.getByLabel('当前主题')).toBeEnabled();
+  }
   await expect(phone.getByLabel('当前主题')).toBeEnabled();
   await screenshot(phone, '01-android-install'); await closeSettings(phone);
   await select(desktop, 'test-violet'); await currentTheme(phone, 'oracle-eye'); await screenshot(desktop, '02-electron-violet');
   await app!.close(); await launchDesktop(); await ready(desktop); await currentTheme(desktop, 'test-violet'); await currentTheme(phone, 'oracle-eye');
-  await select(phone, 'test-violet'); await select(desktop, 'oracle-eye'); await screenshot(phone, '03-android-violet');
+  await select(phone, 'hong-kong-rain'); await select(desktop, 'minimal-light'); await screenshot(phone, '03-android-rain'); await screenshot(desktop, '03-electron-light');
   await settings(phone); await phone.locator('.theme-settings').scrollIntoViewIfNeeded(); await screenshot(phone, '04-android-theme-settings'); await closeSettings(phone);
   step = 'normal client process restarts';
-  await app!.close(); await launchDesktop(); await ready(desktop); await currentTheme(desktop, 'oracle-eye');
+  await app!.close(); await launchDesktop(); await ready(desktop); await currentTheme(desktop, 'minimal-light');
   adb('shell', 'input', 'keyevent', 'KEYCODE_HOME');
   await expect.poll(() => adb('shell', 'dumpsys window | grep mCurrentFocus=')).not.toContain('dev.oraculum.poc');
   adb('shell', 'am', 'force-stop', 'dev.oraculum.poc'); adb('shell', 'am', 'start', '-n', 'dev.oraculum.poc/.MainActivity');
-  await attach(); await ready(phone); await currentTheme(phone, 'test-violet');
+  await attach(); await ready(phone); await currentTheme(phone, 'hong-kong-rain');
   evidence.checks.push(review ? 'existing installed fixture retained without reinstallation' : 'actual Android GUI directory installation, no auto-apply', 'independent preferences across both client process restarts');
   step = 'native Codex approvals with themes';
   if (!review) { await drawer(); await phone.getByRole('button', { name: '新建会话', exact: true }).click(); await ready(phone); }
@@ -205,7 +210,8 @@ try {
     const request = pending!, command = request.method === 'item/commandExecution/requestApproval' ? request.params.command : '';
     expect([`printf ${marker}`, `/bin/bash -lc 'printf ${marker}'`, `/bin/bash -lc "printf ${marker}"`, `/bin/sh -lc 'printf ${marker}'`]).toContain(command);
     // Changing theme while a real approval is pending must preserve its identity.
-    await select(desktop, decision === 'accept' ? 'test-violet' : 'oracle-eye');
+    await select(desktop, decision === 'accept' ? 'hong-kong-rain' : 'minimal-light');
+    await select(phone, decision === 'accept' ? 'minimal-light' : 'hong-kong-rain');
     expect(service.pending.has(request.id)).toBe(true);
     await expect(desktop.getByRole('heading', { name: '需要审批', exact: true })).toBeVisible();
     const button = phone.getByRole('button', { name: label, exact: true }); await expect(button).toBeEnabled(); await button.scrollIntoViewIfNeeded();
@@ -223,7 +229,7 @@ try {
   await phone.getByLabel('消息', { exact: true }).fill(stopPrompt); await hideIme(); await phone.getByRole('button', { name: '发送', exact: true }).click();
   await expect(phone.getByTestId('turn-status')).toHaveText('执行中'); await phone.getByRole('button', { name: '停止', exact: true }).click();
   await expect(phone.getByTestId('last-turn-status')).toHaveText('interrupted', { timeout: 30_000 });
-  await phone.reload(); await ready(phone); await currentTheme(phone, 'test-violet');
+  await phone.reload(); await ready(phone); await currentTheme(phone, 'hong-kong-rain');
   const snapshot = await service.dispatch('bridge/subscribe', { threadId }) as Snapshot;
   expect(snapshot.receipts?.map(r => r.status).sort()).toEqual(['completed', 'interrupted']);
   expect(evidence.requests).toHaveLength(2); evidence.checks.push('official Codex send/allow/decline/stop under test theme; pending request survives theme switch; cross-device invalidation; completed/interrupted receipt reload');
@@ -234,28 +240,95 @@ try {
     await expect(phone.getByRole('heading', { name: '主题验收执行记录', exact: true })).toBeVisible();
     await screenshot(phone, '07-android-native-result'); evidence.checks.push('existing official native history and receipts after fresh App Server; zero new turns');
   }
+  step = 'complex and light visuals, native Diff and reading';
+  for (const id of ['hong-kong-rain', 'minimal-light']) {
+    for (const page of [desktop, phone]) {
+      await select(page, id);
+      await page.getByRole('button', { name: '查看 Diff', exact: true }).first().click();
+      await expect(page.locator('.cm-content')).toContainText('Trusted CSS');
+      await screenshot(page, `12-${page === phone ? 'android' : 'electron'}-${id}-diff`);
+      if (page === phone) { adb('shell', 'input', 'keyevent', 'KEYCODE_BACK'); await expect(page.locator('.inspector')).toHaveCount(0); }
+      else await page.getByRole('button', { name: '关闭面板', exact: true }).click();
+      const scroll = page.locator('.conversation-scroll');
+      await scroll.evaluate(e => { e.scrollTop = e.scrollHeight / 2; });
+      const before = await scroll.evaluate(e => e.scrollTop); expect(before).toBeGreaterThan(0);
+      await screenshot(page, `13-${page === phone ? 'android' : 'electron'}-${id}-reading`);
+      await page.getByRole('button', { name: '返回最新', exact: true }).click();
+      await page.getByLabel('消息', { exact: true }).fill('主题切换保留草稿，不能发送。');
+      await select(page, id === 'minimal-light' ? 'hong-kong-rain' : 'minimal-light');
+      await expect(page.getByLabel('消息', { exact: true })).toHaveValue('主题切换保留草稿，不能发送。');
+      await page.getByLabel('消息', { exact: true }).fill('');
+      evidence.checks.push(`${page === phone ? 'HONOR' : 'Electron'} ${id} native Diff, reading, return-latest and draft retention`);
+    }
+  }
+  if (process.env.ORACULUM_THEME_DEVICE_HOLD === '1') {
+    step = 'native IME device hold';
+    await select(phone, 'hong-kong-rain');
+    await writeFile(join(output, 'device-ready.json'), JSON.stringify({ output, cdp: `http://127.0.0.1:${forwarded}`, threadId: evidence.threadId }));
+    console.log('DEVICE_HOLD ' + output);
+    await expect.poll(async () => { try { return JSON.parse(await readFile(join(output, 'device-checks.json'), 'utf8')).result; } catch { return 'waiting'; } }, { timeout: 900_000, intervals: [1000] }).toBe('passed');
+    evidence.deviceChecks = JSON.parse(await readFile(join(output, 'device-checks.json'), 'utf8'));
+    // System font/orientation checks can recreate Android's WebView. Rebind to
+    // the current native page rather than retaining the pre-check CDP target.
+    await attach(); await ready(phone); await hideIme();
+  }
   step = 'failure matrix on actual clients';
   const installed = join(themes.paths.installed, 'test-violet');
   const manifest = await readFile(join(installed, 'manifest.json'), 'utf8'), css = await readFile(join(installed, 'theme.css'), 'utf8');
+  restoreFixture = async () => {
+    await rename(installed + '-missing', installed).catch(error => { if (error.code !== 'ENOENT') throw error; });
+    await writeFile(join(installed, 'manifest.json'), manifest); await writeFile(join(installed, 'theme.css'), css);
+  };
   for (const page of [desktop, phone]) {
-    for (const [name, file, broken] of [['incompatible', 'manifest.json', manifest.replace('"themeApi": 1', '"themeApi": 2')], ['damaged', 'theme.css', ':root{--accent:'], ['malicious', 'theme.css', 'button,.settings-dialog{display:none!important}']]) {
+    for (const [name, file, broken] of [['incompatible', 'manifest.json', manifest.replace('"themeApi": 1', '"themeApi": 2')], ['damaged', 'theme.css', ':root{--accent:']]) {
       await select(page, 'test-violet'); await writeFile(join(installed, file), broken); await page.reload(); await ready(page);
       await currentTheme(page, 'oracle-eye'); await expect(page.getByRole('alert')).toContainText('已恢复默认主题');
-      if (name === 'malicious') { await page.getByRole('alert').scrollIntoViewIfNeeded(); await screenshot(page, page === phone ? '08-android-malicious-fallback' : '09-electron-malicious-fallback'); }
+      if (name === 'damaged') { await page.getByRole('alert').scrollIntoViewIfNeeded(); await screenshot(page, page === phone ? '08-android-damaged-fallback' : '09-electron-damaged-fallback'); }
       await writeFile(join(installed, file), file === 'theme.css' ? css : manifest);
       evidence.checks.push(`${page === phone ? 'HONOR' : 'Electron'} ${name} fallback`);
     }
     await select(page, 'test-violet'); await rename(installed, installed + '-missing'); await page.reload(); await ready(page); await currentTheme(page, 'oracle-eye');
     await rename(installed + '-missing', installed); evidence.checks.push(`${page === phone ? 'HONOR' : 'Electron'} missing fallback`);
   }
-  step = 'native recovery from hidden web content';
-  await select(desktop, 'test-violet'); await desktop.addStyleTag({ content: 'body{visibility:hidden!important}' });
+  step = 'native recovery from installed CSS hiding the entire page';
+  await writeFile(join(installed, 'theme.css'), 'html,body,body *{visibility:hidden!important}');
+  await settings(desktop); await desktop.getByLabel('当前主题').selectOption('test-violet');
+  await currentTheme(desktop, 'test-violet'); await expect(desktop.getByLabel('当前主题')).toBeHidden();
   await app!.evaluate(({ Menu }) => Menu.getApplicationMenu()!.getMenuItemById('restore-default-theme')!.click());
   await ready(desktop); await currentTheme(desktop, 'oracle-eye'); await expect(desktop.getByLabel('消息', { exact: true })).toBeVisible(); await screenshot(desktop, '10-electron-restored');
-  await select(phone, 'test-violet'); await phone.addStyleTag({ content: 'body{visibility:hidden!important}' });
+  // Normal tests above use the platform default (Wayland here). XTest requires
+  // an X11 window: restart this same real Electron profile on XWayland solely
+  // for OS keyboard injection, not renderer/CDP synthetic keyboard events.
+  await app!.close(); await launchDesktop(true); await ready(desktop); await currentTheme(desktop, 'oracle-eye');
+  evidence.shortcutBackend = 'X11 via --ozone-platform=x11; other Electron checks use the platform default';
+  await settings(desktop); await desktop.getByLabel('当前主题').selectOption('test-violet'); await currentTheme(desktop, 'test-violet');
+  const windowId = await app!.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].getNativeWindowHandle().readUInt32LE());
+  execFileSync('python3', ['-c', `
+import ctypes, time
+x=ctypes.CDLL('libX11.so.6'); t=ctypes.CDLL('libXtst.so.6')
+x.XOpenDisplay.restype=ctypes.c_void_p
+x.XKeysymToKeycode.argtypes=[ctypes.c_void_p,ctypes.c_ulong]
+x.XSetInputFocus.argtypes=[ctypes.c_void_p,ctypes.c_ulong,ctypes.c_int,ctypes.c_ulong]
+x.XFlush.argtypes=[ctypes.c_void_p]
+t.XTestFakeKeyEvent.argtypes=[ctypes.c_void_p,ctypes.c_uint,ctypes.c_int,ctypes.c_ulong]
+d=x.XOpenDisplay(None)
+if not d: raise RuntimeError('X11 display unavailable')
+x.XSetInputFocus(d,${windowId},1,0); x.XFlush(d); time.sleep(.2)
+keys=[x.XKeysymToKeycode(d,k) for k in [0xffe3,0xffe1,0x30]]
+for k in keys:
+ t.XTestFakeKeyEvent(d,k,1,0); x.XFlush(d); time.sleep(.05)
+for k in reversed(keys):
+ t.XTestFakeKeyEvent(d,k,0,0); x.XFlush(d); time.sleep(.05)
+x.XFlush(d)
+`]);
+  await ready(desktop); await currentTheme(desktop, 'oracle-eye');
+  evidence.checks.push('Electron Ctrl+Shift+0 via actual X11 XTest keyboard events');
+  await settings(phone); await phone.getByLabel('当前主题').selectOption('test-violet');
+  await currentTheme(phone, 'test-violet'); await expect(phone.getByLabel('当前主题')).toBeHidden();
   await nativeRecoveryTap(); await expect(phone.getByLabel('消息', { exact: true })).toBeVisible(); await screenshot(phone, '11-android-restored');
+  await writeFile(join(installed, 'theme.css'), css);
   await expect(phone.getByTestId('thread-id')).toHaveText(threadId); expect(evidence.requests).toHaveLength(review ? 0 : 2);
-  evidence.checks.push('actual Electron native menu and HONOR physical-key native dialog recover entirely concealed page, preserving thread and no replay');
+  evidence.checks.push('actual Electron native menu and HONOR ADB long-key native dialog recover entirely concealed page, preserving thread and no replay');
   expect(errors).toEqual([]); expect(await hashConfig()).toBe(baselineConfig); evidence.result = 'passed';
 } catch (error) {
   evidence.result = 'failed'; evidence.step = step; evidence.error = authenticated ? String(error) : (error instanceof Error ? error.name : 'setup failure'); process.exitCode = 1;
@@ -270,6 +343,7 @@ try {
   }
 } finally {
   const clean = async (name: string, run: () => unknown | Promise<unknown>) => { try { await run(); } catch { evidence.cleanupErrors.push(name); evidence.result = 'failed'; process.exitCode = 1; } };
+  await clean('restore theme fixture', () => restoreFixture?.());
   await clean('Electron', () => app?.close());
   await clean('revoke fixture devices', () => { for (const d of trust.list()) trust.revoke(d.id); });
   if (savedStorage) await clean('Android storage', async () => {
@@ -278,7 +352,7 @@ try {
     const restored = await phone.evaluate(() => ({ local: { ...localStorage }, session: { ...sessionStorage } }));
     expect(restored).toEqual(savedStorage); evidence.storageRestored = true;
   });
-  if (savedCookies) await clean('Android cookie', async () => { await phone.context().clearCookies({ name: 'oraculum_local', domain: '127.0.0.1', path: '/' }); await phone.context().addCookies(savedCookies!); });
+  if (savedCookies) await clean('Android cookie', async () => { await phone.context().clearCookies({ name: 'oraculum_local', domain: '127.0.0.1', path: '/' }); await phone.context().addCookies(savedCookies!); expect((await phone.context().cookies([origin])).filter(c => c.name === 'oraculum_local' && c.path === '/')).toEqual(savedCookies); evidence.cookiesRestored = true; });
   await clean('flush Android state', () => adb('shell', 'input', 'keyevent', 'KEYCODE_HOME'));
   await clean('CDP', () => android?.close());
   await clean('Bridge', () => server?.close()); await clean('Codex', () => codex.close());

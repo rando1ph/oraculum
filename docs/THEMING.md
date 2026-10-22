@@ -126,3 +126,5 @@ button.primary { border-radius: 999px; background: #235daf; color: white; }
 `pnpm check && pnpm test && pnpm build` 后运行 `pnpm test:themes:ui`（真实 Electron + 模拟手机/协议合约）。检查 Violet、新主题、375/390px、横屏/小高度、完整浅色组件、长消息/Diff、资源解码失败、失效回退和原生恢复；模拟结果不等于官方 Codex 或真机验收。
 
 `pnpm test:themes:live` 使用真实 Ubuntu Electron、HONOR Android 15 USB/ADB reverse、隔离认证 Bridge 与官方 Codex 的两轮受控测试。运行前拒绝覆盖已有 17860 服务，备份并恢复手机原 Cookie/local/session storage；不迁移用户数据或改生产设施。接受已有 `.local/evidence/phase3/themes-live/.../acceptance.json` 可复查同一真实会话，禁止新建会话或模型轮次。失败证据保留；清理失败必须核验并恢复原备份后再报告。IME 使用真实系统键盘事件单独记录，CDP fill 不得冒充拼音输入。真实截图、测试范围/限制和 SHA 记录在原 Phase 3 Task；Task 等独立审阅，不由实施方标 Done。
+
+真实脚本的常规 Electron 检查使用平台默认后端；快捷键的操作系统事件注入单独重启同一测试 profile 到 X11（`--ozone-platform=x11`，XTest），不改变产品启动默认值。原生菜单与 Android 对话框也分别验证。`ORACULUM_THEME_DEVICE_HOLD=1` 可在原生会话检查后暂停给真机 IME/横屏操作，在私有输出目录写入 `device-checks.json` 的 passed 结果后继续；脚本重新连接可能因系统字号变化而重建的 WebView。此测试入口只用于明确执行的设备验收，不是产品功能。
