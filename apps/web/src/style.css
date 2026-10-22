@@ -203,3 +203,30 @@ nav[aria-label="原生会话"] { margin-top: 11px; flex: 1; overflow-y: auto; mi
   .session-link, .new-session, .settings-button { min-height: 44px; }
   .approval-actions button { min-height: 48px; }
 }
+
+/* Shared host browser: fits the existing navigation on both clients. */
+.browse-projects { width: 100%; justify-content: flex-start; margin: -7px 0 14px; font-size: 11px; color: var(--muted); background: transparent; flex-shrink: 0; }
+.project-browser { width: 600px; max-width: calc(100vw - 24px); }
+.project-browser .browser-hint { margin: 16px 0 12px; }
+.browser-root { display: grid; gap: 7px; color: var(--muted); font-size: 12px; }
+.browser-root select { width: 100%; }
+.browser-path { display: flex; gap: 8px; margin: 12px 0; }
+.browser-path input { flex: 1; width: 0; }
+.browser-current { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; font-size: 12px; }
+.browser-current button { flex-shrink: 0; }
+.directory-list { display: grid; gap: 4px; max-height: 32dvh; overflow: auto; padding: 3px; border-block: 1px solid var(--line); }
+.directory-list > button { width: 100%; justify-content: flex-start; min-height: 44px; background: transparent; border-color: transparent; text-align: left; }
+.directory-list > button span { overflow-wrap: anywhere; min-width: 0; }
+.directory-list > button svg { flex-shrink: 0; }
+.directory-list > p { padding: 15px 5px; margin: 0; }
+.add-project { width: 100%; margin: 14px 0; min-height: 44px; }
+.registered-projects { font-size: 12px; }
+.registered-projects summary { padding: 8px 0; color: var(--muted); }
+.registered-projects > div { display: flex; align-items: center; gap: 12px; border-top: 1px solid var(--line); padding: 10px 0; }
+.registered-projects > div > span { min-width: 0; flex: 1; }
+.registered-projects button { flex-shrink: 0; }
+@media (max-width: 760px) {
+  .project-browser .settings-content { padding: 16px; }
+  .project-browser button, .project-browser input, .project-browser select, .browse-projects { min-height: 44px; }
+  .project-browser h2 { font-size: 16px; }
+}
