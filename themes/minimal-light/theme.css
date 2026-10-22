@@ -1,0 +1,46 @@
+/* Acceptance fixture: a complete light palette with quiet, flat components. */
+:root {
+  color-scheme: light;
+  --background: #f6f7f9;
+  --surface: #ffffff;
+  --surface-raised: #eef1f5;
+  --surface-hover: #e5eaf0;
+  --foreground: #202b38;
+  --muted: #526172;
+  --subtle: #647384;
+  --line: #d4dce5;
+  --line-bright: #a7b7c9;
+  --accent: #195bb0;
+  --accent-strong: #235daf;
+  --accent-soft: #e8f0fc;
+  --success: #197047;
+  --warning: #875400;
+  --danger: #b02b49;
+  --on-accent: #ffffff;
+  --radius: 8px;
+  --font-sans: "Noto Sans CJK SC", system-ui, sans-serif;
+}
+.app-shell { gap: 12px; padding: 12px; }
+.navigation, .conversation, .inspector { border-radius: 10px; box-shadow: 0 2px 8px #20304006; }
+.navigation { border-color: transparent; }
+.brand-row h1 { font-weight: 650; letter-spacing: .2px; }
+.brand-row span { letter-spacing: 2px; }
+button { border-radius: 6px; box-shadow: none; }
+button.primary { background: #235daf; color: white; border-color: #235daf; box-shadow: none; }
+button.primary:hover:enabled { background: #194c94; color: white; }
+.composer { background: white; border: 1px solid #bbc8d8; border-radius: 10px; box-shadow: 0 3px 12px #3040600a; }
+.composer:focus-within { border-color: #235daf; box-shadow: 0 0 0 2px #235daf14; }
+.composer textarea { font-size: 14px; }
+.conversation-content { max-width: 1000px; }
+.message.user { background: #eaf1fc; border-color: #d8e3f3; border-radius: 10px; }
+.tool { background: white; }
+.approval { background: #fffbef; border-color: #c89c4b; box-shadow: none; }
+.approval pre { background: #fffef9; }
+.settings-dialog { box-shadow: 0 18px 80px #20304022; }
+.theme-decoration { display: none; }
+@media (max-width: 760px), (pointer: coarse) {
+  .app-shell { padding: 0; gap: 0; }
+  .conversation, .inspector, .navigation { border-radius: 0; }
+  .navigation, .nav-collapsed .navigation { background: #ffffff; }
+  .composer textarea { font-size: 15px; }
+}

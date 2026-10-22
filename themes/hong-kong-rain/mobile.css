@@ -1,0 +1,12 @@
+/* Wrapper uses the host's mobile breakpoint, including coarse-pointer landscape. */
+.app-shell { padding: 0; gap: 0; background-position: 35% center; }
+.conversation { border: 0; border-radius: 0; background: #06111bc9; backdrop-filter: none; }
+.conversation-header { background: #071625de; }
+.conversation-content { padding: 12px 14px 22px; max-width: none; }
+.navigation, .nav-collapsed .navigation { border-radius: 0; background: #0a1527f5; backdrop-filter: blur(10px); }
+.inspector { border-radius: 0; background: #071522; }
+.settings-dialog { background: #0b1928; }
+.composer { margin-inline: 9px; }
+.composer textarea { font-size: 15px; }
+.theme-decoration::after { animation-duration: 11s; opacity: .5; }
+@media (max-height: 160px) { .composer { margin: 0; } }

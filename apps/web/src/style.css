@@ -1,5 +1,7 @@
+@layer theme, base, components, utilities, oraculum, theme-defaults;
 @import "tailwindcss";
 @import "./tokens.css";
+@layer oraculum {
 * { box-sizing: border-box; }
 body { margin: 0; }
 button, select, textarea, input { font: inherit; color: inherit; }
@@ -241,11 +243,10 @@ nav[aria-label="原生会话"] { margin-top: 11px; flex: 1; overflow-y: auto; mi
   .project-browser h2 { font-size: 16px; }
 }
 
-/* Theme API v1: semantic surfaces, bounded hooks, and host-owned controls. */
+/* Theme API v1: stable semantic hooks; themes may style the whole document. */
 [data-theme-root] { font-family: var(--font-sans); color: var(--foreground); background: var(--background); }
 .conversation { isolation: isolate; }
 .theme-decoration { position: absolute; inset: 0; z-index: -1; pointer-events: none; opacity: .16; background-size: cover; background-position: center; }
-[data-theme-root]:not([data-theme-id="oracle-eye"]) :is(.navigation, .conversation-header, .inspector, .message.user, .tool) { background-image: none; }
 .theme-choice { display: grid; gap: 8px; font-size: 13px; }
 .theme-choice select { width: 100%; min-height: 44px; }
 .theme-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
@@ -256,3 +257,52 @@ nav[aria-label="原生会话"] { margin-top: 11px; flex: 1; overflow-y: auto; mi
 .theme-candidate > span { min-width: 0; overflow-wrap: anywhere; font-size: 13px; }
 .theme-candidate small { display: block; margin-top: 5px; }
 .theme-candidate button { min-height: 44px; flex-shrink: 0; }
+}
+
+/* Palette fallback for existing v1 themes and future controls. Unlayered theme
+   CSS always wins, even an element selector against a host component class.
+   Oracle Eye keeps its original gradients, colors and geometry verbatim. */
+@layer theme-defaults {
+  :where([data-theme-root]:not([data-theme-id="oracle-eye"])) {
+    & :is(.navigation, .conversation, .inspector, .settings-dialog) { background: var(--background); }
+    & :is(.conversation-header, .inspector-header, .mobile-detail-footer, .composer,
+      .mobile-session-menu, .tool, .message.user, .project-picker, .new-session,
+      .settings-model-options, .settings-effort-options, .reading-size, .server-settings-link) {
+      background: var(--surface); border-color: var(--line);
+    }
+    & :is(.brand-row h1, .brand-row span, .nav-section-label, .session-title > span,
+      .empty-state h2, .session-link, .inspector-file svg, .inspector-list summary,
+      .approval > p, .approval-heading > span:last-child, .project-group-heading,
+      .file-change-path, .item-glyph, select) { color: var(--foreground); }
+    & :is(input, textarea)::placeholder { color: var(--muted); }
+    & :is(.code-block, .command-text, .tool-output, .detail-output, .approval pre,
+      .inspector-list, .model-controls select, .inspector-tabs button, .settings-effort-options button) {
+      background: var(--surface-raised); color: var(--foreground); border-color: var(--line);
+    }
+    & :is(.tool-body, .navigation-footer, .project-group + .project-group) { border-color: var(--line); }
+    & :is(.markdown :not(pre) > code, .code-block pre) { color: var(--foreground); border-color: var(--line); }
+    & :is(.session-link.selected, .inspector-list button.selected, .inspector-tabs button.active,
+      .project-group-heading[aria-expanded="true"], [aria-pressed="true"], .jump-latest, .turn-diff) {
+      background: var(--accent-soft); color: var(--accent); border-color: var(--line-bright);
+    }
+    & :is(.composer:focus-within, .tool > summary:hover) { border-color: var(--accent); }
+    & .tool > summary:hover { background: var(--surface-hover); }
+    & button.primary { background: var(--primary-background, var(--accent-strong)); color: var(--on-accent, var(--background)); border-color: var(--accent); box-shadow: none; }
+    & button.primary:hover:enabled { background: var(--accent); color: var(--on-accent, var(--background)); }
+    & .approval { background: var(--surface); border-color: var(--warning); }
+    & .approval-symbol { color: var(--background); }
+    & :is(.stop-button, .history-warning, .disconnect-banner) { color: var(--warning); border-color: var(--warning); background: var(--surface); }
+    & .error { background: var(--surface); color: var(--danger); border-color: var(--danger); }
+    & .item-status { background: var(--surface-raised); }
+    & .brand-row > .oracle-eye { mix-blend-mode: normal; }
+    /* CodeMirror creates unlayered styles; its palette uses inherited variables. */
+    & .diff-editor {
+      --diff-background: var(--surface); --diff-foreground: var(--foreground);
+      --diff-gutter-background: var(--surface-raised); --diff-gutter-foreground: var(--muted); --diff-line: var(--line);
+      --diff-added: var(--success); --diff-added-background: color-mix(in srgb, var(--success) 10%, var(--surface));
+      --diff-removed: var(--danger); --diff-removed-background: color-mix(in srgb, var(--danger) 10%, var(--surface));
+      --diff-hunk: var(--accent); --diff-hunk-background: var(--accent-soft); --diff-file: var(--muted);
+    }
+    & ::-webkit-scrollbar-thumb { background: var(--line-bright); border-color: var(--background); }
+  }
+}

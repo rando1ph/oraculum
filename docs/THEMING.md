@@ -1,98 +1,128 @@
-# Oraculum Theme API v1
+# Oraculum Theme API v1 · Trusted CSS Themes
 
-本文件是主题作者的操作接口说明。产品决策仍以 [Notion Project §6.4](https://app.notion.com/p/3ff5421e690b81bdae14c0675f0b3acf) 为准。
-主题是明确安装的、可信本地 CSS 目录；React 组件、业务交互和原生壳的改动属于正常软件升级。
+主题是本人明确安装的可信本地 **CSS + 素材目录**，不是代码插件。产品决策以 [Notion Project §6.4.1](https://app.notion.com/p/3ff5421e690b81bdae14c0675f0b3acf) 为准。3C.1 保留原 Theme Manager 与 `themeApi: 1`，取消固定 Slot、逐属性和深色亮度白名单；旧 Violet 及既装 v1 包继续可用。
 
-## 目录与安装
+## 包与安装
 
 ```text
 my-theme/
   manifest.json       # 必需
-  theme.css           # 必需
-  mobile.css          # 可选，只应用于移动布局
-  assets/             # 可选，本地 PNG / JPG / WebP
-  preview.webp        # 可选，保留供作者查看，v1 GUI 使用名称列表
+  theme.css           # 必需，浏览器标准 CSS
+  mobile.css          # 可选，移动条件内的追加覆盖
+  assets/             # 可选，PNG/JPG/WebP、WOFF/WOFF2/TTF/OTF
+  preview.webp        # 可选，GUI 目前仍使用名称列表
 ```
 
 ```json
 {"id":"my-theme","name":"My Theme","version":"1.0.0","themeApi":1}
 ```
 
-Manifest v1 只接受上述四个字段。`id` 为 `[a-z][a-z0-9-]{0,47}`，不得使用宿主保留的 `oracle-eye`；名称为 1–64 字符，不能含控制或双向文本控制字符；版本为三段数字，每段不超过四位。
+Manifest 保持原四字段：id 为 `[a-z][a-z0-9-]{0,47}`，保留 id `oracle-eye` 不可使用；名称 1–64 字符，无控制或双向文本控制字符；版本为三段数字，每段最多四位。
 
-1. 复制 `themes/template/` 到主题来源目录的一个直接子目录，修改 manifest 与 CSS。来源目录中的目录名也须符合 id 格式；安装后使用 manifest id 命名。
-2. 主机 `ORACULUM_THEME_SOURCE_DIR` 指定允许安装的来源根目录，开发默认是启动目录下的 `themes/`。GUI 只列出该根目录中的候选包，不接受任意主机路径。
-3. `ORACULUM_THEME_DIR` 指定已安装主题目录，开发默认是现有 Bridge state directory 下的 `themes/`。两项均由主机配置解析为绝对路径，不允许符号链接。这些默认值不是 Phase 4 的正式安装布局，不移动任何既有数据。
-4. 双端「设置 → 主题」中刷新来源，检查名称/版本，点击「安装」。安装会验证并复制文件，**不会自动应用**；然后在当前设备选择该主题。另一端可刷新列表并独立选择。
-5. 主题选择仅保存在当前客户端、当前服务器入口的本地存储中，刷新/正常重启后恢复。切换不重载会话、不发送模型请求，也不重新编译 Web UI 或重装应用。新增/修改来源目录无需重启 Bridge。
+1. 复制 `themes/template/` 至主机来源根目录的直接子目录，目录名也遵守 id 格式。
+2. `ORACULUM_THEME_SOURCE_DIR` 配置来源根，开发默认启动目录下 `themes/`。GUI 不接受任意主机路径。
+3. `ORACULUM_THEME_DIR` 配置已装目录，开发默认 Bridge state directory 下 `themes/`。两者解析为绝对路径，不允许符号链接；本阶段不迁移既有数据或决定 Phase 4 安装布局。
+4. 「设置 → 主题 → 从主机主题目录安装」选择安装，然后手动选择当前主题。安装不会自动应用；目录变更无需重启 Bridge。
+5. 各设备、各服务器入口分别保存选择；正常刷新/重启保持。切换无需重编 Web UI 或重装 APK/Electron，不发送模型请求，不改变 thread、turn、审批身份或收据。
 
-同 id 安装拒绝覆盖。最简单的主题迭代方式是使用新 id 明确安装；开发者也可在主机上编辑已安装目录，客户端会在重载、回到前台或约 30 秒内复验。失败回到默认，不继续沿用旧主题掩盖损坏。不支持 ZIP 导入、主题市场、运行时 JS、`/ui` 或构建/发布平台。
+同 id 拒绝覆盖。迭代时使用新 id 明确安装，或由作者编辑主机已装目录：重载、回前台、约 30 秒轮询会复验。失败会保存默认选择并移除自定义 CSS，不继续显示旧版本掩盖损坏。
 
-## Tokens 与组件骨架
+## CSS 与层叠
 
-默认 Oracle Eye 保留在宿主 `tokens.css`、`style.css`、`mobile.css` 与内容样式中，不依赖外部主题文件。主题只覆盖自己声明的值；宿主新增控件继续使用基础按钮/输入样式。省略值不是缺失错误。
+使用浏览器支持的标准 CSS：元素/class/data-*、组合选择器、伪类/伪元素、嵌套、Grid/Flex/position、透明度、字体/字号/行高、复杂渐变、图片、阴影、玻璃模糊、filter、`@media`、`@supports`、`@container`、`@font-face`、`@keyframes`、动画、过渡、`!important` 等均可使用。不限亮度或暗色。Bridge 用 PostCSS 解析基本语法并报告行列；浏览器不支持的属性/选择器仍按浏览器规则忽略，不做逐项 CSS 语义校验或布局审计。
 
-`theme.css` 可有**一个无条件 `:root`**（加载时限定到应用主题根，不作用于配对页）：
+`theme.css` 是正常文档样式表；`:root` 现在就是文档根，旧 tokens 自动继承到应用。主题只在认证后的应用挂载，默认/退出认证时移除。宿主基础 CSS 在 `oraculum` layer，自定义主题的调色板兼容底色在 `theme-defaults` layer。**建议主题直接写无 layer 的 CSS**：即使 `button { ... }` 也能覆盖宿主更具体的普通声明，不必堆叠选择器权重。若自行使用 layer，需理解标准层叠次序；宿主 reduced-motion 的重要声明仍生效，作者应主动提供减弱动画版本。
 
-| 类型 | 稳定 tokens | 可接受值 |
-| --- | --- | --- |
-| 表面 | `--background`, `--surface`, `--surface-raised`, `--surface-hover`, `--accent-soft` | 不透明 `#RRGGBB` |
-| 文字 | `--foreground`, `--muted`, `--subtle` | 不透明 `#RRGGBB` |
-| 边线 | `--line`, `--line-bright` | 不透明 `#RRGGBB` |
-| 强调/状态 | `--accent`, `--accent-strong`, `--success`, `--warning`, `--danger` | 不透明 `#RRGGBB` |
-| 卡片圆角 | `--radius` | `0px`–`24px` |
-| 字体 | `--font-sans`, `--font-mono` | 系统字体名称列表，ASCII 字母/空格/连字符，名称可用双引号；不加载字体文件 |
+`mobile.css` 整体追加在 `@media (max-width: 760px), (pointer: coarse)` 内，可包含 tokens、选择器和嵌套条件。与旧版相同，移动覆盖在 theme.css 之后。`@import`/`@charset` 等只可置于样式表顶层的规则应遵守浏览器要求，不放 mobile.css；目录包不分发额外 CSS 文件。
 
-v1 保留已批准的 OLED 宿主 chrome：表面相对亮度不超过 0.06；foreground 与各表面至少 4.5:1，muted 至少 3:1。主题可显著改变暗色配色/排版/装饰，但 v1 不承诺完整浅色 chrome。扩大接口须明确兼容版本和实机验证，不能依赖未公开 class 或任意 CSS 永久兼容。状态和关键操作仍由宿主保护。
+## 推荐 tokens 与 hooks（不是白名单）
+
+| 用途 | 稳定 tokens |
+| --- | --- |
+| 表面 | `--background`, `--surface`, `--surface-raised`, `--surface-hover`, `--accent-soft` |
+| 文字/边线 | `--foreground`, `--muted`, `--subtle`, `--line`, `--line-bright` |
+| 强调/状态 | `--accent`, `--accent-strong`, `--success`, `--warning`, `--danger` |
+| 字体/圆角 | `--font-sans`, `--font-mono`, `--radius` |
+| 可选主按钮 | `--primary-background`, `--on-accent` |
+
+任何合法 CSS 值及作者自己的变量都可使用。建议在 `:root` 设置完整调色板和 `color-scheme: light` 或 `dark`。自定义主题的导航、按钮、输入、工具、审批、设置、代码和 Diff 会跟随基础调色板；省略属性保留宿主样式。默认 Oracle Eye 不依赖主题文件或主题服务。
 
 ```text
-应用主题根
-  navigation               桌面导航 / Android Drawer
-  conversation             会话容器
-    decoration             宿主定位的低透明背景层，不接收点击
-    header                 会话标题
-    content                可滚动正文内层
-      user-message         用户消息卡片
-      tool                 工具卡片
-      [宿主审批区]
-    [宿主 Composer / Send / Stop]
-  inspector                桌面 Inspector / 移动全屏详情
-  [宿主 Settings / Theme Management]
+main[data-theme-root][data-theme-id] .app-shell
+  [data-theme-slot="navigation"] .navigation   桌面侧栏 / Android Drawer
+    .brand-row / .project-picker / .mobile-project-tree
+    .session-link / .navigation-footer
+  [data-theme-slot="conversation"] .conversation
+    [data-theme-slot="decoration"] .theme-decoration（默认不接收点击）
+    [data-theme-slot="header"] .conversation-header
+    .conversation-scroll
+      [data-theme-slot="content"] .conversation-content
+        [data-theme-slot="user-message"] .message.user
+        .message / .message-heading / .markdown
+        [data-theme-slot="tool"] .tool / .tool-body
+        [data-theme-slot="approval"] .approval / .approval-actions
+    [data-theme-slot="composer"] .composer
+      textarea / .composer-toolbar / .model-controls
+      .send-button / .stop-button
+  [data-theme-slot="inspector"] .inspector      桌面详情 / 手机全屏
+    .diff-editor / .cm-editor / .cm-gutters
+    .diff-added / .diff-removed / .diff-hunk
+  [data-theme-slot="settings"] .settings-dialog.app-settings
+    .theme-settings
 ```
 
-公开 hook 的唯一选择器写法为 `[data-theme-slot="navigation"]` 等上图八个名称。不能加组合、后代、属性测试、伪类/伪元素或逗号。CSS 本身照常使用 JSON + CSS 工具编辑；这里是受支持 CSS 子集，不是新的主题语言。
+原八个 Slot 保留，3C.1 新增 composer/approval/settings。上述语义 class 是推荐覆盖接口；其他 DOM 也可使用，但不能保证所有内部节点跨未来版本永久兼容。业务状态类 `.nav-collapsed`、`.drawer-open`、`.inspector-open`、`.expanded` 控制展开/收起，主题应分别检查这些状态。品牌 PNG 是既有 Oracle Eye 资产，可通过 CSS 调整尺寸/滤镜；CSS 主题不替换业务组件。
 
-| 范围 | 允许的声明 |
-| --- | --- |
-| 除 decoration 外的 hook | `background-color: var(--background/--surface/--surface-raised)`；`border-color: var(任一已公开颜色 token)` |
-| 除 content/decoration 外的 hook | `border-radius: 0px…24px`；`box-shadow: none` 或 `inset 0 0 Npx Mpx #RRGGBB[AA]`（N 0–32，M 0–4） |
-| content | `max-width: 640px…1200px`；`padding-inline: 12px…32px` |
-| user-message / tool | `margin-block: 4px…24px` |
-| decoration | `background-image: none`、`linear-gradient(Ndeg, #RRGGBB, #RRGGBB)` 或 `url("assets/name.png")`；N 为 0–999 的整数 |
+```css
+:root {
+  color-scheme: light;
+  --background: #f6f7f9;
+  --surface: #ffffff;
+  --foreground: #202b38;
+  --accent: #195bb0;
+  --on-accent: #ffffff;
+}
+button.primary { border-radius: 999px; background: #235daf; color: white; }
+.composer { backdrop-filter: blur(12px); background: #ffffffdd; }
+[data-theme-slot="navigation"] { background: var(--surface); }
+@media (min-width: 1101px) { .conversation-content { max-width: 1100px; } }
+```
 
-高级覆盖不能改变 display/position/z-index/opacity/transform/pointer-events/content，也不能任意改尺寸或全局样式。阴影仅允许 inset，装饰层由宿主固定在内容后方、低透明、不接收输入；关键按钮和审批没有主题 hook，颜色/字体来自宿主基础样式。任何不支持的声明使整包失败，不会悄悄跳过。
+完整 Light 调色板见 `themes/minimal-light/`。复杂图片、玻璃、剪角按钮、伪元素雨线、字体及动画见 `themes/hong-kong-rain/`；它是虚构香港雨夜插画验收样例，不是实景照片或新正式品牌稿。Violet 原样保留。素材来源和字体许可见 [THEME-ASSETS.md](THEME-ASSETS.md)。
 
-`theme.css` 的 hook 可放入 `@media (max-width: 760px)`、`@media (min-width: 761px)` 或 `@media (max-width: 760px), (pointer: coarse)`；不允许嵌套 media。`mobile.css` 自动包在最后一个移动条件中，不能定义 tokens。CSS 中不接受转义、`!important`、嵌套选择器或其他 at-rule。
+## 相对资源与浏览器权限
 
-移动正文建议 12–16px 边距；宿主强制保留单列、Drawer、IME 避让、安全区和全屏详情。主题不能改变最小 44px / 关键操作 48px 触摸目标。桌面面板宽度偏好仍由宿主控制，主题可调整正文宽度及卡片间距。
+```css
+@font-face {
+  font-family: "My Mono";
+  src: url("assets/mono.woff2") format("woff2");
+  font-display: swap;
+}
+.app-shell { background: url("assets/night.webp") center / cover; }
+.panel { background-image: image-set("assets/night.webp" 1x); }
+```
 
-## 安全与恢复
+`theme.css` 和 `mobile.css` 中的相对 URL 均相对于主题包根；支持 `assets/...`、`./assets/...`、引号/无引号、CSS 转义及 query/fragment。`url()`、image-set 字符串和字体 src 会转换为当前入口 Base Path 下的认证资源地址。相对路径必须对应实际包内素材，缺失或越界拒绝。不要硬编码服务器 IP、部署路径或 `/themes/` URL。
 
-- 所有主题列表、安装、CSS 包和图片请求沿用 Bridge 的设备认证、撤销、Origin 与 Base Path 边界。客户端不能指定来源根或读取任意主机文件；安装必须来自主机明确开放的来源目录。
-- 目录/文件 symlink、硬链接、隐藏/未知文件、JS/TS/HTML/SVG、网络 `@import`/URL、data/blob/file URL、路径逃逸全部拒绝。不修改 CSP、TLS、Electron sandbox 或 WebView 权限。
-- 仅包内 `assets/` 的 PNG/JPG/WebP 可作为装饰资源，目录/文件名限字母数字、`_`、`-`；路径最多四层目录。扩展名与图片签名须一致，按固定图片 MIME + nosniff 分发。浏览器图片解码失败也恢复默认。图片不是受信执行代码；本机制不承诺防御拥有主机写权限的恶意 OS 用户。
-- 每包最多 64 个文件/目录；manifest 4KiB，单 CSS 64KiB，单图片 2MiB，总文件内容 4MiB；最多 100 个候选/已装目录。每份 CSS 最多 256 条声明。
-- Theme API 不兼容、缺文件、损坏 CSS、资源或网络失败时移除自定义样式并保存默认选择；提示具体失败。默认主题无需主题服务成功即可显示。重新认证前移除自定义主题。
-- **Electron 原生恢复**：按 `Ctrl+Shift+0`，或 `Alt` 打开应用菜单选择「恢复默认主题」。壳重载可信入口并强制选择默认；不依赖设置按钮可见，也不授予 renderer 新的系统接口。
-- **Android 原生恢复**：应用前台按住音量加键，打开原生恢复对话框，选择「恢复默认主题」。错误页的原生恢复区也提供该按钮。它重载当前可信入口，保留服务器 profile、认证、草稿和主机任务；短按音量键仍调整音量。
-- 恢复操作只改变主题偏好；不会清除 Cookie、项目、会话或发送回执。原生恢复重载页面会重新查询官方状态，不重发发送/审批。
+绝对/外部 URL 保持 CSS 标准语义，继续受现有 CSP 控制；当前 `default-src 'self'` 不允许第三方网络字体、图片、样式或 data/blob 资源。不要依赖它们。没有为主题扩大 CSP、TLS、WebView/Electron 权限，也没有 JS/HTML/React/Node/OS/Bridge 执行扩展。不要在包中放可执行文件或 SVG。
 
-## 主题作者验收
+基本文件约束沿用：禁止 symlink、硬链接、隐藏/未知文件；assets 路径名用字母数字、`_`、`-`，最多四层目录；检查扩展名与图片/字体签名并以固定 MIME + nosniff 分发。包最多 64 文件/目录；manifest 4KiB、每 CSS 64KiB、每素材 2MiB、包总 4MiB、最多 100 个候选/已装目录。没有声明数量限制。字体许可可写在 CSS 注释中，随包保留。
 
-先运行 `pnpm check && pnpm test && pnpm build`，再用 `pnpm test:themes:ui` 检查确定性模拟合约。该合约不代替真实 Codex 验收。
+## 布局建议与故障恢复
 
-至少检查：375/390px、实际 Android 竖/横屏及键盘、字号放大、长消息、Diff、旧主题未知的新按钮；正常 Send/Stop/Allow/Decline 可见且可点；双端独立选择、刷新/进程重启、缺失/损坏/不兼容和恶意覆盖拒绝；最后用原生入口在页面完全被遮挡时恢复默认。
+这是可信作者可自由修改的界面，**不保证任意 CSS 在所有尺寸可用**，也不逐条审核遮挡或对比度。建议保持 Send/Stop/Allow/Decline/设置可见，装饰使用 `pointer-events: none`，保持文字对比度及一般 ≥44px、关键 ≥48px 触摸目标。
 
-`themes/test-violet/` 是唯一验收测试主题，`themes/template/` 是最小作者模板；均不自动安装。真实设备证据与限制写回 Phase 3 Task，不能把模拟协议或参考图当作实机成果。
+移动设备还需检查粗指针横屏、`--app-height` 的可视 viewport/IME 高度、`env(safe-area-inset-bottom)`、长文本与字号放大、Drawer/全屏 Inspector、Back 和滚动位置。避免覆盖 `--app-height`、把 Composer 固定到布局 viewport 底部、强行给导航 `display:flex` 而忽略关闭状态。默认宿主仍负责这些交互；CSS 不改变发送或审批逻辑。
 
-`pnpm test:themes:live` 使用当前 USB HONOR 的本机入口、隔离认证 Bridge 和两轮受控官方 Codex 测试（无副作用 Allow/Decline、Stop）。现有 17860 服务存在时拒绝运行；原设备登录/存储在私有证据目录备份并恢复。传入已有 `.local/evidence/phase3/themes-live/.../acceptance.json` 可复查同一真实会话、主题/恢复和截图，禁止新建会话或模型轮次。发生清理失败须保留原报告/私有备份，核验实际状态后再报告恢复，不能删掉失败证据。
+缺文件、API 不兼容、语法/资源解码/网络失败会移除主题并提示原因。支持的 CSS 即使隐藏整页也会被接受，此时使用原生恢复：
+
+- **Electron**：`Ctrl+Shift+0`，或 Alt → 神谕 → 恢复默认主题。
+- **Android**：应用前台长按音量加键，在系统对话框选择「恢复默认主题」。错误页原生恢复区也有该按钮；短按仍调音量。
+
+原生恢复重载可信入口并保存默认选择，不依赖任何网页按钮或当前 CSS。不清 Cookie、服务器 profile、草稿、项目、会话或收据，不重发模型操作/审批。认证页不加载自定义主题。
+
+## 验收
+
+`pnpm check && pnpm test && pnpm build` 后运行 `pnpm test:themes:ui`（真实 Electron + 模拟手机/协议合约）。检查 Violet、新主题、375/390px、横屏/小高度、完整浅色组件、长消息/Diff、资源解码失败、失效回退和原生恢复；模拟结果不等于官方 Codex 或真机验收。
+
+`pnpm test:themes:live` 使用真实 Ubuntu Electron、HONOR Android 15 USB/ADB reverse、隔离认证 Bridge 与官方 Codex 的两轮受控测试。运行前拒绝覆盖已有 17860 服务，备份并恢复手机原 Cookie/local/session storage；不迁移用户数据或改生产设施。接受已有 `.local/evidence/phase3/themes-live/.../acceptance.json` 可复查同一真实会话，禁止新建会话或模型轮次。失败证据保留；清理失败必须核验并恢复原备份后再报告。IME 使用真实系统键盘事件单独记录，CDP fill 不得冒充拼音输入。真实截图、测试范围/限制和 SHA 记录在原 Phase 3 Task；Task 等独立审阅，不由实施方标 Done。

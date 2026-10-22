@@ -1,4 +1,16 @@
-/* Start here. See docs/THEMING.md. All omitted values retain host defaults. */
+/* Trusted CSS Theme API v1. See docs/THEMING.md. No selector/property whitelist.
+   Leave CSS unlayered to override the host. Existing v1 tokens/hooks still work.
+   For a full light palette copy ../minimal-light/theme.css. */
 :root {
+  color-scheme: dark;
   --accent: #62d8ff;
+  --on-accent: #00121c;
 }
+button.primary { border-radius: 12px; }
+[data-theme-slot="composer"] { border-radius: 16px; }
+@media (min-width: 1101px) {
+  .conversation-content { max-width: 1000px; }
+}
+/* Optional local assets: background-image: url("assets/night.webp");
+   @font-face { font-family: MyFont; src: url("assets/font.woff2"); }
+   Keep relevant font/image license notices in this CSS comment. */

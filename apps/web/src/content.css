@@ -1,3 +1,7 @@
+/* This stylesheet is imported by a component before style.css. Declare the
+   shared layer order before either file introduces a host rule. */
+@layer theme, base, components, utilities, oraculum, theme-defaults;
+@layer oraculum {
 .message { position: relative; min-width: 0; padding: 17px 0; }
 .message-heading { display: flex; align-items: center; gap: 10px; color: var(--accent); font-size: 13px; font-weight: 600; margin-bottom: 6px; }
 .message-heading .message-avatar { width: 27px; height: 27px; flex: 0 0 27px; object-fit: cover; }
@@ -89,4 +93,5 @@ code.tool-preview { font-family: var(--font-mono); }
   .file-change-kind { display: none; }
   .diff-stats { margin-left: auto; gap: 7px; }
   .copy, .item-detail-button { min-height: 38px; }
+}
 }

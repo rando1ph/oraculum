@@ -430,7 +430,7 @@ function App() {
       {!connected && <div className="disconnect-banner">连接已断开，主机任务不会因此停止。<button disabled={connecting || sending || approving} onClick={() => void connect().catch(report)}>重新连接</button></div>}
       <div className="conversation-scroll" ref={scroller} onScroll={() => { if (readingRestore.current !== null) return; const element = scroller.current!; follow.current = element.scrollHeight - element.scrollTop - element.clientHeight < 60; setAtBottom(follow.current); rememberScroll(); }}>
         <div data-theme-slot="content" className="conversation-content" ref={scrollContent}>
-          {theme.notice && !settings && <p className="error theme-protected" role="alert">{theme.notice}</p>}
+          {theme.notice && !settings && <p className="error" role="alert">{theme.notice}</p>}
           {session.history?.nextCursor && <button className="history-more" disabled={loadingHistory || !connected} onClick={() => void older()}>{loadingHistory ? '正在加载…' : '加载更早历史'}</button>}
           {session.history?.warning && <p className="history-warning">{session.history.warning}</p>}
           {session.sendBlocked && <p role="alert" className="error">有发送尚未确认终态，禁止重发。请查询原生状态；结果仍未知时使用新会话。</p>}
@@ -448,7 +448,7 @@ function App() {
           {session.plan && <details className="tool current-plan"><summary>当前计划 · Codex</summary><pre>{session.plan}</pre></details>}
           {Object.entries(session.diffs).map(([turnId, diff]) => <button className="turn-diff" key={turnId} onClick={() => openDiff(`轮次 ${turnId} · 实时汇总`, diff)}><Icon name="file" size={14}/>查看轮次 Diff · {turnId.slice(-8)}</button>)}
           <section aria-label="待审批" className="approvals">
-            {session.pending.map(request => <article className="approval theme-protected" key={`${typeof request.id}:${request.id}`}>
+            {session.pending.map(request => <article data-theme-slot="approval" className="approval" key={`${typeof request.id}:${request.id}`}>
               <div className="approval-heading"><span className="approval-symbol">!</span><h2>需要审批</h2><span>{request.method === 'item/fileChange/requestApproval' ? '文件变更' : '命令执行'}</span></div>
               <p>{request.params.reason ?? 'Codex 请求确认本次操作'}</p>
               {request.method === 'item/commandExecution/requestApproval' && <><pre>{request.params.command ?? '未提供命令内容'}</pre><small className="path">工作目录 · {request.params.cwd}</small></>}
@@ -470,10 +470,10 @@ function App() {
         </div>
       </div>
       <div className="jump-latest-slot">{!atBottom && <button className="jump-latest" onClick={() => { follow.current = true; scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: 'smooth' }); }}><Icon name="arrowDown" size={14}/>返回最新{session.pending.length ? ' · 待审批' : ''}</button>}</div>
-      <form className={`composer ${expanded ? 'expanded' : ''}`} onSubmit={event => { event.preventDefault(); void send(); }}>
+      <form data-theme-slot="composer" className={`composer ${expanded ? 'expanded' : ''}`} onSubmit={event => { event.preventDefault(); void send(); }}>
         <div className="composer-input"><label className="sr-only" htmlFor="message">消息</label><textarea ref={composer} id="message" enterKeyHint="enter" onCompositionStart={() => { composing.current = true; }} onCompositionEnd={() => { composing.current = false; }} value={text} onChange={event => writeDraft(event.target.value)} placeholder="向 Codex 描述你的目标…" maxLength={16000} rows={2} onKeyDown={event => { if (event.key === 'Enter' && (event.ctrlKey || event.metaKey) && !event.nativeEvent.isComposing && !composing.current && event.keyCode !== 229) { event.preventDefault(); void send(); } }}/><button className="icon-button expand-composer" type="button" aria-label={expanded ? '收起输入框' : '展开输入框'} title="展开输入框" onClick={() => setExpanded(value => !value)}><Icon name="expand" size={15}/></button></div>
         <div className="composer-toolbar"><div className="model-controls"><label><span className="sr-only">模型</span><select aria-label="模型" title="下一轮模型" value={model} onChange={event => { setModel(event.target.value); setEffort(''); }}><option value="">继承 · {session.thread?.model ?? config?.model ?? 'Codex 默认'}</option>{models.map(m => <option key={m.id} value={m.model}>{m.displayName}</option>)}</select></label><label><span className="sr-only">思考强度</span><select aria-label="思考强度" title="下一轮思考强度" value={effort} onChange={event => setEffort(event.target.value)}><option value="">继承 · {session.thread?.reasoningEffort ?? config?.effort ?? '默认'}</option>{(models.find(m => m.model === (model || session.thread?.model || config?.model))?.supportedReasoningEfforts ?? []).map(e => <option key={e.reasoningEffort}>{e.reasoningEffort}</option>)}</select></label></div>
-          <div className="composer-actions theme-protected">{active && <button type="button" className="stop-button" disabled={!connected || !session.activeTurn} onClick={() => void client.current!.request('turn/interrupt', { threadId: selected.current, turnId: session.activeTurn }).catch(report)}><Icon name="stop" size={15}/>停止</button>}<button className="primary send-button" title="发送 · Ctrl+Enter" aria-label="发送" disabled={!canSend}><Icon name="send"/></button></div>
+          <div className="composer-actions">{active && <button type="button" className="stop-button" disabled={!connected || !session.activeTurn} onClick={() => void client.current!.request('turn/interrupt', { threadId: selected.current, turnId: session.activeTurn }).catch(report)}><Icon name="stop" size={15}/>停止</button>}<button className="primary send-button" title="发送 · Ctrl+Enter" aria-label="发送" disabled={!canSend}><Icon name="send"/></button></div>
         </div>
         <div className="composer-caption"><span>{model || effort ? '下一轮使用所选模型 / 思考强度' : '继承 Codex 原生会话设置'}</span><span>Ctrl Enter 发送 · Enter 换行</span></div>
       </form>
@@ -489,7 +489,7 @@ function App() {
       <footer className="mobile-detail-footer"><button onClick={() => setLayout(l => ({ ...l, inspector: false }))}><Icon name="back"/>返回会话</button></footer>
     </section>}
     {browsing && client.current && <ProjectBrowser client={client.current} projects={projects} onRefresh={refreshProjects} onSelect={selectProject} onClose={() => setBrowsing(false)}/>}
-    <dialog ref={dialog} className="settings-dialog app-settings theme-protected" aria-label="设置" onCancel={() => setSettings(false)} onClick={event => { if (event.target === event.currentTarget) setSettings(false); }}><div className="settings-content">
+    <dialog data-theme-slot="settings" ref={dialog} className="settings-dialog app-settings" aria-label="设置" onCancel={() => setSettings(false)} onClick={event => { if (event.target === event.currentTarget) setSettings(false); }}><div className="settings-content">
       <header><div><OracleEye/><h2>设置</h2></div><button className="icon-button" aria-label="关闭设置" onClick={() => setSettings(false)}><Icon name="close"/></button></header>
       <h3>模型与推理</h3><p>选项来自 Codex 实时目录，仅用于新会话或下一轮，不修改全局配置。</p>
       <div className="settings-model-options" role="group" aria-label="下一轮模型">

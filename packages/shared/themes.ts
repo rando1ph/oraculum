@@ -18,5 +18,5 @@ export const themeColors = {
   '--accent': '#62d8ff', '--accent-strong': '#00baff', '--accent-soft': '#092c41',
   '--success': '#4bd493', '--warning': '#edba60', '--danger': '#ff8190',
 } as const;
-export const themeSlots = ['navigation', 'conversation', 'header', 'inspector', 'user-message', 'tool', 'content', 'decoration'] as const;
+export const themeSlots = ['navigation', 'conversation', 'header', 'inspector', 'user-message', 'tool', 'content', 'decoration', 'composer', 'approval', 'settings'] as const;
 export const themeMobileMedia = '(max-width: 760px), (pointer: coarse)';

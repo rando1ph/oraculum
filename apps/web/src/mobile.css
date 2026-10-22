@@ -1,3 +1,4 @@
+@layer oraculum {
 /* Approved Android presentation. Fine-pointer desktop layouts retain Phase 3A styles. */
 .mobile-session-menu, .mobile-menu-toggle, .mobile-detail-back, .mobile-detail-footer { display: none; }
 @media (max-width: 760px), (pointer: coarse) {
@@ -239,4 +240,5 @@
   .composer textarea, .composer.expanded textarea { min-height: 44px; max-height: 44px; }
   .composer-toolbar { height: 48px; margin-top: 0; }
   .composer-caption { display: none; }
+}
 }

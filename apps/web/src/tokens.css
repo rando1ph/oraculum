@@ -1,4 +1,5 @@
-:root, .theme-protected {
+@layer oraculum {
+:root {
   color-scheme: dark;
   --background: #000000;
   --surface: #040b10;
@@ -25,7 +26,7 @@
   background: var(--background);
   color: var(--foreground);
 }
-.theme-protected { font-family: var(--font-sans); color: var(--foreground); }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+}
 }

@@ -1,0 +1,122 @@
+/* Bundled DejaVuSansMono.ttf license (unmodified font):
+Copyright: Copyright (c) 2003 by Bitstream, Inc. All Rights Reserved.
+Bitstream Vera is a trademark of Bitstream, Inc.
+DejaVu changes are in public domain.
+License: bitstream-vera
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of the fonts accompanying this license ("Fonts") and associated
+documentation files (the "Font Software"), to reproduce and distribute the
+Font Software, including without limitation the rights to use, copy, merge,
+publish, distribute, and/or sell copies of the Font Software, and to permit
+persons to whom the Font Software is furnished to do so, subject to the
+following conditions:
+
+The above copyright and trademark notices and this permission notice shall
+be included in all copies of one or more of the Font Software typefaces.
+
+The Font Software may be modified, altered, or added to, and in particular
+the designs of glyphs or characters in the Fonts may be modified and
+additional glyphs or characters may be added to the Fonts, only if the fonts
+are renamed to names not containing either the words "Bitstream" or the word
+"Vera".
+
+This License becomes null and void to the extent applicable to Fonts or Font
+Software that has been modified and is distributed under the "Bitstream
+Vera" names.
+
+The Font Software may be sold as part of a larger software package but no
+copy of one or more of the Font Software typefaces may be sold by itself.
+
+THE FONT SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+OR IMPLIED, INCLUDING BUT NOT LIMITED TO ANY WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT OF COPYRIGHT, PATENT,
+TRADEMARK, OR OTHER RIGHT. IN NO EVENT SHALL BITSTREAM OR THE GNOME
+FOUNDATION BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, INCLUDING
+ANY GENERAL, SPECIAL, INDIRECT, INCIDENTAL, OR CONSEQUENTIAL DAMAGES,
+WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF
+THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM OTHER DEALINGS IN THE
+FONT SOFTWARE.
+
+Except as contained in this notice, the names of Gnome, the Gnome
+Foundation, and Bitstream Inc., shall not be used in advertising or
+otherwise to promote the sale, use or other dealings in this Font Software
+without prior written authorization from the Gnome Foundation or Bitstream
+Inc., respectively. For further information, contact: fonts at gnome dot
+org.
+
+*/
+/* Fictional Hong Kong inspired illustration generated for this project.
+   Not a location photograph. Asset provenance: docs/THEME-ASSETS.md. */
+@font-face {
+  font-family: "Rain Mono";
+  src: url("assets/DejaVuSansMono.ttf") format("truetype");
+  font-display: swap;
+}
+:root {
+  color-scheme: dark;
+  --background: #050e18;
+  --surface: #0c1c2a;
+  --surface-raised: #142b3a;
+  --surface-hover: #1b3a49;
+  --foreground: #e0f7f8;
+  --muted: #aac5cf;
+  --subtle: #8ca7ba;
+  --line: #386171;
+  --line-bright: #47cbd6;
+  --accent: #65f4e5;
+  --accent-strong: #20cfca;
+  --accent-soft: #143d46;
+  --success: #71e4b0;
+  --warning: #ffc982;
+  --danger: #ff99ba;
+  --on-accent: #041921;
+  --radius: 3px;
+  --font-mono: "Rain Mono", "Noto Sans Mono", monospace;
+  --font-sans: "Rain Mono", "Noto Sans CJK SC", system-ui, sans-serif;
+  --rain-glass: linear-gradient(145deg, #0c2039a8, #05121bba);
+}
+.app-shell {
+  padding: 20px; gap: 12px;
+  background: linear-gradient(115deg, #03101a22, #07132066), url("assets/rain-night.webp") center / cover;
+}
+.navigation, .conversation, .inspector {
+  border-radius: 4px 20px 4px 20px;
+  border: 1px solid #6ed6e855;
+  background: var(--rain-glass);
+  box-shadow: 0 12px 42px #0008, inset 0 1px 0 #afffff33;
+  backdrop-filter: blur(8px) saturate(1.25);
+}
+.navigation { background: linear-gradient(165deg, #0c142be6, #1f0a24bb); }
+.brand-row h1 { color: #cbfff8; letter-spacing: 3px; text-shadow: 0 0 18px #51edec77; }
+.brand-row span { color: #ff9ecb; }
+.brand-row::after { content: "雨夜"; writing-mode: vertical-rl; color: #ff86b5; font-size: 14px; letter-spacing: 6px; margin-left: auto; text-shadow: 0 0 12px #ff2c86; }
+.conversation-header, .inspector-header { background: #071625b3; border-bottom: 1px solid #6df7ed55; }
+.session-title > span { letter-spacing: .6px; }
+.conversation-content { max-width: 1060px; padding: 22px 28px 30px; }
+.theme-decoration { opacity: .55; background: radial-gradient(ellipse at 90% 5%, #dd186b1a, transparent 60%); }
+.theme-decoration::after {
+  content: ""; position: absolute; inset: -80px 0; pointer-events: none;
+  background: repeating-linear-gradient(106deg, transparent 0 48px, #83e8ff16 49px, transparent 50px 102px);
+  animation: oraculum-rain 7s linear infinite;
+}
+@keyframes oraculum-rain { to { transform: translateY(80px); } }
+button { border-radius: 3px; letter-spacing: .3px; transition: background .18s ease, box-shadow .18s ease; }
+button.primary {
+  color: #05121b; border: 1px solid #a3fff4;
+  background: linear-gradient(120deg, #6bffe2 0%, #32c5e6 70%, #af8dff 100%);
+  box-shadow: 3px 3px 0 #ff3d9444, 0 0 18px #28d6d333;
+  clip-path: polygon(0 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 8px 100%, 0 calc(100% - 8px));
+}
+button.primary:hover:enabled { background: linear-gradient(120deg, #a7ffef, #81e6ff); box-shadow: 0 0 24px #39eecc66; color: #05121b; }
+.session-link.selected { background: linear-gradient(90deg, #164952c9, #10304140); border-left: 3px solid #65f4e5; }
+.composer { border: 1px solid #53e9e899; border-radius: 4px 18px 4px 18px; background: linear-gradient(110deg, #0a2938e8, #171529e8); box-shadow: 0 0 24px #36ede014, 4px 4px 0 #ff439528; }
+.composer:focus-within { border-color: #8affed; box-shadow: 0 0 25px #4ff5dd33; }
+.composer textarea { font-size: 14px; line-height: 1.85; }
+.model-controls select { background: #051824; border-color: #386171; }
+.message.user { background: linear-gradient(110deg, #164756c9, #17243cdd); border: 1px solid #479faa88; border-left: 3px solid #62f9dd; border-radius: 2px 16px 2px 16px; }
+.markdown { line-height: 1.95; }
+.message-heading { color: #ffadd0; }
+.tool { background: #071c29d9; border: 1px solid #3a6577; border-radius: 3px; }
+.approval { background: linear-gradient(125deg, #3f2a16f5, #161f2af5); border: 1px solid #e2ad61; box-shadow: 0 0 22px #f3ad3815; }
+.settings-dialog, .mobile-session-menu { background: #0b1928f5; border-color: #43798c; }
+@media (prefers-reduced-motion: reduce) { .theme-decoration::after { animation: none; } }
