@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { appUrl } from '../../../packages/shared/entry';
+import { androidShell } from './mobile';
 import { useSession } from './store';
 
 export async function checkSession() {
@@ -31,7 +32,7 @@ export function SessionGate({ children }: { children: ReactNode }) {
     void check();
     return () => window.removeEventListener('oraculum-auth-required', expired);
   }, []);
-  if (loading) return <main className="pairing"><p role="status">正在检查连接…</p></main>;
+  if (loading) return <main className="pairing"><p role="status">正在检查连接…</p>{androidShell && <a className="server-settings-link" href="oraculum://settings/server">服务器地址</a>}</main>;
   if (allowed) return children;
   return <main className="pairing">
     <h1>Oraculum <span>神谕</span></h1>
@@ -56,5 +57,6 @@ export function SessionGate({ children }: { children: ReactNode }) {
       <button className="primary" disabled={busy || !label.trim() || !code.trim()}>配对并连接</button>
       <button type="button" disabled={busy} onClick={() => void check()}>重新检查连接</button>
     </form>
+    {androidShell && <a className="server-settings-link" href="oraculum://settings/server">服务器地址</a>}
   </main>;
 }

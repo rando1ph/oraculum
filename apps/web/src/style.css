@@ -155,6 +155,16 @@ nav[aria-label="原生会话"] { margin-top: 11px; flex: 1; overflow-y: auto; mi
 .settings-content h2 { margin: 0; font-size: 18px; }
 .settings-content h3 { color: var(--accent); margin: 23px 0 9px; }
 .settings-content p { color: var(--muted); font-size: 12px; line-height: 1.9; }
+.settings-model-options { display: grid; gap: 6px; }
+.settings-model-options button { justify-content: flex-start; flex-wrap: wrap; }
+.settings-model-options button small { width: 100%; text-align: left; }
+.settings-effort-options { display: flex; flex-wrap: wrap; gap: 6px; }
+.settings-model-options [aria-pressed="true"], .settings-effort-options [aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+.reading-size { display: grid; grid-template-columns: 1fr auto; gap: 10px; color: var(--muted); font-size: 12px; margin-bottom: 16px; }
+.reading-size input { width: 100%; grid-column: 1 / -1; accent-color: var(--accent-strong); }
+.server-settings-link { display: flex; align-items: center; gap: 8px; padding: 12px; margin-top: 12px; border: 1px solid var(--line-bright); border-radius: 8px; color: var(--accent); text-decoration: none; }
+.markdown { font-size: calc(14px * var(--reading-scale, 1)); }
+.message.user p { font-size: calc(14px * var(--reading-scale, 1)); }
 .pairing { max-width: 560px; margin: 32px auto; padding: 24px; }
 .pairing h2 { margin-top: 28px; }
 .pairing p { color: var(--muted); line-height: 1.7; }

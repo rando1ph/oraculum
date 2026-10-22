@@ -25,7 +25,9 @@
     "test:history": "tsx scripts/history-probe.ts",
     "test:phase3:desktop": "tsx scripts/phase3-desktop.ts",
     "test:phase3:ui": "tsx scripts/phase3-ui-contract.ts",
-    "test:phase3:review": "tsx scripts/phase3-desktop-review.ts"
+    "test:phase3:review": "tsx scripts/phase3-desktop-review.ts",
+    "test:phase3:mobile": "tsx scripts/phase3-mobile-contract.ts",
+    "test:phase3:android": "tsx scripts/phase3-android.ts"
   },
   "devDependencies": {
     "@types/node": "24.19.2",

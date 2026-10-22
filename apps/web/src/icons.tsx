@@ -1,5 +1,6 @@
-export type IconName = 'plus' | 'close' | 'panel' | 'search' | 'folder' | 'file' | 'settings' | 'send' | 'stop' | 'refresh' | 'chevron' | 'terminal' | 'arrowDown' | 'expand';
+export type IconName = 'plus' | 'close' | 'panel' | 'search' | 'folder' | 'file' | 'settings' | 'send' | 'stop' | 'refresh' | 'chevron' | 'terminal' | 'arrowDown' | 'expand' | 'more' | 'back';
 const paths: Record<IconName, string> = {
+  more: 'M12 4h.01M12 12h.01M12 20h.01', back: 'M20 12H4m7-7-7 7 7 7',
   plus: 'M12 5v14M5 12h14', close: 'm6 6 12 12M6 18 18 6',
   panel: 'M4 3h16a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1ZM9 3v18',
   search: 'M21 21l-5-5M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0Z',

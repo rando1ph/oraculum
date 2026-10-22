@@ -50,7 +50,7 @@ try {
   await open(desktop);
   await go(desktop, '/etc');
   await expect(desktop.getByRole('dialog').getByRole('alert')).toContainText('outside');
-  await desktop.getByRole('button', { name: 'alpha', exact: true }).click();
+  await desktop.getByLabel('主机子文件夹', { exact: true }).getByRole('button', { name: 'alpha', exact: true }).click();
   await expect(desktop.getByTestId('browsed-directory')).toHaveText(first);
   await desktop.getByRole('button', { name: '添加当前文件夹为项目', exact: true }).click();
   await expect(desktop.getByRole('dialog')).toHaveCount(0);
@@ -60,8 +60,8 @@ try {
   await desktop.getByLabel('消息', { exact: true }).fill('alpha 的独立草稿');
   await mobile.getByRole('button', { name: '打开导航', exact: true }).click();
   await expect(mobile.getByLabel('项目目录', { exact: true }).locator('option')).toHaveCount(2);
-  await open(mobile); await mobile.getByRole('button', { name: 'nested', exact: true }).click();
-  await mobile.getByRole('button', { name: 'alpha', exact: true }).click();
+  await open(mobile); await mobile.getByLabel('主机子文件夹', { exact: true }).getByRole('button', { name: 'nested', exact: true }).click();
+  await mobile.getByLabel('主机子文件夹', { exact: true }).getByRole('button', { name: 'alpha', exact: true }).click();
   await expect(mobile.getByTestId('browsed-directory')).toHaveText(second);
   expect(await mobile.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await mobile.getByRole('button', { name: '添加当前文件夹为项目', exact: true }).click();
