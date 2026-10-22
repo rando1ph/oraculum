@@ -47,27 +47,31 @@ Manifest 保持原四字段：id 为 `[a-z][a-z0-9-]{0,47}`，保留 id `oracle-
 
 任何合法 CSS 值及作者自己的变量都可使用。建议在 `:root` 设置完整调色板和 `color-scheme: light` 或 `dark`。自定义主题的导航、按钮、输入、工具、审批、设置、代码和 Diff 会跟随基础调色板；省略属性保留宿主样式。默认 Oracle Eye 不依赖主题文件或主题服务。
 
+下图省略部分包装节点；缩进表示后代关系，不保证是直接子元素。每行选择器中的标签、class 与 `data-*` 属性属于同一个元素；`/` 分隔并列 hooks。
+
 ```text
-main[data-theme-root][data-theme-id] .app-shell
-  [data-theme-slot="navigation"] .navigation   桌面侧栏 / Android Drawer
+main.app-shell[data-theme-root][data-theme-id]
+  aside.navigation[data-theme-slot="navigation"]   桌面侧栏 / Android Drawer
     .brand-row / .project-picker / .mobile-project-tree
     .session-link / .navigation-footer
-  [data-theme-slot="conversation"] .conversation
-    [data-theme-slot="decoration"] .theme-decoration（默认不接收点击）
-    [data-theme-slot="header"] .conversation-header
+  section.conversation[data-theme-slot="conversation"]
+    div.theme-decoration[data-theme-slot="decoration"]（默认不接收点击）
+    header.conversation-header[data-theme-slot="header"]
     .conversation-scroll
-      [data-theme-slot="content"] .conversation-content
-        [data-theme-slot="user-message"] .message.user
+      div.conversation-content[data-theme-slot="content"]
+        article.message.user[data-theme-slot="user-message"]
         .message / .message-heading / .markdown
-        [data-theme-slot="tool"] .tool / .tool-body
-        [data-theme-slot="approval"] .approval / .approval-actions
-    [data-theme-slot="composer"] .composer
+        .tool[data-theme-slot="tool"]（article 或 details）
+          .tool-body（部分工具）
+        article.approval[data-theme-slot="approval"]
+          .approval-actions
+    form.composer[data-theme-slot="composer"]
       textarea / .composer-toolbar / .model-controls
       .send-button / .stop-button
-  [data-theme-slot="inspector"] .inspector      桌面详情 / 手机全屏
+  section.inspector[data-theme-slot="inspector"]      桌面详情 / 手机全屏
     .diff-editor / .cm-editor / .cm-gutters
     .diff-added / .diff-removed / .diff-hunk
-  [data-theme-slot="settings"] .settings-dialog.app-settings
+  dialog.settings-dialog.app-settings[data-theme-slot="settings"]
     .theme-settings
 ```
 
