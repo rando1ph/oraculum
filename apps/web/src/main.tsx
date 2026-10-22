@@ -130,7 +130,7 @@ function App() {
       });
     } finally { if (ticket === epoch.current) buffer.current = null; }
   }
-  async function selectProject(cwd: string) {
+  async function selectProject(cwd: string, restore = true) {
     const ticket = ++projectEpoch.current;
     ++listEpoch.current;
     setSwitching(true); setError(''); setSynced(false);
@@ -142,9 +142,9 @@ function App() {
       workspace.current = settings.cwd; save('oraculum.project', settings.cwd);
       setConfig(settings); setThreads([]); setNextCursor(null); setQuery(''); setModel(''); setEffort(''); setInspected(undefined);
       useSession.getState().reset(); setText(readDraft());
-      const saved = readSaved(storageKey());
+      const saved = restore ? readSaved(storageKey()) : null;
       let page = await listThreads();
-      const fallback = page?.data[0]?.id ?? '';
+      const fallback = restore ? page?.data[0]?.id ?? '' : '';
       const cursors = new Set<string>();
       // A remembered thread can live beyond the first native history page.
       while (saved && page && !page.data.some(t => t.id === saved) && page.nextCursor) {

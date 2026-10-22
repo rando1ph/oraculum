@@ -15,15 +15,17 @@ await Promise.all([cwd, first, second].map(path => mkdir(path, { recursive: true
 const db = new DatabaseSync(':memory:');
 const projects = new ProjectDirectories(root, cwd, db);
 await projects.register(cwd);
-const threads: any[] = [];
+const threads: any[] = [{ id: 'external-writer', cwd: first, name: '外部 Codex 正在使用的会话', preview: '', status: { type: 'idle' }, turns: [] }];
+let sequence = 0;
 const bus = new EventEmitter();
 const service = new BridgeService({ on: bus.on.bind(bus), send: () => {}, request: async <T>(method: string, params: any): Promise<T> => {
+  if (method === 'thread/resume' && params.threadId === 'external-writer') throw new Error('Thread already has an active writer');
   let result: any;
   if (method === 'config/read') result = { config: {} };
   else if (method === 'model/list') result = { data: [], nextCursor: null };
   else if (method === 'thread/list') result = { data: threads.filter(t => t.cwd === params.cwd), nextCursor: null };
   else if (method === 'thread/start') {
-    const thread = { id: `fixture-${threads.length}`, name: null, preview: '', cwd: params.cwd, status: { type: 'idle' }, turns: [] };
+    const thread = { id: `fixture-${sequence++}`, name: null, preview: '', cwd: params.cwd, status: { type: 'idle' }, turns: [] };
     threads.push(thread); result = { thread };
   } else if (method === 'thread/read' || method === 'thread/resume') result = { thread: threads.find(t => t.id === params.threadId) };
   else if (method === 'thread/turns/list') result = { data: [], nextCursor: null };

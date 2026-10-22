@@ -4,7 +4,7 @@ import type { DirectoryListing, ProjectList } from '../../../packages/shared/pro
 import { Icon } from './icons';
 
 export function ProjectBrowser({ client, projects, onSelect, onRefresh, onClose }: {
-  client: BridgeClient; projects: ProjectList; onSelect: (cwd: string) => Promise<void>;
+  client: BridgeClient; projects: ProjectList; onSelect: (cwd: string, restore: boolean) => Promise<void>;
   onRefresh: () => Promise<void>; onClose: () => void;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
@@ -29,10 +29,11 @@ export function ProjectBrowser({ client, projects, onSelect, onRefresh, onClose 
   useEffect(() => { dialog.current?.showModal(); void browse(); return () => { ++epoch.current; }; }, []);
   async function add() {
     if (!listing || busy) return;
+    const restore = projects.projects.some(project => project.cwd === listing.cwd);
     setBusy(true); setError('');
     try {
       const project = await client.request<{ cwd: string }>('bridge/registerProject', { path: listing.cwd });
-      await onRefresh(); await onSelect(project.cwd); onClose();
+      await onRefresh(); await onSelect(project.cwd, restore); onClose();
     } catch (value) { report(value); }
     finally { setBusy(false); }
   }
