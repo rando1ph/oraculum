@@ -16,17 +16,9 @@ export class Codex extends EventEmitter {
   constructor(cwd: string) {
     super();
     assertCodexVersion(execFileSync('codex', ['--version'], { encoding: 'utf8' }));
-    // Read only MCP names; override enabled flags in a TOML value, because the
-    // CLI splits dotted override keys even inside quoted server names.
-    const names: string[] = JSON.parse(execFileSync('python3', ['-c',
-      'import pathlib,tomllib,json,os; p=pathlib.Path(os.environ.get("CODEX_HOME",str(pathlib.Path.home()/".codex")))/"config.toml"; print(json.dumps(list(tomllib.loads(p.read_text()).get("mcp_servers",{})) if p.exists() else []))'
-    ], { encoding: 'utf8' }));
-    const disabledMcp = `{${names.map(name => `${JSON.stringify(name)}={enabled=false}`).join(',')}}`;
-    const overrides = [
-      `mcp_servers=${disabledMcp}`, 'features.apps=false', 'features.plugins=false',
-      'features.multi_agent=false', 'web_search="disabled"',
-    ];
-    this.child = spawn('codex', ['app-server', '--listen', 'stdio://', ...overrides.flatMap(value => ['-c', value])], {
+    // Codex owns effective config resolution (including CODEX_HOME, project
+    // layers, enabled and explicitly disabled capabilities). Do not override it.
+    this.child = spawn('codex', ['app-server', '--listen', 'stdio://'], {
       cwd, stdio: ['pipe', 'pipe', 'pipe'],
     });
     // Drain stderr without logging configuration, prompts, or credentials.

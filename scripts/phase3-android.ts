@@ -244,7 +244,7 @@ try {
     }
     await phone.getByRole('button', { name: label, exact: true }).scrollIntoViewIfNeeded(); await screenshot(phone, `01-approval-${decision}`);
     const buttonBounds = await phone.getByRole('button', { name: label, exact: true }).boundingBox(); expect(buttonBounds!.height).toBeGreaterThanOrEqual(48);
-    evidence.approvals.push({ requestId: request.id, itemId: request.params.itemId, method: request.method, command, decision });
+    evidence.approvals.push({ requestId: request.id, itemId: 'itemId' in request.params ? request.params.itemId : undefined, method: request.method, command, decision });
     await phone.getByRole('button', { name: label, exact: true }).click(); await expect(desktop.locator('.approval')).toHaveCount(0); pending = undefined;
   }
   await expect(phone.getByRole('heading', { name: '移动端修复完成', exact: true })).toBeVisible({ timeout: 180_000 });
@@ -305,7 +305,7 @@ try {
       await expect(phone.getByRole('heading', { name: '需要审批', exact: true })).toBeVisible();
       await expect(desktop.getByRole('heading', { name: '需要审批', exact: true })).toBeVisible();
       await phone.getByRole('button', { name: label, exact: true }).scrollIntoViewIfNeeded(); await screenshot(phone, `final-approval-${decision}`);
-      evidence.approvals.push({ requestId: request.id, itemId: request.params.itemId, method: request.method, command, decision });
+      evidence.approvals.push({ requestId: request.id, itemId: 'itemId' in request.params ? request.params.itemId : undefined, method: request.method, command, decision });
       await phone.getByRole('button', { name: label, exact: true }).click(); await expect(desktop.locator('.approval')).toHaveCount(0); pending = undefined;
     }
     await expect(phone.getByRole('heading', { name: '移动审批复核完成', exact: true })).toBeVisible({ timeout: 180_000 });

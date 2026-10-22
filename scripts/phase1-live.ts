@@ -77,7 +77,7 @@ try {
     const command = request.method === 'item/commandExecution/requestApproval' ? request.params.command : '';
     const allowed = [`printf ${marker}`, `/bin/bash -lc 'printf ${marker}'`, `/bin/bash -lc "printf ${marker}"`, `/bin/sh -lc 'printf ${marker}'`];
     expect(allowed, 'Only the exact harmless printf may be approved').toContain(command);
-    evidence.approvals.push({ method: request.method, requestId: request.id, itemId: request.params.itemId, command, decision });
+    evidence.approvals.push({ method: request.method, requestId: request.id, itemId: 'itemId' in request.params ? request.params.itemId : undefined, command, decision });
     await page.screenshot({ path: `.local/evidence/phase1/live-${decision}.png`, fullPage: true });
     await page.getByRole('button', { name: button, exact: true }).click();
     await expect.poll(() => service!.pending.has(request.id), { timeout: 15_000 }).toBe(false);

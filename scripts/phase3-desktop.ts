@@ -194,7 +194,7 @@ try {
       expect(service.pending.has(request.id)).toBe(true);
       evidence.checks.push('pending native approval survives session switching with accurate navigation status');
     }
-    evidence.approvals.push({ method: request.method, requestId: request.id, itemId: request.params.itemId, command, decision });
+    evidence.approvals.push({ method: request.method, requestId: request.id, itemId: 'itemId' in request.params ? request.params.itemId : undefined, command, decision });
     await page.getByRole('button', { name: button, exact: true }).scrollIntoViewIfNeeded();
     await screenshot(page, decision === 'accept' ? '02-command-allow' : '03-command-decline');
     await page.getByRole('button', { name: button, exact: true }).click();

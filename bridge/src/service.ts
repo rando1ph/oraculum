@@ -1,7 +1,7 @@
 import { EventEmitter } from 'node:events';
 import { randomUUID } from 'node:crypto';
 import { NativeRpcError, type Codex } from './codex';
-import type { Approval, RpcId, Snapshot, WireMessage, BridgeEvent, LocalConfig, Thread } from '../../packages/shared/protocol';
+import type { Approval, RpcId, Snapshot, WireMessage, BridgeEvent, LocalConfig, Thread, NativeSessionSettings } from '../../packages/shared/protocol';
 import type { ThreadStartParams } from '../../.local/codex-protocol/v2/ThreadStartParams';
 import type { ThreadStartResponse } from '../../.local/codex-protocol/v2/ThreadStartResponse';
 import type { TurnStartParams } from '../../.local/codex-protocol/v2/TurnStartParams';
@@ -15,17 +15,20 @@ import { readHistory } from './history';
 import type { ReceiptStore } from './receipts';
 import type { ProjectDirectories } from './projects';
 import { basename, dirname } from 'node:path';
+import { nativeResponse, responseNeedsDirectory, supportedRequest } from './native-requests';
 
 export class BridgeService extends EventEmitter {
   readonly threads = new Set<string>();
   readonly pending = new Map<RpcId, Approval>();
   private threadProjects = new Map<string, string>();
+  private threadParents = new Map<string, string>();
   private busy = new Set<string>();
   private activeTurns = new Map<string, string>();
   private revisions = new Map<string, number>();
   private unknownSends = new Set<string>();
   private loaded = new Set<string>();
   private fresh = new Map<string, Thread>();
+  private settings = new Map<string, NativeSessionSettings>();
   private resuming = new Map<string, Promise<void>>();
   constructor(readonly codex: Pick<Codex, 'request' | 'send'> & { on(event: string, listener: (...args: any[]) => void): unknown }, readonly cwd: string,
     private receipts?: ReceiptStore, private projects?: ProjectDirectories) {
@@ -38,26 +41,53 @@ export class BridgeService extends EventEmitter {
   }
   private receive(message: WireMessage) {
     const params = message.params ?? {};
+    if (message.method === 'thread/started' && message.id === undefined) {
+      const thread = params.thread as Thread | undefined;
+      // A native child is only reachable through its already owned parent and
+      // identical canonical project. A bare request can never add ownership.
+      if (thread && typeof thread.id === 'string' && typeof thread.parentThreadId === 'string' &&
+        this.threads.has(thread.parentThreadId) && thread.id !== thread.parentThreadId &&
+        !this.descendsFrom(thread.parentThreadId, thread.id)) {
+        const cwd = this.threadCwd(thread.parentThreadId);
+        const knownParent = this.threadParents.get(thread.id);
+        if (thread.cwd === cwd && (!this.threadProjects.has(thread.id) || this.threadCwd(thread.id) === cwd) &&
+          (!knownParent || knownParent === thread.parentThreadId)) {
+          this.track(thread.id, cwd);
+          this.threadParents.set(thread.id, thread.parentThreadId);
+        } else {
+          this.emit('event', { type: 'notice', threadId: this.displayThread(thread.parentThreadId),
+            message: '原生子会话与已授权父会话的项目归属不一致，其交互未获授权。' } satisfies BridgeEvent);
+        }
+      }
+      return;
+    }
     const threadId = typeof params.threadId === 'string' ? params.threadId : undefined;
     if (message.method && message.id !== undefined) {
-      if (threadId && this.threads.has(threadId) &&
-        ['item/commandExecution/requestApproval', 'item/fileChange/requestApproval'].includes(message.method)) {
+      if (threadId && this.threads.has(threadId) && supportedRequest(message)) {
+        // Retransmission must not invalidate a token that another device holds.
+        if (this.pending.has(message.id)) return;
         // Raw RPC ID is preserved, with a UI-only token to reject stale replies
         // after an App Server restart that reuses its numeric request IDs.
-        const request = { ...message, bridgeToken: randomUUID() } as Approval;
+        const displayThreadIds = this.ancestorThreads(threadId);
+        const request = { ...message, bridgeToken: randomUUID(),
+          ...(displayThreadIds.length ? { displayThreadIds } : {}) } as Approval;
         this.pending.set(request.id, request);
         this.emit('event', { type: 'approval', request } satisfies BridgeEvent);
       } else {
-        // Fail closed on auth requests / unsupported interactions; no credentials
-        // or privileged requests are forwarded to the renderer.
+        // Harness/client-owned execution, credential refresh, and unsupported
+        // verification stay outside the renderer's native interaction adapter.
         this.codex.send({ id: message.id, error: { code: -32601, message: 'Interaction unsupported by Oraculum; no permission granted' } });
-        this.emit('event', { type: 'notice', threadId, message: `暂不支持 ${message.method}；已安全拒绝，未授予权限。` } satisfies BridgeEvent);
+        const displayThreadIds = threadId && this.threads.has(threadId) ? this.ancestorThreads(threadId) : [];
+        this.emit('event', { type: 'notice', threadId, ...(displayThreadIds.length ? { displayThreadIds } : {}),
+          message: `暂不支持 ${message.method}；已安全拒绝，未授予权限。` } satisfies BridgeEvent);
       }
       return;
     }
     if (!threadId || !this.threads.has(threadId)) return;
     this.revisions.set(threadId, (this.revisions.get(threadId) ?? 0) + 1);
-    if (message.method === 'serverRequest/resolved') this.pending.delete(params.requestId as RpcId);
+    if (message.method === 'serverRequest/resolved' && this.pending.get(params.requestId as RpcId)?.params.threadId === threadId) {
+      this.resolveRequest(params.requestId as RpcId);
+    }
     if (message.method === 'turn/started') {
       this.activeTurns.set(threadId, (params.turn as { id: string }).id);
       this.busy.add(threadId);
@@ -72,7 +102,7 @@ export class BridgeService extends EventEmitter {
         this.activeTurns.delete(threadId);
       }
       for (const [id, request] of this.pending) {
-        if (request.params.threadId === threadId && request.params.turnId === turnId) this.pending.delete(id);
+        if (request.params.threadId === threadId && request.params.turnId === turnId) this.resolveRequest(id);
       }
     }
     // Native notifications are the facts; no agent loop or tool execution here.
@@ -95,8 +125,9 @@ export class BridgeService extends EventEmitter {
       const { config } = await this.codex.request<ConfigReadResponse>('config/read', { cwd, includeLayers: false });
       // Only safe effective settings cross into the renderer, never raw config.
       return { cwd, model: config.model, effort: config.model_reasoning_effort,
-        provider: config.model_provider, approvalPolicy: 'on-request', sandbox: 'workspace-write',
-        restrictedTools: true } satisfies LocalConfig;
+        provider: config.model_provider, approvalPolicy: config.approval_policy ?? null,
+        sandbox: config.sandbox_mode ?? null, approvalsReviewer: config.approvals_reviewer ?? null,
+        webSearch: config.web_search ?? null } satisfies LocalConfig;
     }
     if (method === 'model/list') {
       return this.codex.request<ModelListResponse>('model/list', { limit: 100, includeHidden: false, cursor: typeof params.cursor === 'string' ? params.cursor : undefined });
@@ -117,7 +148,7 @@ export class BridgeService extends EventEmitter {
     if (method === 'thread/start') {
       const cwd = await this.projectCwd(params.cwd);
       const request: ThreadStartParams = {
-        cwd, sandbox: 'workspace-write', approvalPolicy: 'on-request', approvalsReviewer: 'user',
+        cwd,
         ...(typeof params.model === 'string' && params.model ? { model: params.model } : {}),
       };
       const response = await this.codex.request<ThreadStartResponse>('thread/start', request);
@@ -125,6 +156,7 @@ export class BridgeService extends EventEmitter {
       this.track(response.thread.id, cwd);
       this.loaded.add(response.thread.id);
       this.fresh.set(response.thread.id, response.thread);
+      this.rememberSettings(response);
       return response;
     }
     const threadId = params.threadId;
@@ -132,8 +164,9 @@ export class BridgeService extends EventEmitter {
     // A turn/approval/history request cannot reassign an existing thread by
     // supplying a different cwd. Its project came from the validated native list.
     const cwd = this.threadCwd(threadId);
+    const pendingResponse = method === 'bridge/approve' ? this.pending.get(params.requestId as RpcId) : undefined;
     const needsDirectory = ['bridge/subscribe', 'bridge/history', 'turn/start'].includes(method) ||
-      (method === 'bridge/approve' && params.decision === 'accept');
+      (pendingResponse?.params.threadId === threadId && responseNeedsDirectory(pendingResponse, params));
     // Even if a directory disappears, Stop and Decline remain available.
     if (needsDirectory && this.projects && await this.projects.resolve(cwd) !== cwd) throw new Error('Project directory changed; refresh the native thread list');
     if (method === 'bridge/subscribe' || method === 'bridge/history') {
@@ -152,7 +185,8 @@ export class BridgeService extends EventEmitter {
           this.busy.delete(threadId); this.activeTurns.delete(threadId);
         }
       }
-      return { ...result, pending: [...this.pending.values()].filter(r => r.params.threadId === threadId),
+      return { ...result, pending: [...this.pending.values()].filter(r => r.params.threadId === threadId || this.descendsFrom(r.params.threadId, threadId)),
+        settings: this.settings.get(threadId),
         sendBlocked: this.unknownSends.has(threadId) || !!this.receipts?.blocked(cwd, threadId),
         receipts: this.receipts?.list(cwd, threadId),
       } satisfies Snapshot;
@@ -200,10 +234,11 @@ export class BridgeService extends EventEmitter {
       const request = this.pending.get(params.requestId as RpcId);
       if (!request || request.params.threadId !== threadId) throw new Error('Approval no longer pending');
       if (params.bridgeToken !== request.bridgeToken) throw new Error('Approval expired or belongs to another Bridge session');
-      if (!['accept', 'decline', 'cancel'].includes(String(params.decision))) throw new Error('Unsupported decision');
+      const result = nativeResponse(request, params);
       // Remove synchronously before writing; never apply a reply twice.
       this.pending.delete(request.id);
-      this.codex.send({ id: request.id, result: { decision: params.decision } });
+      this.codex.send({ id: request.id, result });
+      this.emit('event', { type: 'requestAnswered', requestId: request.id, bridgeToken: request.bridgeToken } satisfies BridgeEvent);
       return { submitted: true };
     }
     throw new Error('Method not exposed by Oraculum');
@@ -214,11 +249,32 @@ export class BridgeService extends EventEmitter {
   private threadCwd(threadId: string) {
     return this.threadProjects.get(threadId) ?? this.cwd;
   }
+  private displayThread(threadId: string): string {
+    return this.ancestorThreads(threadId).at(-1) ?? threadId;
+  }
+  private ancestorThreads(threadId: string): string[] {
+    const ancestors: string[] = [];
+    for (let parent = this.threadParents.get(threadId); parent; parent = this.threadParents.get(parent)) ancestors.push(parent);
+    return ancestors;
+  }
+  private descendsFrom(threadId: string, ancestor: string): boolean {
+    return this.ancestorThreads(threadId).includes(ancestor);
+  }
+  private resolveRequest(id: RpcId) {
+    const request = this.pending.get(id);
+    if (!request) return;
+    this.pending.delete(id);
+    this.emit('event', { type: 'requestAnswered', requestId: id, bridgeToken: request.bridgeToken } satisfies BridgeEvent);
+  }
   private track(threadId: string, cwd: string) {
     const known = this.threadProjects.get(threadId);
     if (known && known !== cwd) throw new Error('Native thread changed project unexpectedly');
     this.threads.add(threadId);
     this.threadProjects.set(threadId, cwd);
+  }
+  private rememberSettings(response: ThreadStartResponse | ThreadResumeResponse) {
+    const { approvalPolicy, sandbox, approvalsReviewer } = response;
+    this.settings.set(response.thread.id, { approvalPolicy, sandbox, approvalsReviewer });
   }
   private async resume(threadId: string) {
     if (this.loaded.has(threadId)) return;
@@ -231,10 +287,10 @@ export class BridgeService extends EventEmitter {
       try {
         if (this.projects) await this.projects.resolve(cwd);
         const resumed = await this.codex.request<ThreadResumeResponse>('thread/resume', {
-          threadId, cwd, sandbox: 'workspace-write', approvalPolicy: 'on-request',
-          approvalsReviewer: 'user', excludeTurns: true,
+          threadId, cwd, excludeTurns: true,
         });
         if (resumed.thread.cwd !== cwd) throw new Error('Native thread resumed outside the selected project');
+        this.rememberSettings(resumed);
         this.loaded.add(threadId);
       } catch (error) { this.loaded.delete(threadId); throw error; }
     })();

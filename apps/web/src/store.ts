@@ -13,6 +13,7 @@ type State = {
   activeTurn?: string;
   lastTurnId?: string;
   history?: Snapshot['history'];
+  settings?: Snapshot['settings'];
   diffs: Record<string, string>;
   plan: string;
   sendBlocked: boolean;
@@ -24,18 +25,18 @@ type State = {
   approval: (request: Approval) => void;
 };
 const empty = () => ({ thread: undefined, items: {}, turns: {}, pending: [], events: [], notices: [],
-  activeTurn: undefined, lastTurnId: undefined, history: undefined, sendBlocked: false, receipts: [], diffs: {}, plan: '' });
+  activeTurn: undefined, lastTurnId: undefined, history: undefined, settings: undefined, sendBlocked: false, receipts: [], diffs: {}, plan: '' });
 export const useSession = create<State>((set, get) => ({
   ...empty(),
   reset: () => set(empty()),
-  snapshot: ({ thread, pending, history, sendBlocked, receipts }) => {
+  snapshot: ({ thread, pending, history, settings, sendBlocked, receipts }) => {
     const same = get().thread?.id === thread.id;
     const items: State['items'] = same ? { ...get().items } : {};
     for (const turn of thread.turns) for (const item of turn.items) {
       items[itemKey(turn.id, item.id)] = { turnId: turn.id, item, source: 'native', complete: turn.status !== 'inProgress' };
     }
     // Retained live items are explicitly labelled; never persist them as history.
-    set({ ...(same ? {} : empty()), thread, pending, items, history, sendBlocked: !!sendBlocked, receipts: receipts ?? [],
+    set({ ...(same ? {} : empty()), thread, pending, items, history, settings, sendBlocked: !!sendBlocked, receipts: receipts ?? [],
       turns: { ...(same ? get().turns : {}), ...Object.fromEntries(thread.turns.map(turn => [turn.id, turn])) },
       lastTurnId: thread.turns.at(-1)?.id,
       activeTurn: thread.turns.find(turn => turn.status === 'inProgress')?.id });
@@ -51,7 +52,8 @@ export const useSession = create<State>((set, get) => ({
       history: snapshot.history });
   },
   approval: request => {
-    if (request.params.threadId !== get().thread?.id) return;
+    const threadId = get().thread?.id;
+    if (!threadId || (request.params.threadId !== threadId && !request.displayThreadIds?.includes(threadId))) return;
     set({ pending: [...get().pending.filter(p => p.id !== request.id), request] });
   },
   event: (event, skipDeltas = false) => {

@@ -1,6 +1,6 @@
 import { beforeEach, expect, it } from 'vitest';
 import { itemKey, useSession } from './store';
-import type { Thread, ServerNotification } from '../../../packages/shared/protocol';
+import type { Thread, ServerNotification, Approval } from '../../../packages/shared/protocol';
 const emit = (method: string, params: object) => useSession.getState().event({ method, params } as ServerNotification);
 const item = { type: 'agentMessage', id: 'i', text: '', phase: null, memoryCitation: null, delivery: null, questions: null };
 beforeEach(() => { useSession.getState().reset(); useSession.setState({ thread: { id: 't', turns: [] } as unknown as Thread }); });
@@ -42,4 +42,36 @@ it('does not unlock an unknown send when an unrelated native turn completes', ()
   useSession.setState({ sendBlocked: true });
   emit('turn/completed', { threadId: 't', turn: { id: 'unrelated', status: 'completed' } });
   expect(useSession.getState().sendBlocked).toBe(true);
+});
+it('keeps standalone MCP requests across unrelated turn completion and restores them from snapshots', () => {
+  const pending = { id: 8, bridgeToken: 'current', method: 'mcpServer/elicitation/request', params: { threadId: 't', turnId: null, serverName: 'fixture', mode: 'form', _meta: null, message: 'consent', requestedSchema: { type: 'object', properties: {} } } } satisfies Approval;
+  useSession.getState().approval(pending);
+  emit('turn/completed', { threadId: 't', turn: { id: 'u', status: 'completed' } });
+  expect(useSession.getState().pending).toEqual([pending]);
+  useSession.getState().snapshot({ thread: { id: 't', turns: [] } as unknown as Thread, pending: [pending] });
+  expect(useSession.getState().pending).toEqual([pending]);
+  emit('serverRequest/resolved', { threadId: 'other', requestId: 8 });
+  expect(useSession.getState().pending).toEqual([pending]);
+  emit('serverRequest/resolved', { threadId: 't', requestId: 8 });
+  expect(useSession.getState().pending).toEqual([]);
+});
+it('projects a child request into its Bridge-verified parent without changing native thread identity', () => {
+  const request = { id: 'child-request', bridgeToken: 'child-token', displayThreadIds: ['t'], method: 'item/tool/requestUserInput', params: { threadId: 'child', turnId: 'child-turn', itemId: 'input', isBlocking: true, autoResolutionMs: null, questions: [] } } satisfies Approval;
+  useSession.getState().approval(request);
+  expect(useSession.getState().pending).toEqual([request]);
+  useSession.getState().snapshot({ thread: { id: 't', turns: [] } as unknown as Thread, pending: [request] });
+  expect(useSession.getState().pending[0].params.threadId).toBe('child');
+  useSession.getState().approval({ ...request, id: 'unrelated', displayThreadIds: ['other'] });
+  expect(useSession.getState().pending).toHaveLength(1);
+});
+it('shows a live nested request in any verified ancestor or its own thread', () => {
+  const request = { id: 'nested-request', bridgeToken: 'nested-token', displayThreadIds: ['child', 't'], method: 'item/tool/requestUserInput', params: { threadId: 'grandchild', turnId: 'child-turn', itemId: 'input', isBlocking: true, autoResolutionMs: null, questions: [] } } satisfies Approval;
+  for (const threadId of ['t', 'child', 'grandchild']) {
+    useSession.getState().snapshot({ thread: { id: threadId, turns: [] } as unknown as Thread, pending: [] });
+    useSession.getState().approval(request);
+    expect(useSession.getState().pending).toEqual([request]);
+  }
+  useSession.getState().snapshot({ thread: { id: 'unrelated', turns: [] } as unknown as Thread, pending: [] });
+  useSession.getState().approval(request);
+  expect(useSession.getState().pending).toEqual([]);
 });

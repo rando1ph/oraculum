@@ -24,12 +24,12 @@ describe('PoC boundary and native routing', () => {
     await expect(service.dispatch('config/value/write', { threadId: 'thread-1' })).rejects.toThrow('not exposed');
     expect(codex.request).not.toHaveBeenCalled();
   });
-  it('scopes cwd, sandbox and reviewer independently of UI params', async () => {
+  it('scopes cwd without overriding native policies or accepting arbitrary renderer config', async () => {
     const { service, codex } = fixture();
     codex.request.mockResolvedValue({ thread: { id: 'thread-2', cwd: '/controlled-workspace' } });
     await service.dispatch('thread/start', { cwd: '/etc', approvalPolicy: 'never' });
     expect(codex.request).toHaveBeenCalledWith('thread/start', {
-      cwd: '/controlled-workspace', sandbox: 'workspace-write', approvalPolicy: 'on-request', approvalsReviewer: 'user',
+      cwd: '/controlled-workspace',
     });
   });
   it('answers exact server request ID once; item ID cannot substitute', async () => {
@@ -104,7 +104,7 @@ describe('native session and settings', () => {
       : method === 'thread/turns/list' ? { data: [], nextCursor: null } : {});
     await service.dispatch('bridge/subscribe', { threadId: 'thread-1', history: [], cwd: '/private', config: { sandbox_mode: 'danger-full-access' } });
     expect(codex.request).toHaveBeenCalledWith('thread/resume', {
-      threadId: 'thread-1', cwd: '/controlled-workspace', sandbox: 'workspace-write', approvalPolicy: 'on-request', approvalsReviewer: 'user', excludeTurns: true,
+      threadId: 'thread-1', cwd: '/controlled-workspace', excludeTurns: true,
     });
   });
   it('does not resume a listed thread whose cwd no longer matches', async () => {
@@ -115,8 +115,8 @@ describe('native session and settings', () => {
   });
   it('projects only safe effective configuration', async () => {
     const { service, codex } = fixture();
-    codex.request.mockResolvedValue({ config: { model: 'catalog-model', model_reasoning_effort: 'high', model_provider: 'openai', secret: 'must-not-leak', instructions: 'private' } });
-    expect(await service.dispatch('bridge/config', {})).toEqual({ cwd: '/controlled-workspace', model: 'catalog-model', effort: 'high', provider: 'openai', sandbox: 'workspace-write', approvalPolicy: 'on-request', restrictedTools: true });
+    codex.request.mockResolvedValue({ config: { model: 'catalog-model', model_reasoning_effort: 'high', model_provider: 'openai', sandbox_mode: 'read-only', approval_policy: 'never', approvals_reviewer: 'guardian_subagent', web_search: 'disabled', secret: 'must-not-leak', instructions: 'private' } });
+    expect(await service.dispatch('bridge/config', {})).toEqual({ cwd: '/controlled-workspace', model: 'catalog-model', effort: 'high', provider: 'openai', sandbox: 'read-only', approvalPolicy: 'never', approvalsReviewer: 'guardian_subagent', webSearch: 'disabled' });
   });
 });
 

@@ -62,7 +62,7 @@ describe('managed project directory boundary', () => {
     await service.dispatch('thread/start', {});
     await service.dispatch('thread/start', { cwd: second, approvalPolicy: 'never', sandbox: 'danger-full-access' });
     expect(codex.request).toHaveBeenCalledWith('thread/start', {
-      cwd: second, sandbox: 'workspace-write', approvalPolicy: 'on-request', approvalsReviewer: 'user',
+      cwd: second,
     });
     const page = await service.dispatch('thread/list', { cwd: second });
     expect(page).toEqual({ data: [{ id: 'beta-new', cwd: second }, { id: 'beta-old', cwd: second }], nextCursor: 'opaque' });
@@ -90,7 +90,7 @@ describe('managed project directory boundary', () => {
     await service.dispatch('thread/list', { cwd: second });
     await service.dispatch('bridge/subscribe', { threadId: thread.id, cwd: first });
     expect(codex.request).toHaveBeenCalledWith('thread/resume', {
-      threadId: thread.id, cwd: second, sandbox: 'workspace-write', approvalPolicy: 'on-request', approvalsReviewer: 'user', excludeTurns: true,
+      threadId: thread.id, cwd: second, excludeTurns: true,
     });
     const operationId = '10000000-0000-4000-8000-000000000001';
     await service.dispatch('turn/start', { threadId: thread.id, text: 'native prompt', cwd: first, operationId }, { deviceId: 'paired-device' });

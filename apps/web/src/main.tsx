@@ -15,6 +15,7 @@ import { displayPath } from './paths';
 import { ResizeHandle, useLayout } from './layout';
 import { SessionGate, checkSession } from './auth';
 import { ThemeSettings, useTheme } from './themes';
+import { NativeRequest } from './native-request';
 import './style.css';
 import './mobile.css';
 
@@ -146,6 +147,7 @@ function App() {
   function apply(message: BridgeEvent, restoring = false) {
     const state = useSession.getState();
     if (message.type === 'approval') state.approval(message.request);
+    if (message.type === 'requestAnswered') useSession.setState({ pending: state.pending.filter(request => request.id !== message.requestId || request.bridgeToken !== message.bridgeToken) });
     if (message.type === 'event') {
       state.event(message.event, restoring);
       if (message.event.method === 'thread/status/changed') {
@@ -153,7 +155,7 @@ function App() {
         setThreads(current => current.map(t => t.id === threadId ? { ...t, status } : t));
       }
     }
-    if (message.type === 'notice' && (!message.threadId || message.threadId === selected.current)) {
+    if (message.type === 'notice' && (!message.threadId || message.threadId === selected.current || message.displayThreadIds?.includes(selected.current))) {
       useSession.setState({ notices: [...state.notices, message.message] });
     }
   }
@@ -448,21 +450,15 @@ function App() {
           {session.plan && <details className="tool current-plan"><summary>当前计划 · Codex</summary><pre>{session.plan}</pre></details>}
           {Object.entries(session.diffs).map(([turnId, diff]) => <button className="turn-diff" key={turnId} onClick={() => openDiff(`轮次 ${turnId} · 实时汇总`, diff)}><Icon name="file" size={14}/>查看轮次 Diff · {turnId.slice(-8)}</button>)}
           <section aria-label="待审批" className="approvals">
-            {session.pending.map(request => <article data-theme-slot="approval" className="approval" key={`${typeof request.id}:${request.id}`}>
-              <div className="approval-heading"><span className="approval-symbol">!</span><h2>需要审批</h2><span>{request.method === 'item/fileChange/requestApproval' ? '文件变更' : '命令执行'}</span></div>
-              <p>{request.params.reason ?? 'Codex 请求确认本次操作'}</p>
-              {request.method === 'item/commandExecution/requestApproval' && <><pre>{request.params.command ?? '未提供命令内容'}</pre><small className="path">工作目录 · {request.params.cwd}</small></>}
-              {request.method === 'item/fileChange/requestApproval' && request.params.grantRoot && <p>此请求涉及写入目录权限：{request.params.grantRoot}</p>}
-              <details><summary>原生请求详情</summary><small>request ID：{String(request.id)} · {request.params.itemId}</small><pre>{JSON.stringify(request.params, null, 2)}</pre></details>
-              <div className="approval-actions">{(['decline', 'accept'] as const).map(decision => <button className={decision === 'accept' ? 'primary' : ''} key={decision} disabled={!connected || approving || (decision === 'accept' && (!synced || !projectAvailable))} onClick={() => {
+            {session.pending.map(request => <NativeRequest key={`${typeof request.id}:${request.id}:${request.bridgeToken ?? ''}`} request={request} busy={approving} canReply={connected} canAccept={synced && projectAvailable} reply={value => {
                 setApproving(true);
-                void client.current!.request('bridge/approve', { threadId: selected.current, requestId: request.id, bridgeToken: request.bridgeToken, decision })
-                  .then(() => useSession.setState(s => ({ pending: s.pending.filter(p => p.id !== request.id) })))
+                void client.current!.request('bridge/approve', { threadId: request.params.threadId, requestId: request.id, bridgeToken: request.bridgeToken, ...value })
+                  .then(() => useSession.setState(s => ({ pending: s.pending.filter(p => p.id !== request.id || p.bridgeToken !== request.bridgeToken) })))
                   .catch(report).finally(() => setApproving(false));
-              }}>{decision === 'accept' ? '允许本次' : '拒绝'}</button>)}</div>
-            </article>)}
+              }}/>)}
           </section>
           {session.thread && <details className="session-details"><summary>会话信息与原生事件</summary><div className="session-meta"><span data-testid="thread-id">{session.thread.id}</span><span data-testid="last-turn-status">{lastTurn?.status}</span><span>最近查询配置：{session.thread.model ?? '未知'} / {session.thread.reasoningEffort ?? '未指定'}</span></div>
+            {session.settings && <details className="events"><summary>当前会话原生权限</summary><pre>{JSON.stringify(session.settings, null, 2)}</pre></details>}
             {!!session.receipts.length && <details className="events"><summary>最近发送回执</summary>{session.receipts.map(receipt => <p key={receipt.operationId} data-testid="send-receipt" data-operation-id={receipt.operationId}>{{ unknown: '结果未知 · 禁止重发', accepted: 'Harness 已接收 · 待确认终态', rejected: '发送明确被拒绝', completed: '原生已确认完成', failed: '原生已确认失败', interrupted: '原生已确认中断' }[receipt.status]}<small> · {receipt.turnId ?? '尚无已确认的轮次 ID'}</small></p>)}</details>}
             <details className="events"><summary>原生事件 · 最近 {session.events.length} 条</summary><pre>{session.events.join('\n')}</pre></details>
           </details>}
@@ -497,6 +493,7 @@ function App() {
         {models.map(m => <button key={m.id} aria-pressed={model === m.model} onClick={() => { setModel(m.model); setEffort(''); }}>{m.displayName}</button>)}
       </div>
       <h3>思考强度</h3><div className="settings-effort-options" role="group" aria-label="下一轮思考强度"><button aria-pressed={!effort} onClick={() => setEffort('')}>继承</button>{(models.find(m => m.model === (model || session.thread?.model || config?.model))?.supportedReasoningEfforts ?? []).map(e => <button key={e.reasoningEffort} aria-pressed={effort === e.reasoningEffort} onClick={() => setEffort(e.reasoningEffort)}>{e.reasoningEffort}</button>)}</div>
+      <h3>原生权限配置</h3><p>继承当前项目的 Codex 配置。已恢复会话的实际权限见「会话信息与原生事件」。</p><dl className="native-config"><dt>审批策略</dt><dd>{typeof config?.approvalPolicy === 'object' && config.approvalPolicy !== null ? JSON.stringify(config.approvalPolicy) : config?.approvalPolicy ?? '原生默认'}</dd><dt>沙盒</dt><dd>{config?.sandbox ?? '原生默认'}</dd><dt>审批方</dt><dd>{config?.approvalsReviewer ?? '原生默认'}</dd><dt>Web Search</dt><dd>{config?.webSearch ?? '原生默认'}</dd></dl>
       <ThemeSettings theme={theme} open={settings}/>
       <h3>界面与阅读</h3><label className="reading-size">正文大小 <span>{readingSize}%</span><input aria-label="正文大小" type="range" min="100" max="150" step="10" value={readingSize} onChange={event => setReadingSize(Number(event.target.value))}/></label>
       {!mobile && <button onClick={() => setLayout({ navigation: true, inspector: false, navigationWidth: 264, inspectorWidth: 420 })}>恢复面板默认布局</button>}

@@ -8,6 +8,11 @@ export type { ThreadItem } from '../../.local/codex-protocol/v2/ThreadItem';
 import type { ServerNotification } from '../../.local/codex-protocol/ServerNotification';
 import type { ServerRequest } from '../../.local/codex-protocol/ServerRequest';
 import type { Thread } from '../../.local/codex-protocol/v2/Thread';
+import type { AskForApproval } from '../../.local/codex-protocol/v2/AskForApproval';
+import type { ApprovalsReviewer } from '../../.local/codex-protocol/v2/ApprovalsReviewer';
+import type { SandboxMode } from '../../.local/codex-protocol/v2/SandboxMode';
+import type { SandboxPolicy } from '../../.local/codex-protocol/v2/SandboxPolicy';
+import type { WebSearchMode } from '../../.local/codex-protocol/WebSearchMode';
 
 export type RpcId = string | number;
 export type WireMessage = {
@@ -17,16 +22,19 @@ export type WireMessage = {
   result?: unknown;
   error?: { code: number; message: string };
 };
-export type Approval = Extract<ServerRequest, { method: 'item/commandExecution/requestApproval' | 'item/fileChange/requestApproval' }> & { bridgeToken?: string };
+export type Approval = Extract<ServerRequest, { method: 'item/commandExecution/requestApproval' | 'item/fileChange/requestApproval' | 'item/tool/requestUserInput' | 'mcpServer/elicitation/request' | 'item/permissions/requestApproval' }> & { bridgeToken?: string; displayThreadIds?: string[] };
+export type NativeSessionSettings = { approvalPolicy: AskForApproval; sandbox: SandboxPolicy; approvalsReviewer: ApprovalsReviewer };
 export type BridgeEvent =
   | { type: 'event'; event: ServerNotification }
   | { type: 'approval'; request: Approval }
-  | { type: 'notice'; threadId?: string; message: string }
+  | { type: 'requestAnswered'; requestId: RpcId; bridgeToken?: string }
+  | { type: 'notice'; threadId?: string; displayThreadIds?: string[]; message: string }
   | { type: 'unavailable'; message: string }
   | { type: 'projectsChanged' };
 export type Snapshot = {
   thread: Thread;
   pending: Approval[];
+  settings?: NativeSessionSettings;
   history?: { source: 'native-read' | 'native-pages'; warning: string; nextCursor?: string | null };
   sendBlocked?: boolean;
   receipts?: SendReceipt[];
@@ -42,9 +50,10 @@ export type LocalConfig = {
   model: string | null;
   effort: string | null;
   provider: string | null;
-  approvalPolicy: 'on-request';
-  sandbox: 'workspace-write';
-  restrictedTools: boolean;
+  approvalPolicy: AskForApproval | null;
+  sandbox: SandboxMode | null;
+  approvalsReviewer: ApprovalsReviewer | null;
+  webSearch: WebSearchMode | null;
 };
 export type ProjectList = {
   root: string;

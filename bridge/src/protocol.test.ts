@@ -17,3 +17,16 @@ it('uses the generated native history and approval contracts without inventing d
   expect(schema('FileChangeRequestApprovalResponse').required).toContain('decision');
   expect(lock.experimentalApi).toBe(false);
 });
+it('adapts only interactions present in the pinned stable schema', () => {
+  const requests = schema('ServerRequest');
+  const methods = requests.oneOf.map((request: any) => request.properties.method.enum[0]);
+  expect(methods).toEqual(expect.arrayContaining([
+    'item/tool/requestUserInput', 'mcpServer/elicitation/request', 'item/permissions/requestApproval',
+  ]));
+  const modes = requests.definitions.McpServerElicitationRequestParams.oneOf.map((variant: any) => variant.properties.mode.enum[0]);
+  expect(modes).toEqual(['form', 'openai/form', 'openaiForm', 'url']);
+  expect(modes).not.toContain('openai/userVerification');
+  expect(schema('ToolRequestUserInputResponse').required).toContain('answers');
+  expect(schema('PermissionsRequestApprovalResponse').required).toEqual(['permissions']);
+  expect(schema('PermissionsRequestApprovalResponse').properties.scope.default).toBe('turn');
+});

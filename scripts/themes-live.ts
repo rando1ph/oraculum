@@ -218,7 +218,7 @@ try {
     // Device-pixel conversion can report 47.99997 CSS px for a 48px target.
     expect((await button.boundingBox())!.height).toBeGreaterThanOrEqual(47.9);
     await screenshot(phone, `05-android-${decision}`); await screenshot(desktop, `06-electron-${decision}`);
-    evidence.approvals.push({ requestId: request.id, itemId: request.params.itemId, command, decision });
+    evidence.approvals.push({ requestId: request.id, itemId: 'itemId' in request.params ? request.params.itemId : undefined, command, decision });
     await button.click(); await expect(desktop.locator('.approval')).toHaveCount(0); await expect(phone.locator('.approval')).toHaveCount(0); pending = undefined;
   }
   await expect(phone.getByRole('heading', { name: '主题验收执行记录', exact: true })).toBeVisible({ timeout: 180_000 });
