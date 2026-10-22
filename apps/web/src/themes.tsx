@@ -28,6 +28,16 @@ async function request<T>(path: string, body?: object): Promise<T> {
 async function decodeAsset(path: string) {
   const url = new URL(path, location.origin);
   if (url.origin !== location.origin || !url.pathname.startsWith(appUrl('themes/').pathname)) throw new Error('主题资源越界');
+  if (/\.(woff2?|ttf|otf)$/.test(url.pathname)) {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        new FontFace('oraculum-theme-probe', `url("${url.href}")`).load(),
+        new Promise<never>((_resolve, reject) => { timer = setTimeout(() => reject(new Error('主题字体加载超时')), 5000); }),
+      ]);
+    } finally { clearTimeout(timer); }
+    return;
+  }
   const picture = new Image();
   await new Promise<void>((accept, reject) => {
     const timer = window.setTimeout(() => { picture.src = ''; reject(new Error('主题图片加载超时')); }, 5000);

@@ -25,32 +25,33 @@ async function fixture() {
   return { root, path, source, installed, themes: new Themes({ source, installed }) };
 }
 
-describe('Theme API v1 CSS boundary', () => {
-  it('scopes public hooks and mobile overrides; never emits input comments', () => {
-    expect(compileThemeCss(css + '/* ignored */', false, new Set(), '/')).toBe('[data-theme-root]{--accent:#bbccff}[data-theme-root] [data-theme-slot="content"]{padding-inline:16px}');
-    expect(compileThemeCss('[data-theme-slot="tool"]{margin-block:8px}', true, new Set(), '/')).toContain('@media (max-width: 760px), (pointer: coarse)');
+describe('Trusted Theme API v1 CSS', () => {
+  it('preserves standard CSS, legacy hooks and mobile rules without visual restrictions', () => {
+    const source = `:root { --background: white; --foreground: #121212; color-scheme: light; }
+      button.primary:hover, [data-theme-slot="content"] > p::before { opacity: .8; content: "雨夜"; }
+      @supports (display: grid) { .composer { display: grid; & textarea { font-size: 18px !important; } } }
+      @keyframes rain { to { transform: translateY(50px); } }
+      .glass { backdrop-filter: blur(12px); animation: rain 3s infinite; }
+      body { visibility: hidden !important; }`;
+    expect(compileThemeCss(source, false, new Set(), '/')).toBe(source + '\n');
+    expect(compileThemeCss(css, true, new Set(), '/')).toContain('@media (max-width: 760px), (pointer: coarse)');
   });
-  it.each([
-    'button{display:none}', '[data-theme-slot="content"] button{opacity:0}',
-    '[data-theme-slot="content"]{display:none}', '[data-theme-slot="content"]{position:fixed}',
-    '[data-theme-slot="content"]{padding-inline:999px}', '[data-theme-slot="header"]{z-index:999}',
-    '[data-theme-slot="header"]{pointer-events:none}', '[data-theme-slot="header"]{content:"允许"}',
-    '[data-theme-slot="header"]::after{content:""}', '[data-theme-slot="header"]{all:unset}',
-    ':root{--background:#000000;--foreground:#000000}', ':root{--surface:#ffffff}',
-    ':root{--app-height:0px}', ':root{--accent:var(--background)}', ':root{--accent:#bbccff!important}',
-    ':root{--font-sans:url("secret")}', ':root{--accent:red}', ':root{--accent:#fff',
-    ':root{--accent:#bbccff}:root{--foreground:#000000}',
-    '@media (max-width: 760px){:root{--background:#000000}}',
-    '@import "https://evil.invalid/a.css";', '@font-face{src:url("https://evil.invalid/font")}',
-    '@supports(display:block){:root{--accent:#bbccff}}',
-    '[data-theme-slot="decoration"]{background-image:url("https://evil.invalid/a.png")}',
-    '[data-theme-slot="decoration"]{background-image:url("/auth/logout")}',
-    '[data-theme-slot="decoration"]{background-image:url("data:image/svg+xml,hi")}',
-    '[data-theme-slot="decoration"]{background-image:url("assets/../secret.png")}',
-    '[data-theme-slot="decoration"]{background-image:image-set("https://evil.invalid")}',
-    '[data-theme-slot="decoration"]{background-image:u\\72l("assets/a.png")}',
-    '[data-theme-slot="header"]{& button{display:none}}',
-  ])('rejects hazardous/unsupported CSS: %s', source => {
+  it('resolves images and font sources, escaped URLs, nested values and image-set strings', () => {
+    const source = String.raw`@font-face { font-family: Rain; src: url('./assets/type.woff2') format('woff2'); }
+      .a { background: image-set("assets/a.png" 1x, url(assets/b.png) 2x), url("assets/a.png?v=1#x");
+        --image: u\72l("assets/a.png"); content: "assets/a.png"; }`;
+    const output = compileThemeCss(source, false, new Set(['assets/a.png', 'assets/b.png', 'assets/type.woff2']), '/console/themes/rain/');
+    expect(output).toContain("url('/console/themes/rain/assets/type.woff2') format('woff2')");
+    expect(output).toContain('image-set("/console/themes/rain/assets/a.png" 1x, url(/console/themes/rain/assets/b.png) 2x)');
+    expect(output).toContain('assets/a.png?v=1#x');
+    expect(output).toContain('content: "assets/a.png"');
+  });
+  it('leaves external URLs to the unchanged browser CSP', () => {
+    const source = '@import "https://example.invalid/a.css"; .a{background:url(https://example.invalid/a.png)}';
+    expect(compileThemeCss(source, false, new Set(), '/')).toBe(source + '\n');
+  });
+  it.each([':root{--accent:', '.a{color:red', '.a{background:url("assets/missing.png")}',
+    '.a{background:url("assets/../secret.png")}', '@import "other.css";'])('reports malformed CSS or invalid local resources: %s', source => {
     expect(() => compileThemeCss(source, false, new Set(), '/')).toThrow('Theme CSS:');
   });
 });
@@ -62,7 +63,7 @@ describe('explicit, bounded local directory installation', () => {
     expect((await themes.catalog()).sources[0].manifest).toEqual(meta);
     expect(await themes.install('candidate')).toEqual(meta);
     await writeFile(join(path, 'theme.css'), 'bad');
-    expect((await new Themes({ source, installed }).bundle(meta.id, '/')).css).toContain('--accent:#bbccff');
+    expect((await new Themes({ source, installed }).bundle(meta.id, '/')).css).toContain('--accent: #bbccff');
     await writeFile(join(path, 'theme.css'), css);
     await expect(themes.install('candidate')).rejects.toThrow('已安装');
     expect(await readFile(join(installed, meta.id, 'theme.css'), 'utf8')).toBe(css);
@@ -77,6 +78,17 @@ describe('explicit, bounded local directory installation', () => {
     expect(await themes.asset(meta.id, 'assets/paper.png')).toEqual({ bytes: png, type: 'image/png' });
     await expect(themes.asset(meta.id, 'assets/../../manifest.json')).rejects.toThrow();
     await expect(themes.asset(meta.id, 'manifest.json')).rejects.toThrow();
+  });
+  it('serves local fonts with fixed MIME and requires matching signatures', async () => {
+    const { themes, path } = await fixture();
+    await mkdir(join(path, 'assets'));
+    const bytes = Buffer.from('wOF2font-fixture');
+    await writeFile(join(path, 'assets/type.woff2'), bytes);
+    await writeFile(join(path, 'theme.css'), '@font-face{font-family:Test;src:url("assets/type.woff2")}');
+    await themes.install('candidate');
+    expect(await themes.asset(meta.id, 'assets/type.woff2')).toEqual({ bytes, type: 'font/woff2' });
+    await writeFile(join(path, 'assets/type.woff2'), 'not a font');
+    expect((await themes.catalog()).sources[0].error).toContain('资源不是允许');
   });
   it.each(['bad.json', 'index.html', 'theme.js', 'assets/bad.svg', 'assets/fake.png'])('rejects extra/executable resource %s', async name => {
     const { themes, path } = await fixture();
@@ -104,11 +116,11 @@ describe('explicit, bounded local directory installation', () => {
     await writeFile(manifest, 'invalid'); await expect(themes.bundle(meta.id, '/')).rejects.toThrow('损坏');
     await rm(join(installed, meta.id), { recursive: true }); await expect(themes.bundle(meta.id, '/')).rejects.toThrow();
   });
-  it('accepts the checked-in template and sole acceptance theme', async () => {
+  it('accepts the checked-in template and acceptance themes', async () => {
     const { installed } = await fixture();
     const themes = new Themes({ source: resolve('themes'), installed });
     const catalog = await themes.catalog();
-    expect(catalog.sources).toHaveLength(2);
+    expect(catalog.sources.map(entry => entry.directory)).toEqual(expect.arrayContaining(['template', 'test-violet']));
     expect(catalog.sources.every(entry => entry.manifest && !entry.error)).toBe(true);
   });
 });

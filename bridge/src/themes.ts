@@ -27,11 +27,15 @@ function manifest(bytes?: Buffer): ThemeManifest {
   if (v.themeApi !== THEME_API) invalid('Theme API 不兼容（需要 1）');
   return v as ThemeManifest;
 }
-function imageType(name: string, bytes: Buffer): string {
+function assetType(name: string, bytes: Buffer): string {
   if (name.endsWith('.png') && bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) return 'image/png';
   if (name.endsWith('.jpg') && bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255) return 'image/jpeg';
   if (name.endsWith('.webp') && bytes.toString('ascii', 0, 4) === 'RIFF' && bytes.toString('ascii', 8, 12) === 'WEBP') return 'image/webp';
-  return invalid('资源不是允许的 PNG/JPEG/WebP');
+  if (name.endsWith('.woff') && bytes.toString('ascii', 0, 4) === 'wOFF') return 'font/woff';
+  if (name.endsWith('.woff2') && bytes.toString('ascii', 0, 4) === 'wOF2') return 'font/woff2';
+  if (name.endsWith('.otf') && bytes.toString('ascii', 0, 4) === 'OTTO') return 'font/otf';
+  if (name.endsWith('.ttf') && bytes.subarray(0, 4).equals(Buffer.from([0, 1, 0, 0]))) return 'font/ttf';
+  return invalid('资源不是允许的 PNG/JPEG/WebP/WOFF/WOFF2/TTF/OTF');
 }
 
 // All responses are validated snapshots in memory, never sendFile/user paths.
@@ -58,15 +62,15 @@ export class Themes {
           await walk(name); continue;
         }
         const css = name === 'theme.css' || name === 'mobile.css';
-        const asset = name === 'preview.webp' || /^assets\/(?:[a-zA-Z0-9_-]+\/)*[a-zA-Z0-9_-]+\.(png|jpg|webp)$/.test(name);
-        if (!css && !asset && name !== 'manifest.json') invalid('包只允许 manifest、CSS 与受控图片');
+        const asset = name === 'preview.webp' || /^assets\/(?:[a-zA-Z0-9_-]+\/)*[a-zA-Z0-9_-]+\.(png|jpg|webp|woff|woff2|ttf|otf)$/.test(name);
+        if (!css && !asset && name !== 'manifest.json') invalid('包只允许 manifest、CSS 与本地图片/字体');
         const handle = await open(join(path, name), constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
         try {
           const info = await handle.stat();
           if (!info.isFile() || info.nlink !== 1 || info.size > (asset ? 2 * 1024 * 1024 : css ? 64 * 1024 : 4096)) invalid('文件类型、链接或大小无效');
           const bytes = await handle.readFile();
           if (bytes.length !== info.size || (size += bytes.length) > 4 * 1024 * 1024) invalid('包在读取时变化或大小超限');
-          if (asset) imageType(name, bytes);
+          if (asset) assetType(name, bytes);
           files.set(name, bytes);
         } finally { await handle.close(); }
       }
@@ -117,7 +121,7 @@ export class Themes {
     const { files } = await this.read(this.paths.installed, id, true, '/');
     const bytes = files.get(name);
     if (!bytes) invalid('资源不存在');
-    return { bytes, type: imageType(name, bytes) };
+    return { bytes, type: assetType(name, bytes) };
   }
   async install(id: unknown) {
     if (this.installing) invalid('安装进行中，请稍后重试');
