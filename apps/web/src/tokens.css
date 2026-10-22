@@ -1,4 +1,4 @@
-:root {
+:root, .theme-protected {
   color-scheme: dark;
   --background: #000000;
   --surface: #040b10;
@@ -19,10 +19,13 @@
   --font-sans: Inter, "Noto Sans CJK SC", system-ui, sans-serif;
   --font-mono: "JetBrains Mono", "Noto Sans Mono", monospace;
   --ease: 150ms ease;
+}
+:root {
   font-family: var(--font-sans);
   background: var(--background);
   color: var(--foreground);
 }
+.theme-protected { font-family: var(--font-sans); color: var(--foreground); }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
 }

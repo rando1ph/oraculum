@@ -3,11 +3,13 @@ package dev.oraculum.poc
 import android.app.Activity
 import android.app.AlertDialog
 import android.graphics.Color
+import android.media.AudioManager
 import android.net.http.SslError
 import android.os.Build
 import android.os.Bundle
 import android.text.InputType
 import android.view.View
+import android.view.KeyEvent
 import android.view.ViewGroup
 import android.view.WindowInsets
 import android.webkit.CookieManager
@@ -85,6 +87,7 @@ class MainActivity : Activity() {
             addView(actionButton("重试") { loadWebView() }, LinearLayout.LayoutParams(0, -2, 1f))
             addView(actionButton("服务器设置") { showServerSettings() }, LinearLayout.LayoutParams(0, -2, 1f))
         })
+        recovery.addView(actionButton("恢复默认主题") { restoreDefaultTheme() })
         layout.addView(recovery)
         setContentView(layout)
         WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG)
@@ -185,7 +188,12 @@ class MainActivity : Activity() {
 
                 override fun onPageFinished(view: WebView, url: String) {
                     if (view !== web) return
-                    if (!pageFailed && target.trusts(url) && view.title == "Oraculum · 神谕") recovery.visibility = View.GONE
+                    if (!pageFailed && target.trusts(url) && view.title == "Oraculum · 神谕") {
+                        recovery.visibility = View.GONE
+                        if (preferences.getString("themeRecoveryEntry", null) == target.url) {
+                            preferences.edit().remove("themeRecoveryEntry").apply()
+                        }
+                    }
                     else if (!pageFailed) showRecovery("服务器未返回神谕界面 · 请检查 Origin 与 Base Path")
                 }
 
@@ -205,7 +213,49 @@ class MainActivity : Activity() {
             }
         }
         layout.addView(view, LinearLayout.LayoutParams(-1, 0, 1f))
-        view.loadUrl(target.url)
+        view.loadUrl(target.url + if (preferences.getString("themeRecoveryEntry", null) == target.url) "?theme=default" else "")
+    }
+
+    private fun restoreDefaultTheme() {
+        val target = entry ?: return
+        // Only a trusted-entry navigation. No JS interface, cookie export or OS
+        // capability is exposed to the page. Keep a failed/offline reset pending.
+        preferences.edit().putString("themeRecoveryEntry", target.url).apply()
+        settingsDialog?.dismiss()
+        loadWebView()
+    }
+
+    private fun showThemeRecovery() {
+        if (settingsDialog != null) return
+        val dialog = AlertDialog.Builder(this).setTitle("神谕 · 界面恢复")
+            .setMessage("恢复 Oracle Eye 默认主题。保留服务器、登录和会话；主机任务继续运行。")
+            .setPositiveButton("恢复默认主题") { _, _ -> restoreDefaultTheme() }
+            .setNegativeButton("取消", null).create()
+        settingsDialog = dialog
+        dialog.setOnDismissListener { settingsDialog = null }
+        dialog.show()
+    }
+
+    override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
+        if (keyCode == KeyEvent.KEYCODE_VOLUME_UP) {
+            if (event.repeatCount == 0) event.startTracking()
+            return true
+        }
+        return super.onKeyDown(keyCode, event)
+    }
+
+    override fun onKeyLongPress(keyCode: Int, event: KeyEvent): Boolean {
+        if (keyCode == KeyEvent.KEYCODE_VOLUME_UP) { showThemeRecovery(); return true }
+        return super.onKeyLongPress(keyCode, event)
+    }
+
+    override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean {
+        if (keyCode == KeyEvent.KEYCODE_VOLUME_UP) {
+            if (!event.isCanceled) (getSystemService(AUDIO_SERVICE) as AudioManager)
+                .adjustVolume(AudioManager.ADJUST_RAISE, AudioManager.FLAG_SHOW_UI)
+            return true
+        }
+        return super.onKeyUp(keyCode, event)
     }
 
     private fun cookieManager(view: WebView): CookieManager =

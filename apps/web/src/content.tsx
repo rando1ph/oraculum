@@ -67,23 +67,23 @@ function FileChanges({ item, showDiff, cwd }: { item: Extract<ThreadItem, { type
 
 export function Item({ item, showDiff, showDetails, cwd }: { item: ThreadItem; showDiff?: (path: string, diff: string) => void; showDetails?: (item: ThreadItem) => void; cwd?: string }) {
   if (item.type === 'agentMessage') return <article className="message agent-message"><div className="message-heading"><OracleEye className="message-avatar"/><span>Codex</span></div><div className="message-body"><Message text={item.text}/><div className="message-actions"><Copy text={item.text}/></div></div></article>;
-  if (item.type === 'userMessage') return <article className="message user"><div className="user-label">你</div><p>{item.content.map(input => input.type === 'text' ? input.text : `[${input.type}]`).join('\n')}</p></article>;
-  if (item.type === 'plan') return <article className="tool plan"><div className="tool-heading"><Glyph kind="plan"/><span>计划</span><span className="native-label">Codex</span></div><Message text={item.text}/></article>;
-  if (item.type === 'commandExecution') return <details className="tool command">
+  if (item.type === 'userMessage') return <article data-theme-slot="user-message" className="message user"><div className="user-label">你</div><p>{item.content.map(input => input.type === 'text' ? input.text : `[${input.type}]`).join('\n')}</p></article>;
+  if (item.type === 'plan') return <article data-theme-slot="tool" className="tool plan"><div className="tool-heading"><Glyph kind="plan"/><span>计划</span><span className="native-label">Codex</span></div><Message text={item.text}/></article>;
+  if (item.type === 'commandExecution') return <details data-theme-slot="tool" className="tool command">
     <summary><Glyph kind="command"/><span className="tool-title">命令执行</span><code className="tool-preview" title={item.command}>{item.command}</code><Status value={item.status}/></summary>
     <div className="tool-body"><pre className="command-text">{item.command}</pre><div className="tool-meta"><span title={item.cwd}>{item.cwd}</span>{item.exitCode !== null && <span>退出码 {item.exitCode}</span>}{item.durationMs !== null && <span>{duration(item.durationMs)}</span>}</div>
       <pre className="tool-output" aria-label="命令输出">{item.aggregatedOutput || '尚无输出'}</pre><div className="tool-actions"><Copy text={`${item.command}\n${item.aggregatedOutput ?? ''}`}/><DetailButton item={item} showDetails={showDetails}/></div></div>
   </details>;
-  if (item.type === 'fileChange') return <details className="tool files" open>
+  if (item.type === 'fileChange') return <details data-theme-slot="tool" className="tool files" open>
     <summary><Glyph kind="file"/><span className="tool-title">文件变更</span><span className="tool-count">{item.changes.length}</span><Status value={item.status}/></summary>
     <FileChanges item={item} showDiff={showDiff} cwd={cwd}/>
   </details>;
-  if (item.type === 'reasoning') return <details className="tool reasoning"><summary><Glyph kind="reasoning"/><span className="tool-title">思考摘要</span></summary><div className="tool-body"><Message text={item.summary.join('\n') || '暂无公开摘要'}/><DetailButton item={item} showDetails={showDetails}/></div></details>;
-  if (item.type === 'mcpToolCall') return <details className="tool">
+  if (item.type === 'reasoning') return <details data-theme-slot="tool" className="tool reasoning"><summary><Glyph kind="reasoning"/><span className="tool-title">思考摘要</span></summary><div className="tool-body"><Message text={item.summary.join('\n') || '暂无公开摘要'}/><DetailButton item={item} showDetails={showDetails}/></div></details>;
+  if (item.type === 'mcpToolCall') return <details data-theme-slot="tool" className="tool">
     <summary><Glyph kind="tool"/><span className="tool-title">{item.tool}</span><span className="tool-preview">{item.server}</span><Status value={item.status}/></summary>
     <div className="tool-body"><pre className="tool-output">{JSON.stringify(item.result ?? item.error ?? item.arguments, null, 2)}</pre><div className="tool-actions">{item.durationMs !== null && <small>{duration(item.durationMs)}</small>}<DetailButton item={item} showDetails={showDetails}/></div></div>
   </details>;
-  return <details className="tool"><summary><Glyph kind="tool"/><span className="tool-title">{item.type}</span>{'status' in item && <Status value={item.status}/>}</summary><div className="tool-body"><pre className="tool-output">{JSON.stringify(item, null, 2)}</pre><DetailButton item={item} showDetails={showDetails}/></div></details>;
+  return <details data-theme-slot="tool" className="tool"><summary><Glyph kind="tool"/><span className="tool-title">{item.type}</span>{'status' in item && <Status value={item.status}/>}</summary><div className="tool-body"><pre className="tool-output">{JSON.stringify(item, null, 2)}</pre><DetailButton item={item} showDetails={showDetails}/></div></details>;
 }
 
 export function ItemDetail({ item }: { item: ThreadItem }) {

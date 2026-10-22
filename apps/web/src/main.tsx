@@ -14,6 +14,7 @@ import { ProjectBrowser } from './project-browser';
 import { displayPath } from './paths';
 import { ResizeHandle, useLayout } from './layout';
 import { SessionGate, checkSession } from './auth';
+import { ThemeSettings, useTheme } from './themes';
 import './style.css';
 import './mobile.css';
 
@@ -24,6 +25,7 @@ const save = (key: string, value: string) => { try { localStorage.setItem(key, v
 // Android server profiles survive WebView recreation; tab-scoped desktop drafts stay unchanged.
 const readingStorage = () => androidShell ? localStorage : sessionStorage;
 function App() {
+  const theme = useTheme();
   const session = useSession();
   const mobile = useMobile();
   const [menu, setMenu] = useState(false);
@@ -385,10 +387,10 @@ function App() {
       })}{!threads.length && <p className="nav-empty">此项目还没有会话</p>}{query && !threads.some(t => `${t.name} ${t.preview} ${t.id}`.toLowerCase().includes(query.toLowerCase())) && <p className="nav-empty">没有匹配的会话</p>}
         {nextCursor && <button className="load-more" disabled={disabled} onClick={() => void listThreads(nextCursor).catch(report)}>加载更多会话</button>}
       </nav>;
-  return <main className={`app-shell ${layout.navigation ? '' : 'nav-collapsed'} ${layout.inspector ? 'inspector-open' : ''} ${drawer ? 'drawer-open' : ''}`}
+  return <main data-theme-root data-theme-id={theme.id} className={`app-shell ${layout.navigation ? '' : 'nav-collapsed'} ${layout.inspector ? 'inspector-open' : ''} ${drawer ? 'drawer-open' : ''}`}
     style={{ '--nav-width': `${layout.navigationWidth}px`, '--inspector-width': `${layout.inspectorWidth}px`, '--reading-scale': readingSize / 100 } as CSSProperties}>
     {drawer && <button className="drawer-backdrop" aria-label="关闭导航遮罩" onClick={() => setDrawer(false)}/>}
-    <aside className="navigation" aria-label="项目导航" inert={browsing || settings || (mobile && !drawer)}>
+    <aside data-theme-slot="navigation" className="navigation" aria-label="项目导航" inert={browsing || settings || (mobile && !drawer)}>
       <div className="brand-row"><OracleEye/><div><h1>ORACULUM</h1><span>神谕</span></div><button className="icon-button nav-close" aria-label="折叠导航" title="折叠导航" onClick={() => { setLayout(l => ({ ...l, navigation: false })); setDrawer(false); }}><Icon name="close"/></button></div>
       <div className="nav-section-label"><span>项目</span><button className="icon-button" aria-label="刷新项目目录" title="刷新项目目录" disabled={disabled} onClick={() => void refreshProjects().catch(report)}><Icon name="refresh" size={14}/></button></div>
       <label className="project-picker desktop-project-picker"><Icon name="folder"/><select aria-label="项目目录" value={config?.cwd ?? ''} disabled={disabled} onChange={event => void selectProject(event.target.value).catch(report)}>{config && !projects.projects.some(p => p.cwd === config.cwd) && <option value={config.cwd}>项目已移除</option>}{projects.projects.map(project => <option key={project.cwd} value={project.cwd} disabled={project.available === false}>{project.name}{projects.projects.filter(p => p.name === project.name).length > 1 ? ` · ${project.cwd}` : ''}{project.available === false ? ' · 目录失效' : ''}</option>)}</select></label>
@@ -411,8 +413,9 @@ function App() {
       <footer className="navigation-footer"><button className="settings-button" onClick={() => setSettings(true)}><Icon name="settings"/>设置</button><div className="connection"><i className={connected ? 'online' : ''}/><span>{connectionLabel}</span><small>{location.protocol === 'https:' ? 'HTTPS' : 'LOCAL'}</small></div></footer>
       <ResizeHandle side="navigation" value={layout.navigationWidth} onChange={navigationWidth => setLayout(l => ({ ...l, navigationWidth }))}/>
     </aside>
-    <section className="conversation" aria-label="对话" inert={browsing || settings || (mobile && (drawer || layout.inspector))}>
-      <header className="conversation-header">
+    <section data-theme-slot="conversation" className="conversation" aria-label="对话" inert={browsing || settings || (mobile && (drawer || layout.inspector))}>
+      <div data-theme-slot="decoration" className="theme-decoration" aria-hidden="true"/>
+      <header data-theme-slot="header" className="conversation-header">
         <button className="icon-button desktop-nav-toggle" aria-label={layout.navigation ? '折叠导航' : '展开导航'} title={layout.navigation ? '折叠导航' : '展开导航'} onClick={() => setLayout(l => ({ ...l, navigation: !l.navigation }))}><Icon name="panel"/></button>
         <button className="mobile-brand icon-button" aria-label="打开导航" onClick={() => setDrawer(true)}><OracleEye/></button>
         <div className="session-title"><span>{session.thread ? title : 'Oraculum · 神谕'}</span><small>{projects.projects.find(p => p.cwd === config?.cwd)?.name ?? 'Codex'}</small></div>
@@ -426,7 +429,8 @@ function App() {
       </header>
       {!connected && <div className="disconnect-banner">连接已断开，主机任务不会因此停止。<button disabled={connecting || sending || approving} onClick={() => void connect().catch(report)}>重新连接</button></div>}
       <div className="conversation-scroll" ref={scroller} onScroll={() => { if (readingRestore.current !== null) return; const element = scroller.current!; follow.current = element.scrollHeight - element.scrollTop - element.clientHeight < 60; setAtBottom(follow.current); rememberScroll(); }}>
-        <div className="conversation-content" ref={scrollContent}>
+        <div data-theme-slot="content" className="conversation-content" ref={scrollContent}>
+          {theme.notice && !settings && <p className="error theme-protected" role="alert">{theme.notice}</p>}
           {session.history?.nextCursor && <button className="history-more" disabled={loadingHistory || !connected} onClick={() => void older()}>{loadingHistory ? '正在加载…' : '加载更早历史'}</button>}
           {session.history?.warning && <p className="history-warning">{session.history.warning}</p>}
           {session.sendBlocked && <p role="alert" className="error">有发送尚未确认终态，禁止重发。请查询原生状态；结果仍未知时使用新会话。</p>}
@@ -444,7 +448,7 @@ function App() {
           {session.plan && <details className="tool current-plan"><summary>当前计划 · Codex</summary><pre>{session.plan}</pre></details>}
           {Object.entries(session.diffs).map(([turnId, diff]) => <button className="turn-diff" key={turnId} onClick={() => openDiff(`轮次 ${turnId} · 实时汇总`, diff)}><Icon name="file" size={14}/>查看轮次 Diff · {turnId.slice(-8)}</button>)}
           <section aria-label="待审批" className="approvals">
-            {session.pending.map(request => <article className="approval" key={`${typeof request.id}:${request.id}`}>
+            {session.pending.map(request => <article className="approval theme-protected" key={`${typeof request.id}:${request.id}`}>
               <div className="approval-heading"><span className="approval-symbol">!</span><h2>需要审批</h2><span>{request.method === 'item/fileChange/requestApproval' ? '文件变更' : '命令执行'}</span></div>
               <p>{request.params.reason ?? 'Codex 请求确认本次操作'}</p>
               {request.method === 'item/commandExecution/requestApproval' && <><pre>{request.params.command ?? '未提供命令内容'}</pre><small className="path">工作目录 · {request.params.cwd}</small></>}
@@ -469,12 +473,12 @@ function App() {
       <form className={`composer ${expanded ? 'expanded' : ''}`} onSubmit={event => { event.preventDefault(); void send(); }}>
         <div className="composer-input"><label className="sr-only" htmlFor="message">消息</label><textarea ref={composer} id="message" enterKeyHint="enter" onCompositionStart={() => { composing.current = true; }} onCompositionEnd={() => { composing.current = false; }} value={text} onChange={event => writeDraft(event.target.value)} placeholder="向 Codex 描述你的目标…" maxLength={16000} rows={2} onKeyDown={event => { if (event.key === 'Enter' && (event.ctrlKey || event.metaKey) && !event.nativeEvent.isComposing && !composing.current && event.keyCode !== 229) { event.preventDefault(); void send(); } }}/><button className="icon-button expand-composer" type="button" aria-label={expanded ? '收起输入框' : '展开输入框'} title="展开输入框" onClick={() => setExpanded(value => !value)}><Icon name="expand" size={15}/></button></div>
         <div className="composer-toolbar"><div className="model-controls"><label><span className="sr-only">模型</span><select aria-label="模型" title="下一轮模型" value={model} onChange={event => { setModel(event.target.value); setEffort(''); }}><option value="">继承 · {session.thread?.model ?? config?.model ?? 'Codex 默认'}</option>{models.map(m => <option key={m.id} value={m.model}>{m.displayName}</option>)}</select></label><label><span className="sr-only">思考强度</span><select aria-label="思考强度" title="下一轮思考强度" value={effort} onChange={event => setEffort(event.target.value)}><option value="">继承 · {session.thread?.reasoningEffort ?? config?.effort ?? '默认'}</option>{(models.find(m => m.model === (model || session.thread?.model || config?.model))?.supportedReasoningEfforts ?? []).map(e => <option key={e.reasoningEffort}>{e.reasoningEffort}</option>)}</select></label></div>
-          <div className="composer-actions">{active && <button type="button" className="stop-button" disabled={!connected || !session.activeTurn} onClick={() => void client.current!.request('turn/interrupt', { threadId: selected.current, turnId: session.activeTurn }).catch(report)}><Icon name="stop" size={15}/>停止</button>}<button className="primary send-button" title="发送 · Ctrl+Enter" aria-label="发送" disabled={!canSend}><Icon name="send"/></button></div>
+          <div className="composer-actions theme-protected">{active && <button type="button" className="stop-button" disabled={!connected || !session.activeTurn} onClick={() => void client.current!.request('turn/interrupt', { threadId: selected.current, turnId: session.activeTurn }).catch(report)}><Icon name="stop" size={15}/>停止</button>}<button className="primary send-button" title="发送 · Ctrl+Enter" aria-label="发送" disabled={!canSend}><Icon name="send"/></button></div>
         </div>
         <div className="composer-caption"><span>{model || effort ? '下一轮使用所选模型 / 思考强度' : '继承 Codex 原生会话设置'}</span><span>Ctrl Enter 发送 · Enter 换行</span></div>
       </form>
     </section>
-    {layout.inspector && <section className="inspector" inert={browsing || settings || (mobile && drawer)} aria-label={inspected?.kind === 'item' ? '工具详情面板' : '文件 Diff 面板'}>
+    {layout.inspector && <section data-theme-slot="inspector" className="inspector" inert={browsing || settings || (mobile && drawer)} aria-label={inspected?.kind === 'item' ? '工具详情面板' : '文件 Diff 面板'}>
       <ResizeHandle side="inspector" value={layout.inspectorWidth} onChange={inspectorWidth => setLayout(l => ({ ...l, inspectorWidth }))}/>
       <header className="inspector-header"><button className="icon-button mobile-detail-back" aria-label="返回会话" onClick={() => setLayout(l => ({ ...l, inspector: false }))}><Icon name="back"/></button><div className="inspector-tabs"><button className={inspected?.kind !== 'item' ? 'active' : ''} onClick={() => { if (files[0]) openDiff(files[0].path, files[0].diff); else setInspected(undefined); }}><Icon name="file" size={15}/>Diff</button><button className={inspected?.kind === 'item' ? 'active' : ''} disabled={!tools.length} onClick={() => { const view = tools.at(-1)!; openItem(view.item, view.turnId); }}><Icon name="terminal" size={15}/>输出</button></div><button className="icon-button" aria-label="关闭面板" title="关闭面板" onClick={() => setLayout(l => ({ ...l, inspector: false }))}><Icon name="close"/></button></header>
       <div className="inspector-scroll">
@@ -485,7 +489,7 @@ function App() {
       <footer className="mobile-detail-footer"><button onClick={() => setLayout(l => ({ ...l, inspector: false }))}><Icon name="back"/>返回会话</button></footer>
     </section>}
     {browsing && client.current && <ProjectBrowser client={client.current} projects={projects} onRefresh={refreshProjects} onSelect={selectProject} onClose={() => setBrowsing(false)}/>}
-    <dialog ref={dialog} className="settings-dialog app-settings" aria-label="设置" onCancel={() => setSettings(false)} onClick={event => { if (event.target === event.currentTarget) setSettings(false); }}><div className="settings-content">
+    <dialog ref={dialog} className="settings-dialog app-settings theme-protected" aria-label="设置" onCancel={() => setSettings(false)} onClick={event => { if (event.target === event.currentTarget) setSettings(false); }}><div className="settings-content">
       <header><div><OracleEye/><h2>设置</h2></div><button className="icon-button" aria-label="关闭设置" onClick={() => setSettings(false)}><Icon name="close"/></button></header>
       <h3>模型与推理</h3><p>选项来自 Codex 实时目录，仅用于新会话或下一轮，不修改全局配置。</p>
       <div className="settings-model-options" role="group" aria-label="下一轮模型">
@@ -493,7 +497,8 @@ function App() {
         {models.map(m => <button key={m.id} aria-pressed={model === m.model} onClick={() => { setModel(m.model); setEffort(''); }}>{m.displayName}</button>)}
       </div>
       <h3>思考强度</h3><div className="settings-effort-options" role="group" aria-label="下一轮思考强度"><button aria-pressed={!effort} onClick={() => setEffort('')}>继承</button>{(models.find(m => m.model === (model || session.thread?.model || config?.model))?.supportedReasoningEfforts ?? []).map(e => <button key={e.reasoningEffort} aria-pressed={effort === e.reasoningEffort} onClick={() => setEffort(e.reasoningEffort)}>{e.reasoningEffort}</button>)}</div>
-      <h3>界面与阅读</h3><p>Oracle Eye · OLED 纯黑 / 冰蓝</p><label className="reading-size">正文大小 <span>{readingSize}%</span><input aria-label="正文大小" type="range" min="100" max="150" step="10" value={readingSize} onChange={event => setReadingSize(Number(event.target.value))}/></label>
+      <ThemeSettings theme={theme} open={settings}/>
+      <h3>界面与阅读</h3><label className="reading-size">正文大小 <span>{readingSize}%</span><input aria-label="正文大小" type="range" min="100" max="150" step="10" value={readingSize} onChange={event => setReadingSize(Number(event.target.value))}/></label>
       {!mobile && <button onClick={() => setLayout({ navigation: true, inspector: false, navigationWidth: 264, inspectorWidth: 420 })}>恢复面板默认布局</button>}
       <h3>连接</h3><p className="path">{connectionLabel} · {location.origin}{new URL('.', location.href).pathname}</p><button disabled={connecting || sending || approving} onClick={() => void connect().catch(report)}><Icon name="refresh" size={15}/>重新连接</button>
       {androidShell && <a className="server-settings-link" href="oraculum://settings/server"><Icon name="settings"/>服务器地址</a>}

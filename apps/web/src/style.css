@@ -240,3 +240,19 @@ nav[aria-label="原生会话"] { margin-top: 11px; flex: 1; overflow-y: auto; mi
   .project-browser button, .project-browser input, .project-browser select, .browse-projects { min-height: 44px; }
   .project-browser h2 { font-size: 16px; }
 }
+
+/* Theme API v1: semantic surfaces, bounded hooks, and host-owned controls. */
+[data-theme-root] { font-family: var(--font-sans); color: var(--foreground); background: var(--background); }
+.conversation { isolation: isolate; }
+.theme-decoration { position: absolute; inset: 0; z-index: -1; pointer-events: none; opacity: .16; background-size: cover; background-position: center; }
+[data-theme-root]:not([data-theme-id="oracle-eye"]) :is(.navigation, .conversation-header, .inspector, .message.user, .tool) { background-image: none; }
+.theme-choice { display: grid; gap: 8px; font-size: 13px; }
+.theme-choice select { width: 100%; min-height: 44px; }
+.theme-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.theme-actions button { min-height: 44px; }
+.theme-sources { margin-block: 16px; }
+.theme-sources summary { min-height: 44px; padding-block: 12px; font-size: 13px; }
+.theme-candidate { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; border-top: 1px solid var(--line); }
+.theme-candidate > span { min-width: 0; overflow-wrap: anywhere; font-size: 13px; }
+.theme-candidate small { display: block; margin-top: 5px; }
+.theme-candidate button { min-height: 44px; flex-shrink: 0; }

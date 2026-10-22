@@ -1,0 +1,121 @@
+import { useEffect, useRef, useState } from 'react';
+import { appUrl } from '../../../packages/shared/entry';
+import { DEFAULT_THEME, defaultTheme, THEME_API, themeId, type ThemeBundle, type ThemeCatalog } from '../../../packages/shared/themes';
+import { androidShell } from './mobile';
+
+const preferenceKey = `oraculum.theme:${appUrl('').pathname}`;
+const forcedDefault = new URL(location.href).searchParams.get('theme') === 'default';
+if (forcedDefault) {
+  try { localStorage.setItem(preferenceKey, DEFAULT_THEME); } catch { /* The current launch still bypasses the saved theme. */ }
+  const url = new URL(location.href); url.searchParams.delete('theme'); history.replaceState(null, '', url);
+}
+const savedTheme = () => {
+  try { const id = localStorage.getItem(preferenceKey); return !forcedDefault && id && themeId.test(id) ? id : DEFAULT_THEME; }
+  catch { return DEFAULT_THEME; }
+};
+async function request<T>(path: string, body?: object): Promise<T> {
+  const response = await fetch(appUrl(path), { cache: 'no-store', signal: AbortSignal.timeout(5000),
+    ...(body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : {}) });
+  if (!response.ok) {
+    if (response.status === 401) window.dispatchEvent(new Event('oraculum-auth-required'));
+    throw new Error((await response.json()).error ?? '无法加载主题');
+  }
+  return response.json() as Promise<T>;
+}
+async function decodeAsset(path: string) {
+  const url = new URL(path, location.origin);
+  if (url.origin !== location.origin || !url.pathname.startsWith(appUrl('themes/').pathname)) throw new Error('主题资源越界');
+  const picture = new Image();
+  await new Promise<void>((accept, reject) => {
+    const timer = window.setTimeout(() => { picture.src = ''; reject(new Error('主题图片加载超时')); }, 5000);
+    picture.onload = () => { clearTimeout(timer); accept(); };
+    picture.onerror = () => { clearTimeout(timer); reject(new Error('主题图片损坏或无法加载')); };
+    picture.src = url.href;
+  });
+}
+
+export function useTheme() {
+  const [id, setId] = useState(DEFAULT_THEME);
+  const [notice, setNotice] = useState('');
+  const [busy, setBusy] = useState(false);
+  const active = useRef(DEFAULT_THEME), revision = useRef(''), epoch = useRef(0), pending = useRef(false);
+  const sheet = useRef<HTMLStyleElement | null>(null);
+  function save(value: string) {
+    try { localStorage.setItem(preferenceKey, value); }
+    catch { setNotice('本次主题已应用，但此设备无法保存偏好。'); }
+  }
+  function reset(reason = '') {
+    ++epoch.current; pending.current = false; setBusy(false);
+    sheet.current?.remove(); sheet.current = null; revision.current = '';
+    active.current = DEFAULT_THEME; setId(DEFAULT_THEME); setNotice(reason); save(DEFAULT_THEME);
+  }
+  async function select(next: string, background = false) {
+    if (next === DEFAULT_THEME) { reset(); return; }
+    if (background && pending.current) return;
+    const ticket = ++epoch.current; pending.current = true;
+    if (!background) { setBusy(true); setNotice(''); }
+    try {
+      if (!themeId.test(next)) throw new Error('主题标识无效');
+      const result = await request<ThemeBundle>(`themes/${next}/bundle`);
+      if (result.manifest.themeApi !== THEME_API || result.manifest.id !== next || typeof result.css !== 'string') throw new Error('Theme API 不兼容');
+      if (revision.current !== result.revision || active.current !== next) {
+        await Promise.all(result.assets.map(decodeAsset));
+        if (ticket !== epoch.current) return;
+        const nextSheet = document.createElement('style'); nextSheet.dataset.oraculumTheme = next;
+        nextSheet.textContent = result.css;
+        document.head.append(nextSheet);
+        sheet.current?.remove(); sheet.current = nextSheet; revision.current = result.revision;
+      }
+      if (ticket !== epoch.current) return;
+      active.current = next; setId(next); save(next);
+    } catch (error) {
+      if (ticket === epoch.current) reset(`已恢复默认主题：${error instanceof Error ? error.message : '加载失败'}`);
+    } finally {
+      if (ticket === epoch.current) { pending.current = false; setBusy(false); }
+    }
+  }
+  useEffect(() => {
+    void select(savedTheme());
+    const verify = () => { if (!document.hidden && active.current !== DEFAULT_THEME) void select(active.current, true); };
+    const timer = window.setInterval(verify, 30_000);
+    window.addEventListener('focus', verify); document.addEventListener('visibilitychange', verify);
+    return () => { ++epoch.current; sheet.current?.remove(); clearInterval(timer); window.removeEventListener('focus', verify); document.removeEventListener('visibilitychange', verify); };
+  }, []);
+  return { id, notice, busy, select, reset };
+}
+
+export function ThemeSettings({ theme, open }: { theme: ReturnType<typeof useTheme>; open: boolean }) {
+  const [catalog, setCatalog] = useState<ThemeCatalog>({ installed: [], sources: [] });
+  const [busy, setBusy] = useState(false), [error, setError] = useState('');
+  async function refresh() {
+    setBusy(true); setError('');
+    try { setCatalog(await request<ThemeCatalog>('themes')); }
+    catch (e) { setError(e instanceof Error ? e.message : '无法查询主题'); }
+    finally { setBusy(false); }
+  }
+  useEffect(() => { if (open) void refresh(); }, [open]);
+  async function install(directory: string) {
+    setBusy(true); setError('');
+    try { await request('themes/install', { directory }); await refresh(); }
+    catch (e) { setError(e instanceof Error ? e.message : '安装失败'); }
+    finally { setBusy(false); }
+  }
+  const disabled = busy || theme.busy;
+  return <section className="theme-settings" aria-label="主题管理">
+    <h3>主题</h3><p>仅更改此设备。安装不会自动切换；其他设备可独立选择。</p>
+    <label className="theme-choice">当前主题<select aria-label="当前主题" value={theme.id} disabled={disabled} onChange={e => void theme.select(e.target.value)}>
+      <option value={DEFAULT_THEME}>{defaultTheme.name}</option>
+      {catalog.installed.filter(entry => entry.manifest).map(entry => <option key={entry.directory} value={entry.manifest!.id}>{entry.manifest!.name} · {entry.manifest!.version}</option>)}
+      {theme.id !== DEFAULT_THEME && !catalog.installed.some(entry => entry.manifest?.id === theme.id) && <option value={theme.id}>{theme.id}</option>}
+    </select></label>
+    <div className="theme-actions"><button onClick={() => theme.reset()}>恢复默认主题</button><button disabled={disabled} onClick={() => void refresh()}>刷新主题列表</button></div>
+    {theme.notice && <p className="error" role="alert">{theme.notice}</p>}
+    {error && <p className="error" role="alert">{error}</p>}
+    {catalog.installed.filter(entry => entry.error).map(entry => <p className="error" key={entry.directory}>{entry.directory} · {entry.error}</p>)}
+    <details className="theme-sources"><summary>从主机主题目录安装</summary><p>只安装自己信任的主题。来源目录由 Ubuntu 主机配置。</p>
+      {catalog.sources.length ? catalog.sources.map(entry => <div className="theme-candidate" key={entry.directory}><span>{entry.manifest?.name ?? entry.directory}<small>{entry.manifest?.version ?? entry.error}</small></span>
+        <button disabled={disabled || !!entry.error || catalog.installed.some(i => i.manifest?.id === entry.manifest?.id)} aria-label={`安装 ${entry.manifest?.name ?? entry.directory}`} onClick={() => void install(entry.directory)}>{catalog.installed.some(i => i.manifest?.id === entry.manifest?.id && !!entry.manifest) ? '已安装' : '安装'}</button></div>) : <p>来源目录中没有主题。</p>}
+    </details>
+    <p>{androidShell ? '页面不可用时：按住音量加键，使用原生「恢复默认主题」。' : '页面不可用时：Ctrl+Shift+0，或 Alt → 神谕 → 恢复默认主题。'}</p>
+  </section>;
+}

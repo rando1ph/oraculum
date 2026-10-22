@@ -1,4 +1,4 @@
-const { app, BrowserWindow, session } = require('electron');
+const { app, BrowserWindow, session, Menu } = require('electron');
 const path = require('node:path');
 const origin = process.env.ORACULUM_URL || 'http://127.0.0.1:17860';
 const url = new URL(origin);
@@ -26,6 +26,18 @@ app.whenReady().then(async () => {
     webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true, webviewTag: false },
   });
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  // A native menu/accelerator cannot be covered by theme CSS. Reload only the
+  // configured trusted entry; renderer receives no IPC or OS capability.
+  Menu.setApplicationMenu(Menu.buildFromTemplate([
+    { label: '神谕', submenu: [
+      { id: 'restore-default-theme', label: '恢复默认主题', accelerator: 'CommandOrControl+Shift+0', click: () => {
+        const recovery = new URL(url.href); recovery.searchParams.set('theme', 'default');
+        void window.loadURL(recovery.href);
+      } },
+      { type: 'separator' }, { role: 'quit', label: '退出' },
+    ] },
+    { role: 'editMenu', label: '编辑' }, { role: 'viewMenu', label: '视图' },
+  ]));
   window.webContents.on('will-navigate', (event, target) => {
     if (new URL(target).origin !== url.origin) event.preventDefault();
   });
