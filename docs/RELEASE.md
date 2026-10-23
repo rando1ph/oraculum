@@ -80,3 +80,30 @@ layouts with simulated protocol data. `scripts/brand-desktop-contract.ts` checks
 real Electron local rendering, handoff and recovery; its explicit test-only
 `ORACULUM_BRAND_TEST_NO_SANDBOX=1` option does not prove OS sandbox. Android native
 visual/touch and installed-package/device upgrade acceptance remain separate.
+
+## Ubuntu DEB
+
+`pnpm build:deb` uses locked Electron Forge/maker-deb 8.0.1 and Electron 44.9.1.
+The single version source is `release.json`. Only the desktop shell is staged;
+its build configuration is removed from the installed application. The Bridge
+runtime is copied as `resources/runtime`. Forge's normal Debian sandbox helper
+handling records root ownership and mode 4755 in the package; no host helper is
+changed. The package declares native GUI libraries and Chinese fonts.
+
+The artifact is `dist/desktop/out/make/deb/x64/oraculum_<version>_amd64.deb`.
+`node scripts/verify-deb.mjs <artifact>` inspects and extracts without installing.
+`node scripts/package-sandbox-check.mjs <artifact>` launches the extracted actual
+Electron executable against an isolated HTTP fixture, without a sandbox override.
+It requires renderer seccomp, no-new-privileges and separate namespaces; exit 2
+records a verification block. Inspect the captured error to distinguish host
+restrictions from package defects. Root:root 4755 metadata inside a DEB alone cannot
+prove an extracted or installed process has a working OS sandbox. Never change
+host ownership, AppArmor or kernel policy to make this build check pass.
+`ORACULUM_TEST_CODEX_BIN=/absolute/official/codex node scripts/runtime-contract.mjs`
+uses the actual installed official CLI with a disposable CODEX_HOME, only for
+read-only initialization. This does not verify the user's full native config or
+compatibility with an uninstalled future Codex version.
+
+Build once for tests, commit the verified source, then rebuild on a clean tree so
+`resources/runtime/build.json` records the actual source Git SHA. Preserve artifact
+hashes outside Git. DEB direct local installation needs no GPG repository signing.

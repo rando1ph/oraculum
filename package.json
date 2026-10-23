@@ -35,9 +35,12 @@
     "test:native:capabilities": "tsx scripts/native-capabilities-live.ts",
     "test:native:ui": "tsx scripts/native-requests-ui.ts",
     "test:native:devices": "tsx scripts/native-requests-live.ts",
-    "build:runtime": "pnpm build && node scripts/build-runtime.mjs"
+    "build:runtime": "pnpm build && node scripts/build-runtime.mjs",
+    "build:deb": "pnpm build:runtime && node scripts/build-desktop.mjs"
   },
   "devDependencies": {
+    "@electron-forge/cli": "8.0.1",
+    "@electron-forge/maker-deb": "8.0.1",
     "@playwright/test": "1.64.1",
     "@types/node": "24.19.2",
     "@types/ws": "8.18.2",

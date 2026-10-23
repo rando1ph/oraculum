@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=神谕
+Name[zh_CN]=神谕
+Comment=Oraculum — official Codex interface
+Exec=oraculum
+Icon=oraculum
+Type=Application
+Terminal=false
+StartupNotify=true
+StartupWMClass=神谕
+Categories=Development;

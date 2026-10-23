@@ -4,6 +4,7 @@ import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { collectWebLicenses } from './collect-web-licenses.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const output = join(root, 'dist/runtime');
@@ -38,7 +39,10 @@ await rm(deps, { recursive: true });
 // pnpm deploy adds a workspace self-reference to its staging root. Our own code
 // is compiled above, never imported by package name; omit that dangling alias.
 await rm(join(output, 'node_modules/.pnpm/node_modules/@oraculum/bridge'));
+for (const file of ['.modules.yaml', '.pnpm-workspace-state-v1.json']) await rm(join(output, 'node_modules', file), { force: true });
 for (const item of ['apps/web/dist', 'themes']) await cp(join(root, item), join(output, item), { recursive: true });
+await collectWebLicenses(join(output, 'licenses/web'));
+await cp(join(root, 'packaging/licenses'), join(output, 'licenses/bridge'), { recursive: true });
 await mkdir(join(output, 'apps/desktop'), { recursive: true });
 for (const file of ['splash.html', 'splash.css', 'splash.js']) await cp(join(root, 'apps/desktop', file), join(output, 'apps/desktop', file));
 await mkdir(join(output, 'design/reference'), { recursive: true });

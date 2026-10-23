@@ -1,0 +1,21 @@
+{
+  "format": 1,
+  "packages": [
+    {
+      "name": "abstract-logging",
+      "version": "2.0.1",
+      "license": "MIT",
+      "notices": [
+        {
+          "path": "abstract-logging-LICENSE",
+          "sha256": "64782ae7b047abae3460ef366f976bac4efe71c74720cfa4df6eddede400fcd5"
+        }
+      ],
+      "source": "https://jsumners.mit-license.org/",
+      "attributionSource": "https://raw.githubusercontent.com/remy/mit-license/master/users/jsumners.json",
+      "retrievedOn": "2026-10-24",
+      "reason": "The published abstract-logging 2.0.1 Readme.md links to this author-owned license page; its npm archive has no standalone LICENSE file.",
+      "transcription": "Plain text of the linked license, preserving copyright holder and wording; the author email is confirmed by package.json and the license site's author metadata. The site renders the current year, 2026, rather than a fixed historical year."
+    }
+  ]
+}
