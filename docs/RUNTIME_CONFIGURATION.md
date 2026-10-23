@@ -66,8 +66,22 @@ may be created. Registration and symlink/hidden/dev+inode restrictions remain.
 
 Electron refuses an implicit profile when an old `oraculum-phase0b` profile exists
 under HOME or XDG, or when no current profile exists. Explicitly select the existing
-profile to keep it in place, or explicitly name a fresh profile. No profile data,
+profile to keep it in place, or explicitly name a fresh profile. After read-only
+preflight, missing components of an explicitly selected path are created privately
+(0700) before `app.setPath`; ownership, permissions, writability and the full
+non-symlink chain are checked again. Creation errors stop startup without chmod,
+copy or cleanup of existing data; any already-created private parent directories
+are retained rather than risking deletion of concurrent data. No profile data,
 Cookie, draft, preference or native Codex directory is copied or cleared.
+
+`pnpm exec tsx scripts/desktop-profile-contract.ts` runs real Electron first-start,
+restart, explicit legacy-profile reuse and refusal regressions against a temporary
+authenticated Bridge with simulated Codex. It uses disposable HOME/XDG/profile
+fixtures, verifies persisted layout and pairing, and leaves real user data alone.
+It requires a built Web UI and a graphical session with a working OS sandbox.
+On an automation host without a usable sandbox, the explicit test-only
+`ORACULUM_PROFILE_TEST_NO_SANDBOX=1` opt-in runs the storage/path checks but reports
+that OS sandbox operation was **not** tested; product security settings are unchanged.
 
 Path/config preflight failures perform no state/workspace creation. Failed Codex
 initialization removes only newly-created empty workspace directories and does not

@@ -1,4 +1,4 @@
-const { accessSync, constants, lstatSync } = require('node:fs');
+const { accessSync, constants, lstatSync, mkdirSync } = require('node:fs');
 const { homedir } = require('node:os');
 const path = require('node:path');
 
@@ -61,8 +61,7 @@ function profilePath(env) {
   return selected;
 }
 
-// Read-only preflight. Electron creates only a deliberately selected new
-// profile; this module never copies, removes or changes existing user data.
+// Read-only preflight; never creates or migrates a profile.
 function desktopPaths(env = process.env) {
   const resourceRoot = absolute(env.ORACULUM_RESOURCE_DIR ?? path.resolve(__dirname, '../..'), 'ORACULUM_RESOURCE_DIR');
   const icon = absolute(env.ORACULUM_DESKTOP_ICON ?? path.join(resourceRoot, 'design/reference/02_Brand_OracleEye_App_Icon.png'), 'ORACULUM_DESKTOP_ICON');
@@ -72,4 +71,28 @@ function desktopPaths(env = process.env) {
   return { userData: profilePath(env), icon };
 }
 
-module.exports = { desktopPaths };
+// Finish all preflight checks before creating only the explicitly selected path.
+// Do not rely on Electron versions implicitly creating app.setPath targets.
+function prepareDesktopPaths(env = process.env) {
+  const paths = desktopPaths(env);
+  try {
+    let chain = directoryChain(paths.userData);
+    while (!chain.exists) {
+      if (env.ORACULUM_USER_DATA_DIR === undefined) throw new Error('Creating a Desktop profile requires explicit selection');
+      const next = path.join(chain.last, path.relative(chain.last, paths.userData).split(path.sep)[0]);
+      // Non-recursive, exclusive creation: a concurrent replacement is an error,
+      // never a reason to chmod, follow a symlink or overwrite existing data.
+      mkdirSync(next, { mode: 0o700 });
+      profilePath({ ...env, ORACULUM_USER_DATA_DIR: next });
+      chain = directoryChain(paths.userData);
+    }
+    // Recheck ownership, mode, writability and the full non-symlink chain before
+    // handing the path to Electron, including when an existing profile is reused.
+    profilePath(env);
+  } catch (error) {
+    throw new Error(`Desktop profile initialization failed: ${error.message}`, { cause: error });
+  }
+  return paths;
+}
+
+module.exports = { desktopPaths, prepareDesktopPaths };

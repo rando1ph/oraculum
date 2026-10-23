@@ -1,11 +1,11 @@
 const { app, BrowserWindow, session, Menu } = require('electron');
-const { desktopPaths } = require('./paths.cjs');
+const { prepareDesktopPaths } = require('./paths.cjs');
 const origin = process.env.ORACULUM_URL || 'http://127.0.0.1:17860';
 const url = new URL(origin);
 if (url.protocol !== 'http:' || url.hostname !== '127.0.0.1' || url.username || url.password || url.pathname !== '/') {
   throw new Error('Oraculum Desktop only loads a local loopback Bridge');
 }
-const paths = desktopPaths(process.env);
+const paths = prepareDesktopPaths(process.env);
 app.setPath('userData', paths.userData);
 app.whenReady().then(async () => {
   // Copy buttons may write text. Clipboard reads and every other permission stay denied.
