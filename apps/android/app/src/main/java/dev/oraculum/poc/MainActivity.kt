@@ -22,6 +22,7 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Button
 import android.widget.EditText
+import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -34,6 +35,7 @@ import java.io.ByteArrayInputStream
 class MainActivity : Activity() {
     private var web: WebView? = null
     private lateinit var layout: LinearLayout
+    private var brandSplash: BrandSplash? = null
     private lateinit var recovery: LinearLayout
     private lateinit var recoveryMessage: TextView
     private var settingsDialog: AlertDialog? = null
@@ -60,8 +62,7 @@ class MainActivity : Activity() {
         if (!preferences.contains("defaultProfileEntry")) {
             preferences.edit().putString("defaultProfileEntry", defaultEntry?.url ?: entry?.url.orEmpty()).apply()
         }
-        layout = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
+        val root = FrameLayout(this).apply {
             setBackgroundColor(Color.BLACK)
             setOnApplyWindowInsetsListener { view, insets ->
                 if (Build.VERSION.SDK_INT >= 30) {
@@ -76,6 +77,10 @@ class MainActivity : Activity() {
                 insets
             }
         }
+        layout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(Color.BLACK)
+        }
         recovery = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(16), dp(12), dp(16), dp(8))
@@ -89,7 +94,12 @@ class MainActivity : Activity() {
         })
         recovery.addView(actionButton("恢复默认主题") { restoreDefaultTheme() })
         layout.addView(recovery)
-        setContentView(layout)
+        root.addView(layout, FrameLayout.LayoutParams(-1, -1))
+        brandSplash = BrandSplash(this, savedInstanceState == null) { showServerSettings() }.also {
+            root.addView(it, FrameLayout.LayoutParams(-1, -1))
+        }
+        setContentView(root)
+        window.setBackgroundDrawableResource(android.R.color.black)
         WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG)
         if (Build.VERSION.SDK_INT >= 33) {
             backCallback = OnBackInvokedCallback { handleBack() }
@@ -109,6 +119,7 @@ class MainActivity : Activity() {
             WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)
 
     private fun showRecovery(message: String) {
+        dismissSplash(immediate = true)
         pageFailed = true
         // Keep recovery actionable without showing Chromium's unrelated error document below it.
         web?.visibility = View.INVISIBLE
@@ -190,6 +201,7 @@ class MainActivity : Activity() {
                     if (view !== web) return
                     if (!pageFailed && target.trusts(url) && view.title == "Oraculum · 神谕") {
                         recovery.visibility = View.GONE
+                        dismissSplash()
                         if (preferences.getString("themeRecoveryEntry", null) == target.url) {
                             preferences.edit().remove("themeRecoveryEntry").apply()
                         }
@@ -264,6 +276,11 @@ class MainActivity : Activity() {
 
     private fun showServerSettings() {
         if (settingsDialog != null) return
+        if (brandSplash != null) {
+            dismissSplash(immediate = true)
+            recoveryMessage.setText(R.string.connecting_recovery)
+            recovery.visibility = View.VISIBLE
+        }
         val fields = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(24), dp(12), dp(24), dp(8))
@@ -358,6 +375,7 @@ class MainActivity : Activity() {
     override fun onDestroy() {
         if (Build.VERSION.SDK_INT >= 33) backCallback?.let { onBackInvokedDispatcher.unregisterOnBackInvokedCallback(it) }
         settingsDialog?.dismiss()
+        dismissSplash(immediate = true)
         destroyWebView()
         super.onDestroy()
     }
@@ -365,6 +383,11 @@ class MainActivity : Activity() {
     private fun actionButton(label: String, action: () -> Unit) = Button(this).apply {
         text = label; isAllCaps = false; minHeight = dp(48); setTextColor(cyan)
         setOnClickListener { action() }
+    }
+
+    private fun dismissSplash(immediate: Boolean = false) {
+        brandSplash?.dismiss(immediate)
+        brandSplash = null
     }
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()

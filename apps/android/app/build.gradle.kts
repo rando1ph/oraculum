@@ -48,9 +48,13 @@ dependencies {
 
 // Reuse the approved original without duplicating or redesigning the brand asset.
 val prepareBrandIcon by tasks.registering(Copy::class) {
-    from(rootProject.file("../../design/reference/02_Brand_OracleEye_App_Icon.png"))
+    from(rootProject.file("../../design/reference/02_Brand_OracleEye_App_Icon.png")) {
+        rename { "oracle_eye.png" }
+    }
+    from(rootProject.file("../../design/reference/03_Brand_OracleEye_Simplified_Icon.png")) {
+        rename { "oracle_eye_mark.png" }
+    }
     into(layout.buildDirectory.dir("generated/brand/res/drawable-nodpi"))
-    rename { "oracle_eye.png" }
 }
 android.sourceSets["main"].res.srcDir(layout.buildDirectory.dir("generated/brand/res"))
 tasks.named("preBuild").configure { dependsOn(prepareBrandIcon) }

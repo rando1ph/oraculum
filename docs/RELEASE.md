@@ -60,3 +60,23 @@ first, and preserve any new receipts before reverting software; never replace a
 live database with an old snapshot or replay unknown operations. Android updates
 require the same certificate and a higher versionCode. Debug-to-Release cannot be
 treated as a normal update, and uninstalling cannot restore lost private state.
+
+## Brand validation
+
+The default Web empty state uses the eight approved Brand Copy v0.2 strings.
+The just-created Thread marker is memory-only; refreshing or reopening uses the
+existing-empty-Thread copy. Native errors, approvals and active turns take
+precedence. The 16,000-character text limit is unchanged.
+
+Electron loads its packaged local splash and hands off as soon as the main page
+loads, with local retry/exit recovery when Bridge is unavailable. Android uses a
+black native launch theme plus a local Canvas overlay, with a native server settings
+button; trusted page completion or failure preempts the animation. Both retain the
+approved original mark, declarations and reduced-motion alternative. Neither
+splash sends native model requests or depends on trusted-theme CSS.
+
+`pnpm exec tsx scripts/brand-web-contract.ts` checks the Web states and responsive
+layouts with simulated protocol data. `scripts/brand-desktop-contract.ts` checks
+real Electron local rendering, handoff and recovery; its explicit test-only
+`ORACULUM_BRAND_TEST_NO_SANDBOX=1` option does not prove OS sandbox. Android native
+visual/touch and installed-package/device upgrade acceptance remain separate.

@@ -35,6 +35,7 @@ function start(env: NodeJS.ProcessEnv) {
     expect(entry.isDirectory() && !entry.isSymbolicLink()).toBe(true);
     expect(entry.mode & 0o777).toBe(0o700);
   }), getPath: vi.fn(() => env.XDG_CONFIG_HOME),
+    setName: vi.fn(), setDesktopName: vi.fn(),
     whenReady: vi.fn(() => new Promise(() => {})), on: vi.fn() };
   runInNewContext(readFileSync(mainPath, 'utf8'), {
     require: (name: string) => name === 'electron' ? { app } : desktopRequire(name),

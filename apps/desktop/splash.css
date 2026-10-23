@@ -1,0 +1,37 @@
+:root { color-scheme: dark; font-family: "Noto Sans CJK SC", "Noto Sans", sans-serif; background: #000; color: #e9f4fa; }
+* { box-sizing: border-box; }
+body { margin: 0; min-height: 100vh; display: grid; place-items: center; overflow: auto; }
+main { display: flex; align-items: center; flex-direction: column; width: 100%; padding: 32px 24px; text-align: center; }
+.awakening { position: relative; width: clamp(180px, 28vh, 300px); aspect-ratio: 1; }
+.awakening img { position: absolute; width: 100%; inset: 0; opacity: 1; animation: reveal-eye 800ms cubic-bezier(.2,.7,.2,1) both; }
+.axis { position: absolute; z-index: 1; opacity: 0; background: linear-gradient(90deg, transparent, #7dc7ef88, transparent); }
+.horizontal { height: 1px; width: 160%; top: 47%; left: -30%; animation: converge-x 650ms ease-out both; }
+.vertical { height: 160%; width: 1px; left: 49%; top: -30%; background: linear-gradient(transparent, #7dc7ef66, transparent); animation: converge-y 650ms ease-out both; }
+.halo { position: absolute; width: 28%; height: 28%; left: 35%; top: 33%; border: 1px solid #b5eaff77; border-radius: 50%; opacity: 0; animation: halo 750ms 280ms ease-out both; }
+.core { position: absolute; width: 9%; height: 9%; left: 44.5%; top: 42.5%; border-radius: 50%; background: #eaffff; filter: blur(7px); opacity: 0; animation: ignite 700ms 250ms ease-out both; }
+.identity { margin-top: 9px; animation: inscription 700ms 380ms cubic-bezier(.2,.7,.2,1) both; }
+h1 { margin: 0; padding-left: .38em; font: 400 clamp(28px, 4vw, 40px)/1.4 Georgia, "Times New Roman", serif; letter-spacing: .38em; color: #eef8ff; text-shadow: 0 0 28px #82cbec33; }
+.name { margin: 10px 0 0; padding-left: .8em; font-size: 16px; letter-spacing: .8em; color: #a5c8db; }
+.declaration { margin-top: 36px; }
+.mandate { margin: 0; padding-left: .18em; font-size: clamp(17px, 2.5vw, 21px); font-weight: 300; letter-spacing: .18em; animation: descend 650ms 640ms both; }
+.translation { margin: 14px 0 0; padding-left: .24em; font: 10px/1.6 Georgia, serif; letter-spacing: .24em; color: #829baa; animation: descend 600ms 850ms both; }
+.status { margin: 52px 0 0; color: #6e8290; font-size: 11px; letter-spacing: .12em; animation: descend 400ms 1050ms both; }
+.recovery { margin: 28px 0 0; max-width: 500px; }
+.recovery h2 { font-size: 16px; font-weight: 500; }
+.recovery p { color: #91a5b1; font-size: 13px; line-height: 1.6; margin: 5px 0; }
+.recovery div { display: flex; justify-content: center; gap: 14px; margin-top: 24px; }
+a { color: #c9efff; text-decoration: none; border: 1px solid #73c1e366; background: #0b1c25; padding: 11px 22px; border-radius: 6px; min-height: 44px; }
+a:hover { background: #112d3b; } a:focus-visible { outline: 2px solid #b1e7ff; outline-offset: 4px; }
+a.secondary { color: #9cafba; border-color: #283a45; background: transparent; }
+body.failed .status { display: none; } body.failed .awakening { width: 160px; }
+body.failed .declaration { margin-top: 22px; }
+body.failed * { animation: none !important; } body.failed .axis, body.failed .halo, body.failed .core { display: none; }
+@keyframes reveal-eye { from { opacity: .03; filter: brightness(.25); transform: scale(.96); clip-path: inset(45% 0); } to { opacity: 1; filter: brightness(1); transform: scale(1); clip-path: inset(0); } }
+@keyframes converge-x { 0% { opacity: 0; transform: scaleX(1.8); } 35% { opacity: .6; } 100% { opacity: 0; transform: scaleX(.1); } }
+@keyframes converge-y { 0% { opacity: 0; transform: scaleY(1.8); } 35% { opacity: .5; } 100% { opacity: 0; transform: scaleY(.1); } }
+@keyframes ignite { 0%,100% { opacity: 0; transform: scale(.3); } 30% { opacity: .9; transform: scale(1); } }
+@keyframes halo { from { opacity: .7; transform: scale(.65); } to { opacity: 0; transform: scale(2.2); } }
+@keyframes inscription { from { opacity: 0; transform: translateY(6px); filter: blur(3px); } to { opacity: 1; transform: none; filter: none; } }
+@keyframes descend { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } .axis,.halo,.core { display: none; } }
+@media (max-height: 570px) { main { padding: 16px; } .awakening { width: 150px; } .declaration { margin-top: 18px; } .status { margin-top: 24px; } body.failed .awakening { width: 100px; } .recovery { margin-top: 14px; } }

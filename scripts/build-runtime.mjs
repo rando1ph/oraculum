@@ -39,6 +39,8 @@ await rm(deps, { recursive: true });
 // is compiled above, never imported by package name; omit that dangling alias.
 await rm(join(output, 'node_modules/.pnpm/node_modules/@oraculum/bridge'));
 for (const item of ['apps/web/dist', 'themes']) await cp(join(root, item), join(output, item), { recursive: true });
+await mkdir(join(output, 'apps/desktop'), { recursive: true });
+for (const file of ['splash.html', 'splash.css', 'splash.js']) await cp(join(root, 'apps/desktop', file), join(output, 'apps/desktop', file));
 await mkdir(join(output, 'design/reference'), { recursive: true });
 for (const name of ['01_Brand_OracleEye_Full_Logo.png', '02_Brand_OracleEye_App_Icon.png', '03_Brand_OracleEye_Simplified_Icon.png']) {
   await cp(join(root, 'design/reference', name), join(output, 'design/reference', name));

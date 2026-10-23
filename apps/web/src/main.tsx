@@ -9,6 +9,7 @@ import { captureReading, parseReading, placeReading, readingDeadline, type Readi
 import { Item, ItemDetail } from './content';
 import { androidShell, useMobile } from './mobile';
 import { OracleEye, OracleLogo } from './brand';
+import { brandCopy, emptyBrandState } from './brand-copy';
 import { Icon } from './icons';
 import { ProjectBrowser } from './project-browser';
 import { displayPath } from './paths';
@@ -40,6 +41,8 @@ function App() {
   const [model, setModel] = useState('');
   const [effort, setEffort] = useState('');
   const [threads, setThreads] = useState<Thread[]>([]);
+  // A brand presentation cue, never persisted or sent to the native Harness.
+  const [createdThreadId, setCreatedThreadId] = useState('');
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [text, setText] = useState('');
   const [query, setQuery] = useState('');
@@ -160,6 +163,7 @@ function App() {
     }
   }
   async function refresh(id = selected.current) {
+    setCreatedThreadId('');
     const ticket = ++epoch.current;
     const changed = selected.current !== id;
     rememberScroll();
@@ -208,6 +212,7 @@ function App() {
     }
   }
   async function selectProject(cwd: string, restore = true) {
+    setCreatedThreadId('');
     const ticket = ++projectEpoch.current;
     ++listEpoch.current;
     setSwitching(true); setError(''); setSynced(false);
@@ -236,7 +241,7 @@ function App() {
   }
   async function connect() {
     if (connectingNow.current) return;
-    connectingNow.current = true; setConnecting(true);
+    connectingNow.current = true; setConnecting(true); setCreatedThreadId('');
     try {
     const ticket = ++connectionEpoch.current;
     ++epoch.current; setSynced(false); setError('');
@@ -341,12 +346,13 @@ function App() {
       rememberScroll(); ++epoch.current; readingRestore.current = null; buffer.current = null; selected.current = result.thread.id;
       setInspected(undefined); setText(readDraft()); setDrawer(false); follow.current = true;
       useSession.getState().reset(); useSession.getState().snapshot({ thread: result.thread, pending: [] });
+      setCreatedThreadId(result.thread.id);
       save(storageKey(), result.thread.id);
       setThreads(ids => [result.thread, ...ids]); setSynced(true); composer.current?.focus();
     } catch (value) { report(value); } finally { setSending(false); }
   }
   const active = !!session.activeTurn || session.thread?.status.type === 'active';
-  const projectAvailable = !config || projects.projects.some(p => p.cwd === config.cwd && p.available !== false);
+  const projectAvailable = !!config && projects.projects.some(p => p.cwd === config.cwd && p.available !== false);
   const canSend = projectAvailable && connected && synced && !!session.thread && !active && !session.sendBlocked && !sending && !switching && !!text.trim();
   async function send() {
     if (!canSend || composing.current) return;
@@ -374,6 +380,8 @@ function App() {
   }
   const lastTurn = session.turns[session.lastTurnId ?? ''];
   const items = Object.values(session.items);
+  const emptyBrand = emptyBrandState({ projectAvailable, threadId: session.thread?.id, createdThreadId,
+    hasActivity: items.length > 0 || Object.keys(session.turns).length > 0 || session.pending.length > 0 || active || session.sendBlocked });
   const files = items.flatMap(view => view.item.type === 'fileChange' ? view.item.changes : []);
   const tools = items.filter(view => ['commandExecution', 'mcpToolCall'].includes(view.item.type));
   const inspectedItem = inspected?.kind === 'item' ? items.find(view => view.item.id === inspected.id && view.turnId === inspected.turnId)?.item : undefined;
@@ -436,12 +444,19 @@ function App() {
           {session.history?.nextCursor && <button className="history-more" disabled={loadingHistory || !connected} onClick={() => void older()}>{loadingHistory ? '正在加载…' : '加载更早历史'}</button>}
           {session.history?.warning && <p className="history-warning">{session.history.warning}</p>}
           {session.sendBlocked && <p role="alert" className="error">有发送尚未确认终态，禁止重发。请查询原生状态；结果仍未知时使用新会话。</p>}
-          {!projectAvailable && <p className="error" role="alert">项目已移除或目录失效。请浏览主机文件夹并重新添加；仍可停止当前执行或拒绝审批。</p>}
+          {config && !projectAvailable && <p className="error" role="alert">项目已移除或目录失效。请浏览主机文件夹并重新添加；仍可停止当前执行或拒绝审批。</p>}
           {error && <p className="error" role="alert">{error}</p>}
           {session.notices.map((notice, i) => <p className="history-warning" key={i}>{notice}</p>)}
           {lastTurn?.error && <p className="error" role="alert">{lastTurn.status}：{lastTurn.error.message}</p>}
           <div className="timeline" aria-label="会话时间线">
-            {!items.length && <div className="empty-state"><OracleLogo/><h2>{session.thread ? '从一个问题开始' : '让想法，成为现实'}</h2><p>{session.thread ? '描述目标，Codex 将在当前项目中与你协作。' : '选择项目并新建会话，连接真正的 Codex。'}</p>{!session.thread && <button className="primary" disabled={disabled || !projectAvailable} onClick={() => void createThread()}><Icon name="plus"/>开始新会话</button>}</div>}
+            {emptyBrand && <div className="empty-state" data-brand-state={emptyBrand}>
+              <OracleLogo/><div className="empty-state-copy">
+                <div className="brand-rule" aria-hidden="true"/><h2>{brandCopy[emptyBrand]}</h2>
+                {emptyBrand === 'noProject'
+                  ? <button disabled={disabled} onClick={() => setBrowsing(true)}><Icon name="folder"/>选择项目</button>
+                  : !session.thread && <button className="primary" disabled={disabled} onClick={() => void createThread()}><Icon name="plus"/>{brandCopy.create}</button>}
+              </div>
+            </div>}
             {Object.entries(session.items).map(([key, view]) => <div key={key} data-turn-id={view.turnId} data-item-id={view.item.id}>
               <Item item={view.item} cwd={session.thread?.cwd} showDiff={openDiff} showDetails={item => openItem(item, view.turnId)}/>
               {view.source === 'live' && <small className="provenance">实时事件 · 未确认持久化</small>}
@@ -467,7 +482,7 @@ function App() {
       </div>
       <div className="jump-latest-slot">{!atBottom && <button className="jump-latest" onClick={() => { follow.current = true; scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: 'smooth' }); }}><Icon name="arrowDown" size={14}/>返回最新{session.pending.length ? ' · 待审批' : ''}</button>}</div>
       <form data-theme-slot="composer" className={`composer ${expanded ? 'expanded' : ''}`} onSubmit={event => { event.preventDefault(); void send(); }}>
-        <div className="composer-input"><label className="sr-only" htmlFor="message">消息</label><textarea ref={composer} id="message" enterKeyHint="enter" onCompositionStart={() => { composing.current = true; }} onCompositionEnd={() => { composing.current = false; }} value={text} onChange={event => writeDraft(event.target.value)} placeholder="向 Codex 描述你的目标…" maxLength={16000} rows={2} onKeyDown={event => { if (event.key === 'Enter' && (event.ctrlKey || event.metaKey) && !event.nativeEvent.isComposing && !composing.current && event.keyCode !== 229) { event.preventDefault(); void send(); } }}/><button className="icon-button expand-composer" type="button" aria-label={expanded ? '收起输入框' : '展开输入框'} title="展开输入框" onClick={() => setExpanded(value => !value)}><Icon name="expand" size={15}/></button></div>
+        <div className="composer-input"><label className="sr-only" htmlFor="message">消息</label><textarea ref={composer} id="message" enterKeyHint="enter" onCompositionStart={() => { composing.current = true; }} onCompositionEnd={() => { composing.current = false; }} value={text} onChange={event => writeDraft(event.target.value)} placeholder={brandCopy.placeholder} maxLength={16000} rows={2} onKeyDown={event => { if (event.key === 'Enter' && (event.ctrlKey || event.metaKey) && !event.nativeEvent.isComposing && !composing.current && event.keyCode !== 229) { event.preventDefault(); void send(); } }}/><button className="icon-button expand-composer" type="button" aria-label={expanded ? '收起输入框' : '展开输入框'} title="展开输入框" onClick={() => setExpanded(value => !value)}><Icon name="expand" size={15}/></button></div>
         <div className="composer-toolbar"><div className="model-controls"><label><span className="sr-only">模型</span><select aria-label="模型" title="下一轮模型" value={model} onChange={event => { setModel(event.target.value); setEffort(''); }}><option value="">继承 · {session.thread?.model ?? config?.model ?? 'Codex 默认'}</option>{models.map(m => <option key={m.id} value={m.model}>{m.displayName}</option>)}</select></label><label><span className="sr-only">思考强度</span><select aria-label="思考强度" title="下一轮思考强度" value={effort} onChange={event => setEffort(event.target.value)}><option value="">继承 · {session.thread?.reasoningEffort ?? config?.effort ?? '默认'}</option>{(models.find(m => m.model === (model || session.thread?.model || config?.model))?.supportedReasoningEfforts ?? []).map(e => <option key={e.reasoningEffort}>{e.reasoningEffort}</option>)}</select></label></div>
           <div className="composer-actions">{active && <button type="button" className="stop-button" disabled={!connected || !session.activeTurn} onClick={() => void client.current!.request('turn/interrupt', { threadId: selected.current, turnId: session.activeTurn }).catch(report)}><Icon name="stop" size={15}/>停止</button>}<button className="primary send-button" title="发送 · Ctrl+Enter" aria-label="发送" disabled={!canSend}><Icon name="send"/></button></div>
         </div>
@@ -478,7 +493,7 @@ function App() {
       <ResizeHandle side="inspector" value={layout.inspectorWidth} onChange={inspectorWidth => setLayout(l => ({ ...l, inspectorWidth }))}/>
       <header className="inspector-header"><button className="icon-button mobile-detail-back" aria-label="返回会话" onClick={() => setLayout(l => ({ ...l, inspector: false }))}><Icon name="back"/></button><div className="inspector-tabs"><button className={inspected?.kind !== 'item' ? 'active' : ''} onClick={() => { if (files[0]) openDiff(files[0].path, files[0].diff); else setInspected(undefined); }}><Icon name="file" size={15}/>Diff</button><button className={inspected?.kind === 'item' ? 'active' : ''} disabled={!tools.length} onClick={() => { const view = tools.at(-1)!; openItem(view.item, view.turnId); }}><Icon name="terminal" size={15}/>输出</button></div><button className="icon-button" aria-label="关闭面板" title="关闭面板" onClick={() => setLayout(l => ({ ...l, inspector: false }))}><Icon name="close"/></button></header>
       <div className="inspector-scroll">
-        {inspected?.kind === 'diff' ? <><div className="inspector-file"><Icon name="file"/><h2 title={inspected.path}>{displayPath(inspected.path, session.thread?.cwd)}</h2></div><small className="inspector-caption">Codex 原生差异 · 只读</small><Suspense fallback={<p>正在加载 Diff…</p>}><Diff text={inspected.diff} label={`Diff ${inspected.path}`}/></Suspense></> : inspectedItem ? <><div className="inspector-file"><Icon name="terminal"/><h2>{inspectedItem.type === 'commandExecution' ? '命令输出' : '工具详情'}</h2></div><ItemDetail item={inspectedItem}/></> : <div className="inspector-empty"><Icon name="file" size={28}/><h2>在此查看执行细节</h2><p>点击对话中的文件变更或工具记录，查看真实 Diff 与输出。</p></div>}
+        {inspected?.kind === 'diff' ? <><div className="inspector-file"><Icon name="file"/><h2 title={inspected.path}>{displayPath(inspected.path, session.thread?.cwd)}</h2></div><small className="inspector-caption">Codex 原生差异 · 只读</small><Suspense fallback={<p>正在加载 Diff…</p>}><Diff text={inspected.diff} label={`Diff ${inspected.path}`}/></Suspense></> : inspectedItem ? <><div className="inspector-file"><Icon name="terminal"/><h2>{inspectedItem.type === 'commandExecution' ? '命令输出' : '工具详情'}</h2></div><ItemDetail item={inspectedItem}/></> : <div className="inspector-empty"><OracleEye/><h2>{brandCopy.inspectorTitle}</h2><p>{brandCopy.inspectorDescription}</p></div>}
         {!!files.length && <details className="inspector-list" open><summary>变更文件 <span>{files.length}</span></summary>{files.map((file, index) => <button key={`${file.path}:${index}`} onClick={() => openDiff(file.path, file.diff)} className={inspected?.kind === 'diff' && inspected.path === file.path ? 'selected' : ''}><Icon name="file" size={14}/><span title={file.path}>{displayPath(file.path, session.thread?.cwd)}</span></button>)}</details>}
         {!!tools.length && <details className="inspector-list"><summary>工具记录 <span>{tools.length}</span></summary>{tools.map(view => <button key={`${view.turnId}:${view.item.id}`} onClick={() => openItem(view.item, view.turnId)}><Icon name="terminal" size={14}/><span>{view.item.type === 'commandExecution' ? view.item.command : view.item.type}</span></button>)}</details>}
       </div>

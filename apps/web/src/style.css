@@ -80,11 +80,16 @@ nav[aria-label="原生会话"] { margin-top: 11px; flex: 1; overflow-y: auto; mi
 .conversation-scroll { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; scrollbar-gutter: stable; }
 .conversation-content { max-width: 980px; padding: 19px 26px 24px; margin: auto; min-height: 100%; }
 .timeline { min-width: 0; }
-.empty-state { min-height: 370px; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; padding: 18px 12px 50px; }
-.oracle-logo { display: block; width: 210px; height: 210px; object-fit: contain; margin: 0 0 16px; }
-.empty-state h2 { font-size: 20px; letter-spacing: 1px; margin: 0 0 12px; color: #d1e8f5; }
+.empty-state { min-height: min(480px, 64dvh); display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; padding: 30px 12px 42px; }
+.oracle-logo { display: flex; flex-direction: column; align-items: center; margin: 0; color: var(--foreground); }
+.oracle-logo-eye { width: 164px; height: 164px; display: block; object-fit: contain; mix-blend-mode: screen; }
+.oracle-logo-name { margin-top: 3px; padding-left: .42em; font-size: 15px; font-weight: 400; line-height: 1.6; letter-spacing: .42em; }
+.oracle-logo-cn { margin-top: 7px; padding-left: .65em; font-size: 12px; line-height: 1.7; letter-spacing: .65em; color: var(--muted); }
+.brand-rule { width: 68px; height: 1px; margin: 25px 0 24px; background: linear-gradient(90deg, transparent, var(--line-bright), transparent); }
+.empty-state-copy { display: flex; flex-direction: column; align-items: center; min-width: 0; }
+.empty-state h2 { font-size: clamp(18px, 2vw, 23px); font-weight: 400; line-height: 1.8; letter-spacing: .13em; text-wrap: balance; margin: 0; color: var(--foreground); }
 .empty-state p { color: var(--muted); font-size: 12px; line-height: 1.8; }
-.empty-state button { margin-top: 10px; }
+.empty-state button { min-height: 42px; margin-top: 26px; padding-inline: 20px; letter-spacing: .12em; }
 .provenance { display: block; font-size: 9px; color: var(--subtle); margin: -1px 0 8px 37px; }
 .history-warning { font-size: 11px; line-height: 1.7; color: #c8ad7c; border-left: 2px solid #7b612f; padding: 7px 11px; background: #18150c90; border-radius: 0 4px 4px 0; margin: 6px 0 16px; }
 .error { padding: 12px; color: #ffb0b8; background: #250e15; border: 1px solid #6c303d; border-radius: 8px; overflow-wrap: anywhere; font-size: 12px; line-height: 1.7; }
@@ -155,9 +160,10 @@ nav[aria-label="原生会话"] { margin-top: 11px; flex: 1; overflow-y: auto; mi
 .inspector-file h2 { font-size: 12px; font-weight: 400; margin: 0; white-space: nowrap; text-overflow: ellipsis; overflow: hidden; }
 .inspector-caption { display: block; margin-bottom: 14px; font-size: 10px; color: var(--subtle); }
 .inspector-empty { padding: 60px 12px; text-align: center; color: var(--muted); }
+.inspector-empty .oracle-eye { width: 68px; height: 68px; margin: 0 auto 25px; opacity: .7; mix-blend-mode: screen; }
 .inspector-empty svg { margin: auto auto 20px; color: var(--line-bright); }
-.inspector-empty h2 { font-size: 14px; }
-.inspector-empty p { font-size: 12px; line-height: 1.9; }
+.inspector-empty h2 { font-size: 16px; font-weight: 400; letter-spacing: .23em; padding-left: .23em; color: var(--foreground); }
+.inspector-empty p { font-size: 12px; line-height: 1.9; letter-spacing: .06em; }
 .inspector-list { border: 1px solid var(--line); border-radius: 8px; background: #02070a; margin-top: 15px; padding: 8px; }
 .inspector-list summary { font-size: 11px; padding: 4px 2px 8px; color: #c5d8e5; }
 .inspector-list summary span { margin-left: 8px; background: #112430; color: #9fbcd0; padding: 1px 5px; border-radius: 3px; }
@@ -311,7 +317,7 @@ nav[aria-label="原生会话"] { margin-top: 11px; flex: 1; overflow-y: auto; mi
     & :is(.stop-button, .history-warning, .disconnect-banner) { color: var(--warning); border-color: var(--warning); background: var(--surface); }
     & .error { background: var(--surface); color: var(--danger); border-color: var(--danger); }
     & .item-status { background: var(--surface-raised); }
-    & .brand-row > .oracle-eye { mix-blend-mode: normal; }
+    & :is(.brand-row > .oracle-eye, .oracle-logo-eye, .inspector-empty .oracle-eye) { mix-blend-mode: normal; }
     /* CodeMirror creates unlayered styles; its palette uses inherited variables. */
     & .diff-editor {
       --diff-background: var(--surface); --diff-foreground: var(--foreground);
