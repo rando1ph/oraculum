@@ -1,0 +1,168 @@
+{
+  "format": 1,
+  "scope": "releaseRuntimeClasspath",
+  "description": "Original license text from the published AndroidX WebKit AAR and Kotlin v2.2.21 upstream license/NOTICE; license assignments are verified against each exact-version Maven POM. Kotlin upstream NOTICE is retained verbatim, including its compiler distribution heading. The other resolved binary archives contain no separate LICENSE/NOTICE. Trailing empty lines in the Apache license file are normalized to one final newline; all license text is retained.",
+  "packages": [
+    {
+      "coordinate": "androidx.annotation:annotation-experimental:1.4.1",
+      "license": "Apache-2.0",
+      "attribution": "The Android Open Source Project",
+      "licenseEvidence": "https://dl.google.com/dl/android/maven2/androidx/annotation/annotation-experimental/1.4.1/annotation-experimental-1.4.1.pom",
+      "notices": [
+        {
+          "path": "LICENSE-Apache-2.0.txt",
+          "source": "https://dl.google.com/dl/android/maven2/androidx/webkit/webkit/1.12.1/webkit-1.12.1.aar!/META-INF/androidx/webkit/webkit/LICENSE.txt",
+          "sha256": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594"
+        }
+      ]
+    },
+    {
+      "coordinate": "androidx.annotation:annotation-jvm:1.8.1",
+      "license": "Apache-2.0",
+      "attribution": "The Android Open Source Project",
+      "licenseEvidence": "https://dl.google.com/dl/android/maven2/androidx/annotation/annotation-jvm/1.8.1/annotation-jvm-1.8.1.pom",
+      "notices": [
+        {
+          "path": "LICENSE-Apache-2.0.txt",
+          "source": "https://dl.google.com/dl/android/maven2/androidx/webkit/webkit/1.12.1/webkit-1.12.1.aar!/META-INF/androidx/webkit/webkit/LICENSE.txt",
+          "sha256": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594"
+        }
+      ]
+    },
+    {
+      "coordinate": "androidx.annotation:annotation:1.8.1",
+      "license": "Apache-2.0",
+      "attribution": "The Android Open Source Project",
+      "licenseEvidence": "https://dl.google.com/dl/android/maven2/androidx/annotation/annotation/1.8.1/annotation-1.8.1.pom",
+      "notices": [
+        {
+          "path": "LICENSE-Apache-2.0.txt",
+          "source": "https://dl.google.com/dl/android/maven2/androidx/webkit/webkit/1.12.1/webkit-1.12.1.aar!/META-INF/androidx/webkit/webkit/LICENSE.txt",
+          "sha256": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594"
+        }
+      ]
+    },
+    {
+      "coordinate": "androidx.arch.core:core-common:2.0.0",
+      "license": "Apache-2.0",
+      "attribution": "The Android Open Source Project",
+      "licenseEvidence": "https://dl.google.com/dl/android/maven2/androidx/arch/core/core-common/2.0.0/core-common-2.0.0.pom",
+      "notices": [
+        {
+          "path": "LICENSE-Apache-2.0.txt",
+          "source": "https://dl.google.com/dl/android/maven2/androidx/webkit/webkit/1.12.1/webkit-1.12.1.aar!/META-INF/androidx/webkit/webkit/LICENSE.txt",
+          "sha256": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594"
+        }
+      ]
+    },
+    {
+      "coordinate": "androidx.collection:collection:1.0.0",
+      "license": "Apache-2.0",
+      "attribution": "The Android Open Source Project",
+      "licenseEvidence": "https://dl.google.com/dl/android/maven2/androidx/collection/collection/1.0.0/collection-1.0.0.pom",
+      "notices": [
+        {
+          "path": "LICENSE-Apache-2.0.txt",
+          "source": "https://dl.google.com/dl/android/maven2/androidx/webkit/webkit/1.12.1/webkit-1.12.1.aar!/META-INF/androidx/webkit/webkit/LICENSE.txt",
+          "sha256": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594"
+        }
+      ]
+    },
+    {
+      "coordinate": "androidx.core:core:1.1.0",
+      "license": "Apache-2.0",
+      "attribution": "The Android Open Source Project",
+      "licenseEvidence": "https://dl.google.com/dl/android/maven2/androidx/core/core/1.1.0/core-1.1.0.pom",
+      "notices": [
+        {
+          "path": "LICENSE-Apache-2.0.txt",
+          "source": "https://dl.google.com/dl/android/maven2/androidx/webkit/webkit/1.12.1/webkit-1.12.1.aar!/META-INF/androidx/webkit/webkit/LICENSE.txt",
+          "sha256": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594"
+        }
+      ]
+    },
+    {
+      "coordinate": "androidx.lifecycle:lifecycle-common:2.0.0",
+      "license": "Apache-2.0",
+      "attribution": "The Android Open Source Project",
+      "licenseEvidence": "https://dl.google.com/dl/android/maven2/androidx/lifecycle/lifecycle-common/2.0.0/lifecycle-common-2.0.0.pom",
+      "notices": [
+        {
+          "path": "LICENSE-Apache-2.0.txt",
+          "source": "https://dl.google.com/dl/android/maven2/androidx/webkit/webkit/1.12.1/webkit-1.12.1.aar!/META-INF/androidx/webkit/webkit/LICENSE.txt",
+          "sha256": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594"
+        }
+      ]
+    },
+    {
+      "coordinate": "androidx.lifecycle:lifecycle-runtime:2.0.0",
+      "license": "Apache-2.0",
+      "attribution": "The Android Open Source Project",
+      "licenseEvidence": "https://dl.google.com/dl/android/maven2/androidx/lifecycle/lifecycle-runtime/2.0.0/lifecycle-runtime-2.0.0.pom",
+      "notices": [
+        {
+          "path": "LICENSE-Apache-2.0.txt",
+          "source": "https://dl.google.com/dl/android/maven2/androidx/webkit/webkit/1.12.1/webkit-1.12.1.aar!/META-INF/androidx/webkit/webkit/LICENSE.txt",
+          "sha256": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594"
+        }
+      ]
+    },
+    {
+      "coordinate": "androidx.versionedparcelable:versionedparcelable:1.1.0",
+      "license": "Apache-2.0",
+      "attribution": "The Android Open Source Project",
+      "licenseEvidence": "https://dl.google.com/dl/android/maven2/androidx/versionedparcelable/versionedparcelable/1.1.0/versionedparcelable-1.1.0.pom",
+      "notices": [
+        {
+          "path": "LICENSE-Apache-2.0.txt",
+          "source": "https://dl.google.com/dl/android/maven2/androidx/webkit/webkit/1.12.1/webkit-1.12.1.aar!/META-INF/androidx/webkit/webkit/LICENSE.txt",
+          "sha256": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594"
+        }
+      ]
+    },
+    {
+      "coordinate": "androidx.webkit:webkit:1.12.1",
+      "license": "Apache-2.0",
+      "attribution": "The Android Open Source Project",
+      "licenseEvidence": "https://dl.google.com/dl/android/maven2/androidx/webkit/webkit/1.12.1/webkit-1.12.1.pom",
+      "notices": [
+        {
+          "path": "LICENSE-Apache-2.0.txt",
+          "source": "https://dl.google.com/dl/android/maven2/androidx/webkit/webkit/1.12.1/webkit-1.12.1.aar!/META-INF/androidx/webkit/webkit/LICENSE.txt",
+          "sha256": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594"
+        }
+      ]
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-stdlib:2.2.21",
+      "license": "Apache-2.0",
+      "attribution": "JetBrains s.r.o. and contributors",
+      "licenseEvidence": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-stdlib/2.2.21/kotlin-stdlib-2.2.21.pom",
+      "notices": [
+        {
+          "path": "LICENSE-Kotlin.txt",
+          "source": "https://raw.githubusercontent.com/JetBrains/kotlin/v2.2.21/license/LICENSE.txt",
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+        },
+        {
+          "path": "NOTICE-Kotlin.txt",
+          "source": "https://raw.githubusercontent.com/JetBrains/kotlin/v2.2.21/license/NOTICE.txt",
+          "sha256": "0b09a83d3ef7795c7dec65e815866597c066c53898f2852a76599b8f5552941a"
+        }
+      ]
+    },
+    {
+      "coordinate": "org.jetbrains:annotations:13.0",
+      "license": "Apache-2.0",
+      "attribution": "JetBrains s.r.o. and contributors",
+      "licenseEvidence": "https://repo.maven.apache.org/maven2/org/jetbrains/annotations/13.0/annotations-13.0.pom",
+      "notices": [
+        {
+          "path": "LICENSE-Apache-2.0.txt",
+          "source": "https://dl.google.com/dl/android/maven2/androidx/webkit/webkit/1.12.1/webkit-1.12.1.aar!/META-INF/androidx/webkit/webkit/LICENSE.txt",
+          "sha256": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594"
+        }
+      ]
+    }
+  ]
+}

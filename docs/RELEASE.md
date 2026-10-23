@@ -107,3 +107,69 @@ compatibility with an uninstalled future Codex version.
 Build once for tests, commit the verified source, then rebuild on a clean tree so
 `resources/runtime/build.json` records the actual source Git SHA. Preserve artifact
 hashes outside Git. DEB direct local installation needs no GPG repository signing.
+
+## Android Release and local key custody
+
+`release.json` also defines Android `versionName` and `versionCode`. Keep the
+application ID `dev.oraculum.poc` and increment the code for each published update.
+`bash scripts/android-release-build.sh --unsigned` runs Release compilation,
+lint and unit tests without a key. Its unsigned output is only a preflight result,
+never a signed release. The no-argument build entry refuses to run and directs
+the user to the local interactive signing launcher. Neither entry installs or
+uninstalls anything, and no Release path falls back to Debug signing.
+
+Only the user runs these commands in their own local terminal with recording and
+shell tracing disabled; never use a captured agent terminal for them:
+
+```sh
+cd ~/Projects/Oraculum
+python3 scripts/android-signing.py init
+python3 scripts/android-signing.py release
+```
+
+The first command creates a dedicated JKS (RSA 3072, alias `oraculum-release`) in
+`~/.local/share/oraculum-signing`, with directory/file permissions 0700/0600.
+It refuses any existing key, including dangling links. Supply an absolute private
+backup directory on media you control and can keep offline; a cloud-synced folder
+is unsuitable. It copies without overwriting, verifies both private keys can
+unlock/sign and have the same certificate, and asks you to confirm offline
+custody. This confirmation is a user attestation; software cannot prove how media
+will be stored. Keep the backup available through signing, then store it offline.
+Only paths, alias, backup-verification status and public certificate SHA-256 enter
+the external `release-signing.json`; no passwords are saved.
+
+If creation was interrupted after the key appeared, use
+`python3 scripts/android-signing.py resume`. This verifies the existing key and
+completes its backup/configuration without generating or overwriting a key.
+If a partial or different backup already exists, preserve it and choose a fresh
+private backup directory. Existing configuration is never replaced automatically.
+
+The release command requires a clean committed tree. Gradle builds and verifies
+an aligned unsigned APK with no signing configuration or password inputs, then
+SDK 35 `apksigner` signs it in a separate process, reading passwords directly from
+the user's real terminal without echo. No password enters Python, command
+arguments, environment variables, Gradle properties, caches or reports. Fixed
+Gradle flags disable configuration/build caches, scans and persistent Kotlin
+daemons; the wrapper accepts no arbitrary logging flags.
+
+This deliberately refines the earlier Notion `signingConfigs.release` detail:
+inspection of AGP 8.13.2 showed `SigningConfigData` exposes unsalted password
+hashes as nested task `@Input` values, which Gradle 8.13 persists in execution
+history even with build/configuration caches off. Separate official `apksigner`
+signing satisfies the user's stronger requirement not to record signing secrets
+or password-derived verification values. No real password was supplied to
+Gradle during investigation. Product architecture and the fixed toolchain stay
+the same; the implementation adjustment is recorded for independent review.
+
+The final signed artifact is `dist/android/oraculum-<version>-<code>.apk`, published
+atomically after verification. It includes source Git metadata. The verifier uses
+SDK 35 `apksigner verify --verbose --print-certs`, `zipalign` and `aapt2` to check
+signature/certificate continuity, version, identity, manifest safety and original
+brand resources. Public reports live under `.local/evidence/phase4b/android`.
+An existing same-version artifact is verified and preserved; different source
+requires a version increment. See [Android signing](https://developer.android.com/studio/publish/app-signing)
+and [apksigner](https://developer.android.com/tools/apksigner).
+
+This dedicated release certificate cannot replace the existing Debug install as
+a normal same-ID update. Device installation, Debug removal, actual upgrade and
+private WebView state migration remain Phase 4C work with separate authorization.
