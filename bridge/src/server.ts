@@ -86,7 +86,12 @@ export async function createServer(service: BridgeService, port: number, webRoot
   let windowStart = Date.now();
   for (const base of new Set(['/', ...(remote ? [remoteBase] : [])])) {
     const config = { appBase: base };
-    app.get(base + 'health', { config }, async () => ({ protocol: 1, mode: trust ? 'authenticated' : 'local-test' }));
+    app.get(base + 'health', { config }, async (_request, reply) => {
+      if (closing || ('alive' in service.codex && service.codex.alive === false)) {
+        return reply.code(503).send({ error: 'Codex App Server unavailable' });
+      }
+      return { protocol: 1, mode: trust ? 'authenticated' : 'local-test' };
+    });
     app.get(base + 'auth/session', { config }, async (request, reply) => {
       if (!trust) return { authenticated: true, mode: 'local-test' };
       const source = requestOrigin(request.headers);

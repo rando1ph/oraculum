@@ -11,6 +11,8 @@ export class NativeRpcError extends Error {
 
 export class Codex extends EventEmitter {
   private child: ChildProcessWithoutNullStreams;
+  private exited: Promise<void>;
+  private closing?: Promise<void>;
   private sequence = 0;
   private pending = new Map<RpcId, { method: string; resolve: (value: unknown) => void; reject: (error: Error) => void; timer: NodeJS.Timeout }>();
   readonly version: string;
@@ -30,8 +32,22 @@ export class Codex extends EventEmitter {
       try { this.receive(JSON.parse(line) as WireMessage); }
       catch { this.fail(new Error(`${this.version}: invalid App Server message; outstanding operation results may be unknown`)); this.child.kill(); }
     });
-    this.child.on('error', () => this.fail(new Error('App Server process failed')));
-    this.child.on('exit', () => this.fail(new Error('App Server exited; outstanding operations may have unknown results')));
+    this.exited = new Promise(resolve => {
+      this.child.once('exit', () => {
+        resolve();
+        this.fail(new Error('App Server exited; outstanding operations may have unknown results'));
+      });
+      this.child.on('error', () => {
+        // Failed spawn has no exit event. An error on a running child must still
+        // wait for that child to exit before shutdown is considered complete.
+        if (this.child.pid === undefined) resolve();
+        this.fail(new Error('App Server process failed; outstanding operations may have unknown results'));
+      });
+    });
+    this.child.stdin.on('error', () => {
+      this.fail(new Error('App Server input failed; outstanding operations may have unknown results'));
+      this.child.kill();
+    });
   }
   private receive(message: WireMessage) {
     if (!message || typeof message !== 'object' || Array.isArray(message)) throw new Error('Invalid RPC envelope');
@@ -89,12 +105,15 @@ export class Codex extends EventEmitter {
     await this.request('thread/list', { cwd: this.cwd, limit: 1, modelProviders: [] });
     return result;
   }
-  async close() {
-    if (!this.alive) return;
-    const exited = new Promise<void>(resolve => this.child.once('exit', () => resolve()));
+  close() {
+    if (this.closing) return this.closing;
+    // Stop accepting RPCs immediately, including on deliberate shutdown. A
+    // disconnected request is unknown, never a confirmed native rejection.
+    this.fail(new Error('App Server stopping; outstanding operations may have unknown results'));
     this.child.stdin.end();
-    const timer = setTimeout(() => this.child.kill('SIGTERM'), 3000);
-    await exited;
-    clearTimeout(timer);
+    const terminate = setTimeout(() => this.child.kill('SIGTERM'), 3000);
+    const kill = setTimeout(() => this.child.kill('SIGKILL'), 6000);
+    this.closing = this.exited.finally(() => { clearTimeout(terminate); clearTimeout(kill); });
+    return this.closing;
   }
 }

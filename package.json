@@ -34,12 +34,14 @@
     "test:native:elicitation": "tsx scripts/native-elicitation.ts",
     "test:native:capabilities": "tsx scripts/native-capabilities-live.ts",
     "test:native:ui": "tsx scripts/native-requests-ui.ts",
-    "test:native:devices": "tsx scripts/native-requests-live.ts"
+    "test:native:devices": "tsx scripts/native-requests-live.ts",
+    "build:runtime": "pnpm build && node scripts/build-runtime.mjs"
   },
   "devDependencies": {
+    "@playwright/test": "1.64.1",
     "@types/node": "24.19.2",
     "@types/ws": "8.18.2",
-    "@playwright/test": "1.64.1",
+    "esbuild": "0.28.2",
     "tsx": "4.23.15",
     "typescript": "5.9.3",
     "vitest": "3.2.7",

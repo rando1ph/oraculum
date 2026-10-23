@@ -1,0 +1,19 @@
+[Unit]
+Description=Oraculum Bridge (official Codex App Server)
+StartLimitIntervalSec=60
+StartLimitBurst=3
+
+[Service]
+Type=simple
+ExecStart=/usr/lib/oraculum/resources/runtime/bin/oraculum-bridge
+WorkingDirectory=%h
+UMask=0077
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=15
+KillMode=control-group
+# Do not constrain native Codex tools or replace its own permissions/configuration.
+# Registration/start/enable and data selection are explicit Phase 4C operations.
+
+[Install]
+WantedBy=default.target

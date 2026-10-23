@@ -1,6 +1,8 @@
-const { app, BrowserWindow, session, Menu } = require('electron');
+const { app, BrowserWindow, session, Menu, dialog } = require('electron');
 const { prepareDesktopPaths } = require('./paths.cjs');
-const origin = process.env.ORACULUM_URL || 'http://127.0.0.1:17860';
+const { configureRuntime, ensureBridge } = require('./runtime.cjs');
+configureRuntime(app);
+const origin = process.env.ORACULUM_URL || `http://127.0.0.1:${process.env.ORACULUM_PORT || 17860}`;
 const url = new URL(origin);
 if (url.protocol !== 'http:' || url.hostname !== '127.0.0.1' || url.username || url.password || url.pathname !== '/') {
   throw new Error('Oraculum Desktop only loads a local loopback Bridge');
@@ -54,6 +56,17 @@ app.whenReady().then(async () => {
   window.webContents.on('will-redirect', (event, target) => {
     if (new URL(target).origin !== url.origin) event.preventDefault();
   });
-  await window.loadURL(url.href);
+  const connect = async () => {
+    try {
+      if (app.isPackaged) await ensureBridge(app, url);
+      await window.loadURL(url.href);
+    } catch {
+      const result = await dialog.showMessageBox(window, { type: 'error', title: '神谕',
+        message: '无法连接本机 Bridge', detail: '请检查已选择的运行配置、官方 Codex 和用户服务。首次安装须先完成明确的数据选择与服务注册。',
+        buttons: ['重试', '退出'], defaultId: 0, cancelId: 1 });
+      if (result.response === 0) void connect(); else app.quit();
+    }
+  };
+  await connect();
 });
 app.on('window-all-closed', () => app.quit());
