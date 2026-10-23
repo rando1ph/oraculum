@@ -2,11 +2,13 @@ import { DatabaseSync } from 'node:sqlite';
 import { randomBytes, randomUUID, createHash } from 'node:crypto';
 import { mkdirSync, lstatSync, openSync, closeSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { validateTrustSchema } from './trust-schema';
 
 const digest = (value: string) => createHash('sha256').update(value).digest('hex');
 const credential = () => randomBytes(32).toString('base64url');
 export const defaultStateDir = () => resolve(process.env.ORACULUM_STATE_DIR ?? '.local/runtime');
-export type Device = { id: string; label: string; expiresAt: number; revoked: number };
+// A null expiry is a persistent device grant; only revoke/logout ends it.
+export type Device = { id: string; label: string; expiresAt: number | null; revoked: number };
 
 // Only hashed device credentials / short-lived pairing codes. No OAuth, prompts,
 // conversation bodies or tool history belongs in this database.
@@ -22,13 +24,33 @@ export class TrustStore {
     const file = lstatSync(path);
     if (!file.isFile() || (file.mode & 0o077)) throw new Error('Trust database must be private (0600), not a symlink');
     this.db = new DatabaseSync(path);
-    this.db.exec(`PRAGMA busy_timeout=5000;
-      PRAGMA synchronous=FULL;
-      CREATE TABLE IF NOT EXISTS pairing (digest TEXT PRIMARY KEY, expires_at INTEGER NOT NULL);
-      CREATE TABLE IF NOT EXISTS devices (
-        id TEXT PRIMARY KEY, label TEXT NOT NULL, digest TEXT UNIQUE NOT NULL,
-        origin TEXT NOT NULL, expires_at INTEGER NOT NULL, revoked INTEGER NOT NULL DEFAULT 0
-      );`);
+    try {
+      this.db.exec('PRAGMA busy_timeout=5000; PRAGMA synchronous=FULL; BEGIN IMMEDIATE');
+      try {
+        const version = validateTrustSchema(this.db, true);
+        this.db.exec(`CREATE TABLE IF NOT EXISTS pairing (digest TEXT PRIMARY KEY, expires_at INTEGER NOT NULL);
+          CREATE TABLE IF NOT EXISTS devices (
+            id TEXT PRIMARY KEY, label TEXT NOT NULL, digest TEXT UNIQUE NOT NULL,
+            origin TEXT NOT NULL, expires_at INTEGER, revoked INTEGER NOT NULL DEFAULT 0
+          );`);
+        if (version === 0) {
+          const columns = this.db.prepare('PRAGMA table_info(devices)').all() as { name: string; notnull: number }[];
+          if (columns.find(column => column.name === 'expires_at')?.notnull) {
+            // Upgrade exactly once, in the same transaction as the schema marker.
+            // Already expired/revoked authorizations must never become permanent.
+            this.db.exec(`CREATE TABLE devices_long_trust (
+              id TEXT PRIMARY KEY, label TEXT NOT NULL, digest TEXT UNIQUE NOT NULL,
+              origin TEXT NOT NULL, expires_at INTEGER, revoked INTEGER NOT NULL DEFAULT 0
+            )`);
+            this.db.prepare(`INSERT INTO devices_long_trust SELECT id, label, digest, origin,
+              CASE WHEN revoked=0 AND expires_at>? THEN NULL ELSE expires_at END, revoked FROM devices`).run(this.now());
+            this.db.exec('DROP TABLE devices; ALTER TABLE devices_long_trust RENAME TO devices');
+          }
+          this.db.exec('PRAGMA user_version=1');
+        }
+        this.db.exec('COMMIT');
+      } catch (error) { this.db.exec('ROLLBACK'); throw error; }
+    } catch (error) { this.db.close(); throw error; }
   }
   createPairing() {
     const code = credential();
@@ -47,7 +69,7 @@ export class TrustStore {
       throw new Error('Invalid or expired pairing code');
     }
     const token = credential();
-    const device: Device = { id: randomUUID(), label: label.trim(), expiresAt: this.now() + 24 * 60 * 60_000, revoked: 0 };
+    const device: Device = { id: randomUUID(), label: label.trim(), expiresAt: null, revoked: 0 };
     this.db.exec('BEGIN IMMEDIATE');
     try {
       const result = this.db.prepare('DELETE FROM pairing WHERE digest=? AND expires_at>?').run(digest(code), this.now());
@@ -59,8 +81,10 @@ export class TrustStore {
   }
   authenticate(token: string | undefined, origin: string): Device | undefined {
     if (!token || !/^[\w-]{43}$/.test(token)) return undefined;
-    return this.db.prepare('SELECT id, label, expires_at AS expiresAt, revoked FROM devices WHERE digest=? AND origin=? AND revoked=0 AND expires_at>?')
-      .get(digest(token), origin, this.now()) as Device | undefined;
+    // Finite expiries now only belong to invalid legacy records. Never revive
+    // them on a later open or after a backward host-clock correction.
+    return this.db.prepare('SELECT id, label, expires_at AS expiresAt, revoked FROM devices WHERE digest=? AND origin=? AND revoked=0 AND expires_at IS NULL')
+      .get(digest(token), origin) as Device | undefined;
   }
   list(): Device[] {
     return this.db.prepare('SELECT id, label, expires_at AS expiresAt, revoked FROM devices').all() as Device[];

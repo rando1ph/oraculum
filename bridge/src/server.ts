@@ -31,13 +31,16 @@ export async function createServer(service: BridgeService, port: number, webRoot
     const values = headers.cookie.split(';').map(v => v.trim()).filter(v => v.startsWith(`${cookieName(source)}=`));
     return values.length === 1 ? values[0].slice(cookieName(source).length + 1) : undefined;
   };
-  const sessionCookie = (source: string, token: string, seconds = 86400) =>
+  // Browser persistence is bounded; valid HTTP session checks renew the cookie.
+  // Server-side device trust remains independently revocable without an expiry.
+  const cookieLifetimeSeconds = 365 * 24 * 60 * 60;
+  const sessionCookie = (source: string, token: string, seconds = cookieLifetimeSeconds) =>
     `${cookieName(source)}=${token}; HttpOnly; SameSite=Strict; Path=${entryBase(source)}; Max-Age=${seconds}${source === origin ? '' : '; Secure'}`;
   // Moving from / (or a parent path) must not leave two same-named cookies
   // attached to every request. Only this application's obsolete scopes expire.
   const ancestors = remoteBase.slice(0, -1).split('/').slice(0, -1)
     .map((_, index, parts) => parts.slice(0, index + 1).join('/') + '/');
-  const cookies = (source: string, token: string, seconds = 86400) => source === origin
+  const cookies = (source: string, token: string, seconds = cookieLifetimeSeconds) => source === origin
     ? sessionCookie(source, token, seconds)
     : [sessionCookie(source, token, seconds), '__Host-oraculum=; Secure; HttpOnly; SameSite=Strict; Path=/; Max-Age=0',
       ...ancestors.map(path => `${cookieName(source)}=; Secure; HttpOnly; SameSite=Strict; Path=${path}; Max-Age=0`)];
@@ -87,8 +90,10 @@ export async function createServer(service: BridgeService, port: number, webRoot
     app.get(base + 'auth/session', { config }, async (request, reply) => {
       if (!trust) return { authenticated: true, mode: 'local-test' };
       const source = requestOrigin(request.headers);
-      const device = trust.authenticate(tokenFrom(request.headers, source), scope(source));
+      const token = tokenFrom(request.headers, source);
+      const device = trust.authenticate(token, scope(source));
       if (!device) return reply.code(401).send({ error: 'Pair this device' });
+      reply.header('Set-Cookie', cookies(source, token!));
       return { authenticated: true, device };
     });
     app.post(base + 'auth/pair', { config }, async (request, reply) => {

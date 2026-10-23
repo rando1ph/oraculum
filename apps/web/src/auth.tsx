@@ -32,12 +32,26 @@ export function SessionGate({ children }: { children: ReactNode }) {
     void check();
     return () => window.removeEventListener('oraculum-auth-required', expired);
   }, []);
+  useEffect(() => {
+    if (!allowed) return;
+    // An open WebSocket does not renew browser cookies. Refresh while visible
+    // and on return from sleep without remounting the active conversation.
+    const renew = () => { if (!document.hidden) void checkSession().catch(() => {}); };
+    const timer = window.setInterval(renew, 24 * 60 * 60_000);
+    window.addEventListener('focus', renew);
+    document.addEventListener('visibilitychange', renew);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener('focus', renew);
+      document.removeEventListener('visibilitychange', renew);
+    };
+  }, [allowed]);
   if (loading) return <main className="pairing"><p role="status">正在检查连接…</p>{androidShell && <a className="server-settings-link" href="oraculum://settings/server">服务器地址</a>}</main>;
   if (allowed) return children;
   return <main className="pairing">
     <h1>Oraculum <span>神谕</span></h1>
     <h2>信任此设备</h2>
-    <p>输入主机上生成的一次性配对码。配对码五分钟内有效，本次设备访问授权有效期为一天，可随时在主机撤销。</p>
+    <p>输入主机上生成的一次性配对码。配对码五分钟内有效，设备配对后持续可信，直到主动撤销或退出。清除浏览器数据、更换入口或长期离线后可能需要重新配对。</p>
     {error && <p className="error" role="alert">{error}</p>}
     <form onSubmit={event => {
       event.preventDefault();

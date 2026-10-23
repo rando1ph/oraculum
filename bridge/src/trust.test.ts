@@ -5,6 +5,8 @@ import { join } from 'node:path';
 import { EventEmitter, once } from 'node:events';
 import { request as httpRequest } from 'node:http';
 import { createConnection } from 'node:net';
+import { createHash } from 'node:crypto';
+import { DatabaseSync } from 'node:sqlite';
 import { TrustStore } from './trust-store';
 import { createServer } from './server';
 import type { BridgeService } from './service';
@@ -18,7 +20,7 @@ function store(now?: () => number) {
   cleanups.push(() => trust.close());
   return { trust, dir };
 }
-describe('private, expiring and revocable device trust', () => {
+describe('private, persistent and revocable device trust', () => {
   it('stores digests only, consumes a pairing code once and binds sessions to the origin', () => {
     const { trust, dir } = store();
     const { code } = trust.createPairing();
@@ -33,7 +35,7 @@ describe('private, expiring and revocable device trust', () => {
     expect(trust.revoke(device.id)).toBe(true);
     expect(trust.authenticate(token, 'https://oraculum.example')).toBeUndefined();
   });
-  it('expires pairing codes and sessions; invalid labels do not consume a code', () => {
+  it('expires pairing codes but keeps trusted devices beyond a day and a year', () => {
     let now = 1000;
     const { trust } = store(() => now);
     const first = trust.createPairing();
@@ -43,7 +45,66 @@ describe('private, expiring and revocable device trust', () => {
     expect(() => trust.pair(next.code, '\n', 'https://oraculum.example')).toThrow();
     const { token } = trust.pair(next.code, 'Valid', 'https://oraculum.example');
     now += 86400001;
-    expect(trust.authenticate(token, 'https://oraculum.example')).toBeUndefined();
+    expect(trust.authenticate(token, 'https://oraculum.example')?.expiresAt).toBeNull();
+    now += 2 * 365 * 86400000;
+    expect(trust.authenticate(token, 'https://oraculum.example')?.expiresAt).toBeNull();
+  });
+  it('upgrades only still-valid legacy devices atomically and preserves other tables across restarts', () => {
+    const { dir, tokens } = legacyStore();
+    let now = 1000;
+    const trust = new TrustStore(dir, () => now);
+    expect(trust.authenticate(tokens.active, 'https://oraculum.example')?.expiresAt).toBeNull();
+    for (const token of [tokens.expired, tokens.revoked]) expect(trust.authenticate(token, 'https://oraculum.example')).toBeUndefined();
+    expect(trust.db.prepare('SELECT operation_id FROM send_receipts').get()).toEqual({ operation_id: 'existing-receipt' });
+    expect(trust.db.prepare('PRAGMA user_version').get()).toEqual({ user_version: 1 });
+    trust.close();
+    // A backward host-clock correction must not revive expired legacy grants.
+    const earlierClock = new TrustStore(dir, () => 999);
+    try {
+      expect(earlierClock.authenticate(tokens.active, 'https://oraculum.example')?.expiresAt).toBeNull();
+      for (const token of [tokens.expired, tokens.revoked]) expect(earlierClock.authenticate(token, 'https://oraculum.example')).toBeUndefined();
+    } finally { earlierClock.close(); }
+    now += 2 * 365 * 86400000;
+    const restarted = new TrustStore(dir, () => now);
+    cleanups.push(() => restarted.close());
+    expect(restarted.authenticate(tokens.active, 'https://oraculum.example')?.expiresAt).toBeNull();
+    for (const token of [tokens.expired, tokens.revoked]) expect(restarted.authenticate(token, 'https://oraculum.example')).toBeUndefined();
+    expect(restarted.list().find(device => device.id === 'expired')?.expiresAt).toBe(1000);
+    expect(restarted.list().find(device => device.id === 'revoked')?.revoked).toBe(1);
+    expect(restarted.db.prepare('SELECT operation_id FROM send_receipts').get()).toEqual({ operation_id: 'existing-receipt' });
+  });
+  it('rolls back a failed legacy schema upgrade without changing devices or unrelated state', () => {
+    const { dir } = legacyStore(true);
+    expect(() => new TrustStore(dir, () => 1000)).toThrow();
+    const db = new DatabaseSync(join(dir, 'trust.sqlite'));
+    try {
+      expect(db.prepare('PRAGMA user_version').get()).toEqual({ user_version: 0 });
+      expect(db.prepare('SELECT expires_at FROM devices WHERE id=?').get('active')).toEqual({ expires_at: 1001 });
+      expect(db.prepare('SELECT COUNT(*) AS count FROM devices').get()).toEqual({ count: 3 });
+      expect(db.prepare('SELECT operation_id FROM send_receipts').get()).toEqual({ operation_id: 'existing-receipt' });
+      expect(db.prepare('SELECT value FROM devices_long_trust').get()).toEqual({ value: 'keep' });
+    } finally { db.close(); }
+  });
+  it('rejects a newer database schema without modifying its records', () => {
+    const { dir } = legacyStore();
+    const db = new DatabaseSync(join(dir, 'trust.sqlite'));
+    db.exec('PRAGMA user_version=2');
+    db.close();
+    expect(() => new TrustStore(dir, () => 1000)).toThrow('newer');
+    const unchanged = new DatabaseSync(join(dir, 'trust.sqlite'));
+    try {
+      expect(unchanged.prepare('PRAGMA user_version').get()).toEqual({ user_version: 2 });
+      expect(unchanged.prepare('SELECT expires_at FROM devices WHERE id=?').get('active')).toEqual({ expires_at: 1001 });
+    } finally { unchanged.close(); }
+  });
+  it('keeps device revocation independent and rejects missing or malformed tokens', () => {
+    const { trust } = store();
+    const first = trust.pair(trust.createPairing().code, 'first', 'https://oraculum.example');
+    const second = trust.pair(trust.createPairing().code, 'second', 'https://oraculum.example');
+    trust.revoke(first.device.id);
+    expect(trust.authenticate(first.token, 'https://oraculum.example')).toBeUndefined();
+    expect(trust.authenticate(second.token, 'https://oraculum.example')?.id).toBe(second.device.id);
+    for (const token of [undefined, '', 'invalid', 'x'.repeat(43)]) expect(trust.authenticate(token, 'https://oraculum.example')).toBeUndefined();
   });
   it('retains trust and revocation across independent database connections', () => {
     const { trust, dir } = store();
@@ -66,8 +127,30 @@ describe('private, expiring and revocable device trust', () => {
   });
 });
 
-async function fixture(remoteBasePath = '/') {
-  const { trust } = store();
+function legacyStore(conflict = false) {
+  const dir = mkdtempSync(join(tmpdir(), 'oraculum-legacy-trust-'));
+  cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
+  const path = join(dir, 'trust.sqlite');
+  writeFileSync(path, '', { mode: 0o600 });
+  const db = new DatabaseSync(path);
+  const tokens = { active: 'a'.repeat(43), expired: 'b'.repeat(43), revoked: 'c'.repeat(43) };
+  try {
+    db.exec(`CREATE TABLE pairing (digest TEXT PRIMARY KEY, expires_at INTEGER NOT NULL);
+      CREATE TABLE devices (id TEXT PRIMARY KEY, label TEXT NOT NULL, digest TEXT UNIQUE NOT NULL,
+        origin TEXT NOT NULL, expires_at INTEGER NOT NULL, revoked INTEGER NOT NULL DEFAULT 0);
+      CREATE TABLE send_receipts (operation_id TEXT PRIMARY KEY);
+      INSERT INTO send_receipts VALUES ('existing-receipt');`);
+    for (const [id, token] of Object.entries(tokens)) {
+      db.prepare('INSERT INTO devices VALUES (?, ?, ?, ?, ?, ?)').run(id, id, createHash('sha256').update(token).digest('hex'),
+        'https://oraculum.example', id === 'expired' ? 1000 : 1001, id === 'revoked' ? 1 : 0);
+    }
+    if (conflict) db.exec("CREATE TABLE devices_long_trust (value TEXT); INSERT INTO devices_long_trust VALUES ('keep')");
+  } finally { db.close(); }
+  return { dir, tokens };
+}
+
+async function fixture(remoteBasePath = '/', now?: () => number) {
+  const { trust } = store(now);
   const service = Object.assign(new EventEmitter(), { dispatch: vi.fn(async () => ({ safe: true })) });
   const app = await createServer(service as unknown as BridgeService, 17864, '/missing', { trust, remoteOrigin: 'https://oraculum.example', remoteBasePath });
   cleanups.push(() => app.close());
@@ -83,6 +166,30 @@ async function fixture(remoteBasePath = '/') {
   return { app, trust, service, headers, pair };
 }
 describe('HTTP and WebSocket authentication boundary', () => {
+  it('renews year-long cookies after a day while missing, revoked and foreign credentials remain rejected', async () => {
+    let now = 1000;
+    const { app, pair, trust } = await fixture('/console/', () => now);
+    const session = await pair(true);
+    expect(session.fullCookie).toContain('Max-Age=31536000; Secure');
+    now += 86400001;
+    const headers = { ...session.headers, cookie: session.cookie };
+    const renewed = await app.inject({ url: '/console/auth/session', headers });
+    expect(renewed.statusCode).toBe(200);
+    expect(renewed.headers['set-cookie']).toEqual(expect.arrayContaining([
+      `${session.cookie}; HttpOnly; SameSite=Strict; Path=/console/; Max-Age=31536000; Secure`,
+    ]));
+    const socket = await app.injectWS('/console/ws', { headers });
+    socket.close();
+    for (const h of [session.headers, { ...headers, origin: 'https://foreign.invalid' }, { ...headers, cookie: `${session.cookie}; ${session.cookie}` }]) {
+      const denied = await app.inject({ url: '/console/auth/session', headers: h });
+      expect([401, 403]).toContain(denied.statusCode);
+      expect(denied.headers['set-cookie']).toBeUndefined();
+    }
+    trust.revoke(session.device.id);
+    const denied = await app.inject({ url: '/console/auth/session', headers });
+    expect(denied.statusCode).toBe(401);
+    expect(denied.headers['set-cookie']).toBeUndefined();
+  });
   it('closes real upgrade sockets rejected before authentication so proxies cannot pool unusable connections', async () => {
     const { app, service } = await fixture('/console/');
     app.server.on('connection', socket => { cleanups.push(() => { socket.destroy(); }); });
