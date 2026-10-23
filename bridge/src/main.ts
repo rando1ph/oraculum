@@ -1,51 +1,51 @@
-import { mkdir, realpath } from 'node:fs/promises';
-import { homedir } from 'node:os';
-import { resolve, join, sep } from 'node:path';
+import { mkdir, rmdir } from 'node:fs/promises';
+import { dirname } from 'node:path';
+import { existsSync } from 'node:fs';
 import { Codex } from './codex';
 import { BridgeService } from './service';
 import { createServer } from './server';
-import { TrustStore, defaultStateDir } from './trust-store';
+import { TrustStore } from './trust-store';
 import { ReceiptStore } from './receipts';
 import { ProjectDirectories } from './projects';
 import { Themes } from './themes';
+import { startupPaths } from './paths';
 
-const root = join(homedir(), '.cache/oraculum/workspaces');
-await mkdir(root, { recursive: true, mode: 0o700 });
-// A stable, controlled workspace lets native threads survive Bridge restarts.
-// Other existing projects require explicit registration within host policy roots.
-const requested = resolve(process.env.ORACULUM_WORKSPACE ?? join(root, 'local'));
-const realRoot = await realpath(root);
-if (!requested.startsWith(realRoot + sep)) throw new Error('Workspace must be inside the Oraculum test workspace root');
-await mkdir(requested, { recursive: true, mode: 0o700 });
-const cwd = await realpath(requested);
-if (!cwd.startsWith(realRoot + sep)) throw new Error('Workspace symlink escapes the Oraculum test workspace root');
-const trust = new TrustStore(defaultStateDir());
-const projects = new ProjectDirectories(realRoot, cwd, trust.db, [join(homedir(), 'Projects'), realRoot]);
-await projects.register(cwd); // Only the host-selected default is authorized at startup.
-const codex = new Codex(cwd);
-const service = new BridgeService(codex, cwd, new ReceiptStore(trust.db), projects);
+// Preflight path/config conflicts before creating state, a workspace or a child process.
+const paths = startupPaths();
+const created: string[] = [];
+for (let path = paths.cwd; !existsSync(path); path = dirname(path)) created.push(path);
+let codex: Codex | undefined, trust: TrustStore | undefined;
 try {
+  await mkdir(paths.cwd, { recursive: true, mode: 0o700 });
+  codex = new Codex(paths.cwd);
   await codex.initialize();
-  const port = Number(process.env.ORACULUM_PORT ?? 17860);
-  if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error('Invalid port');
-  const app = await createServer(service, port, resolve('apps/web/dist'), {
-    trust, themes: new Themes(), remoteOrigin: process.env.ORACULUM_REMOTE_ORIGIN,
-    remoteBasePath: process.env.ORACULUM_REMOTE_BASE_PATH,
+  // Do not create a new trust store when the installed CLI cannot initialize.
+  trust = new TrustStore(paths.state);
+  const projects = new ProjectDirectories(paths.workspaceRoot, paths.cwd, trust.db, paths.projectRoots);
+  await projects.register(paths.cwd); // Only the explicit host-selected default is authorized at startup.
+  const service = new BridgeService(codex, paths.cwd, new ReceiptStore(trust.db), projects);
+  const app = await createServer(service, paths.port, paths.web, {
+    trust, themes: new Themes({ installed: paths.themeInstalled, source: paths.themeSource }),
+    remoteOrigin: paths.remoteOrigin, remoteBasePath: paths.remoteBasePath,
   });
-  await app.listen({ host: '127.0.0.1', port });
-  console.log(JSON.stringify({ url: `http://127.0.0.1:${port}`, workspace: cwd, codex: codex.version }));
+  await app.listen({ host: '127.0.0.1', port: paths.port });
+  console.log(JSON.stringify({ url: `http://127.0.0.1:${paths.port}`, workspace: paths.cwd, codex: codex.version }));
   let closing = false;
   const close = async () => {
     if (closing) return;
     closing = true;
     await app.close();
-    await codex.close();
-    trust.close();
+    await codex!.close();
+    trust!.close();
   };
   process.once('SIGINT', () => void close());
   process.once('SIGTERM', () => void close());
 } catch (error) {
-  await codex.close();
-  trust.close();
+  await codex?.close();
+  trust?.close();
+  // Before state opens, roll back only empty directories created by this attempt.
+  // After initialization, retain state AND its registered cwd for a coherent retry
+  // (e.g. a late listen failure); never delete or downgrade a selected database.
+  if (!trust) for (const path of created) { try { await rmdir(path); } catch { /* Preserve concurrent data. */ } }
   throw error;
 }

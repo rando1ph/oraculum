@@ -20,8 +20,8 @@ my-theme/
 Manifest 保持原四字段：id 为 `[a-z][a-z0-9-]{0,47}`，保留 id `oracle-eye` 不可使用；名称 1–64 字符，无控制或双向文本控制字符；版本为三段数字，每段最多四位。
 
 1. 复制 `themes/template/` 至主机来源根目录的直接子目录，目录名也遵守 id 格式。
-2. `ORACULUM_THEME_SOURCE_DIR` 配置来源根，开发默认启动目录下 `themes/`。GUI 不接受任意主机路径。
-3. `ORACULUM_THEME_DIR` 配置已装目录，开发默认 Bridge state directory 下 `themes/`。两者解析为绝对路径，不允许符号链接；本阶段不迁移既有数据或决定 Phase 4 安装布局。
+2. `ORACULUM_THEME_SOURCE_DIR` 配置来源根，默认程序资源根下 `themes/`（与启动 cwd 无关）。GUI 不接受任意主机路径。
+3. `ORACULUM_THEME_DIR` 配置已装目录，默认已选择的 Bridge state directory 下 `themes/`。覆盖值必须为绝对路径，不允许符号链接；本阶段不迁移既有数据。资源根、XDG 与显式旧数据选择见 [Runtime configuration](RUNTIME_CONFIGURATION.md)。
 4. 「设置 → 主题 → 从主机主题目录安装」选择安装，然后手动选择当前主题。安装不会自动应用；目录变更无需重启 Bridge。
 5. 各设备、各服务器入口分别保存选择；正常刷新/重启保持。切换无需重编 Web UI 或重装 APK/Electron，不发送模型请求，不改变 thread、turn、审批身份或收据。
 

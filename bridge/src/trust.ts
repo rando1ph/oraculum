@@ -2,10 +2,13 @@ import { writeFileSync, renameSync } from 'node:fs';
 import { join } from 'node:path';
 import { TrustStore, defaultStateDir } from './trust-store';
 
+const [command, id] = process.argv.slice(2);
+if (!['pair', 'list', 'revoke'].includes(command ?? '') || (command === 'revoke' && !id)) {
+  throw new Error('Usage: pnpm trust pair | list | revoke <device-id>');
+}
 const dir = defaultStateDir();
 const store = new TrustStore(dir);
 try {
-  const [command, id] = process.argv.slice(2);
   if (command === 'pair') {
     const { code, expiresAt } = store.createPairing();
     const path = join(dir, 'pairing.txt');

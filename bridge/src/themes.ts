@@ -1,17 +1,17 @@
 import { constants } from 'node:fs';
 import { lstat, mkdir, open, readdir, realpath, rm, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
-import { isAbsolute, join, resolve } from 'node:path';
-import { defaultStateDir } from './trust-store';
+import { isAbsolute, join } from 'node:path';
+import { hostPaths, selectStateDirectory } from './paths';
 import { compileThemeCss } from './theme-css';
 import { DEFAULT_THEME, THEME_API, themeId, type ThemeBundle, type ThemeCatalog, type ThemeEntry, type ThemeManifest } from '../../packages/shared/themes';
 
 function invalid(reason: string): never { throw new Error(`主题不可用：${reason}`); }
 const safePart = /^[a-zA-Z0-9_-]+$/;
 export function themeDirectories() {
-  // Configurable new storage only; Phase 4 owns any existing-data migration.
-  return { installed: resolve(process.env.ORACULUM_THEME_DIR ?? join(defaultStateDir(), 'themes')),
-    source: resolve(process.env.ORACULUM_THEME_SOURCE_DIR ?? 'themes') };
+  const paths = hostPaths();
+  if (!process.env.ORACULUM_THEME_DIR) selectStateDirectory(paths);
+  return { installed: paths.themeInstalled, source: paths.themeSource };
 }
 async function directory(path: string) {
   const info = await lstat(path);

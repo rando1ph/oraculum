@@ -1,12 +1,13 @@
 import { DatabaseSync } from 'node:sqlite';
 import { randomBytes, randomUUID, createHash } from 'node:crypto';
 import { mkdirSync, lstatSync, openSync, closeSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
+import { selectStateDirectory } from './paths';
 import { validateTrustSchema } from './trust-schema';
 
 const digest = (value: string) => createHash('sha256').update(value).digest('hex');
 const credential = () => randomBytes(32).toString('base64url');
-export const defaultStateDir = () => resolve(process.env.ORACULUM_STATE_DIR ?? '.local/runtime');
+export const defaultStateDir = () => selectStateDirectory();
 // A null expiry is a persistent device grant; only revoke/logout ends it.
 export type Device = { id: string; label: string; expiresAt: number | null; revoked: number };
 
