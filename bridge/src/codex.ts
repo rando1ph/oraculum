@@ -1,8 +1,9 @@
-import { spawn, execFileSync, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import { createInterface } from 'node:readline';
 import type { WireMessage, RpcId } from '../../packages/shared/protocol';
-import { assertCodexVersion } from './version';
+import { codexExecutable, readCodexVersion } from './version';
+import { CodexCompatibilityError, validateNativeResponse } from './compatibility';
 
 export class NativeRpcError extends Error {
   constructor(message: string, readonly code: number) { super(message); }
@@ -11,34 +12,46 @@ export class NativeRpcError extends Error {
 export class Codex extends EventEmitter {
   private child: ChildProcessWithoutNullStreams;
   private sequence = 0;
-  private pending = new Map<RpcId, { resolve: (value: unknown) => void; reject: (error: Error) => void; timer: NodeJS.Timeout }>();
+  private pending = new Map<RpcId, { method: string; resolve: (value: unknown) => void; reject: (error: Error) => void; timer: NodeJS.Timeout }>();
+  readonly version: string;
   alive = true;
-  constructor(cwd: string) {
+  constructor(private readonly cwd: string) {
     super();
-    assertCodexVersion(execFileSync('codex', ['--version'], { encoding: 'utf8' }));
+    const binary = codexExecutable();
+    this.version = readCodexVersion(binary);
     // Codex owns effective config resolution (including CODEX_HOME, project
     // layers, enabled and explicitly disabled capabilities). Do not override it.
-    this.child = spawn('codex', ['app-server', '--listen', 'stdio://'], {
+    this.child = spawn(binary, ['app-server', '--listen', 'stdio://'], {
       cwd, stdio: ['pipe', 'pipe', 'pipe'],
     });
     // Drain stderr without logging configuration, prompts, or credentials.
     this.child.stderr.on('data', () => {});
     createInterface({ input: this.child.stdout }).on('line', line => {
       try { this.receive(JSON.parse(line) as WireMessage); }
-      catch { this.fail(new Error('Invalid App Server message')); this.child.kill(); }
+      catch { this.fail(new Error(`${this.version}: invalid App Server message; outstanding operation results may be unknown`)); this.child.kill(); }
     });
     this.child.on('error', () => this.fail(new Error('App Server process failed')));
     this.child.on('exit', () => this.fail(new Error('App Server exited; outstanding operations may have unknown results')));
   }
   private receive(message: WireMessage) {
+    if (!message || typeof message !== 'object' || Array.isArray(message)) throw new Error('Invalid RPC envelope');
     if (message.method) { this.emit('message', message); return; }
     if (message.id === undefined) return;
     const request = this.pending.get(message.id);
     if (!request) return;
     clearTimeout(request.timer);
     this.pending.delete(message.id);
-    if (message.error) request.reject(new NativeRpcError(message.error.message, message.error.code));
-    else request.resolve(message.result);
+    if ('error' in message) {
+      if (!message.error || typeof message.error.message !== 'string' || !Number.isInteger(message.error.code) || 'result' in message) {
+        request.reject(new CodexCompatibilityError(this.version, request.method, 'error'));
+      } else request.reject(new NativeRpcError(`${this.version}: ${request.method}: ${message.error.message}`, message.error.code));
+    } else {
+      try {
+        if (!('result' in message)) throw new CodexCompatibilityError(this.version, request.method, 'result');
+        validateNativeResponse(this.version, request.method, message.result);
+        request.resolve(message.result);
+      } catch (error) { request.reject(error as Error); }
+    }
   }
   private fail(error: Error) {
     if (!this.alive) return;
@@ -59,7 +72,7 @@ export class Codex extends EventEmitter {
         this.pending.delete(id);
         reject(new Error(`${method}: response timeout; result unknown, do not retry automatically`));
       }, 60_000);
-      this.pending.set(id, { resolve: value => resolve(value as T), reject, timer });
+      this.pending.set(id, { method, resolve: value => resolve(value as T), reject, timer });
       this.send({ id, method, params: params as Record<string, unknown> });
     });
   }
@@ -69,6 +82,11 @@ export class Codex extends EventEmitter {
       capabilities: { experimentalApi },
     });
     this.send({ method: 'initialized', params: {} });
+    // Detect missing essential read APIs before advertising a usable Bridge.
+    // Native thread/turn mutation is only validated when explicitly requested.
+    await this.request('config/read', { cwd: this.cwd, includeLayers: false });
+    await this.request('model/list', { limit: 1, includeHidden: false });
+    await this.request('thread/list', { cwd: this.cwd, limit: 1, modelProviders: [] });
     return result;
   }
   async close() {

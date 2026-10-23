@@ -7,7 +7,7 @@ import type { ThreadStartResponse } from '../.local/codex-protocol/v2/ThreadStar
 import type { ModelListResponse } from '../.local/codex-protocol/v2/ModelListResponse';
 
 const origin = process.env.ORACULUM_URL ?? 'http://127.0.0.1:17860';
-const evidence: Record<string, unknown> = { date: new Date().toISOString(), codex: '0.160.0', events: [] };
+const evidence: Record<string, unknown> = { date: new Date().toISOString(), events: [] };
 let socket!: WebSocket;
 const waiting = new Map<string, { resolve: (value: unknown) => void; reject: (error: Error) => void }>();
 const notifications: WireMessage[] = [];
@@ -48,6 +48,8 @@ try {
   evidence.models = models.data.map(model => ({ model: model.model, efforts: model.supportedReasoningEfforts.map(e => e.reasoningEffort) }));
   assert(models.data.some(model => model.model === 'gpt-6-luna'));
   const thread = await rpc<ThreadStartResponse>('thread/start', { model: 'gpt-6-luna' });
+  evidence.codex = thread.thread.cliVersion;
+  evidence.codexVersionSource = 'new native thread.cliVersion';
   evidence.thread = { id: thread.thread.id, model: thread.model, effort: thread.reasoningEffort, approvalPolicy: thread.approvalPolicy, reviewer: thread.approvalsReviewer, sandbox: thread.sandbox.type };
   const threadId = thread.thread.id;
   const result = await rpc<{ turn: { id: string } }>('turn/start', {

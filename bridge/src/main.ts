@@ -33,7 +33,7 @@ try {
     remoteBasePath: process.env.ORACULUM_REMOTE_BASE_PATH,
   });
   await app.listen({ host: '127.0.0.1', port });
-  console.log(JSON.stringify({ url: `http://127.0.0.1:${port}`, workspace: cwd, codex: '0.160.0' }));
+  console.log(JSON.stringify({ url: `http://127.0.0.1:${port}`, workspace: cwd, codex: codex.version }));
   let closing = false;
   const close = async () => {
     if (closing) return;

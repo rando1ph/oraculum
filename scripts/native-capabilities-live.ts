@@ -128,7 +128,7 @@ async function audit() {
   const configHash = async () => createHash('sha256').update(await readFile(configPath)).digest('hex');
   const initialConfigHash = await configHash();
   const evidence: Record<string, unknown> = { date: new Date().toISOString(), cwd, codexHome: dirname(configPath),
-    codex: '0.160.0', experimentalApi: false, authenticatedDevices: 2, modelTurns: 0,
+    experimentalApi: false, authenticatedDevices: 2, modelTurns: 0,
     configurationOverrides: [], transport: 'Two authenticated loopback WebSocket clients; no GUI or Android claim' };
   let child: ChildProcess | undefined;
   let trust: TrustStore | undefined;
@@ -171,6 +171,8 @@ async function audit() {
     evidence.config = await first.rpc<LocalConfig>('bridge/config', { cwd });
     step = 'native configured capability turn';
     const thread = await first.rpc<ThreadStartResponse>('thread/start', { cwd });
+    evidence.codex = thread.thread.cliVersion;
+    evidence.codexVersionSource = 'new native thread.cliVersion';
     const threadId = thread.thread.id;
     evidence.thread = { id: threadId, model: thread.model, effort: thread.reasoningEffort,
       approvalPolicy: thread.approvalPolicy, sandbox: thread.sandbox, approvalsReviewer: thread.approvalsReviewer };

@@ -84,7 +84,7 @@ args = [${JSON.stringify(serverPath)}]
       bridgeToken: request.bridgeToken, result: { action: 'accept', content } }), /no longer/);
     results.push({ kind, action, nativeMode: (request.params as { mode?: string }).mode, turnId: request.params.turnId, pendingRestored: true, nativeRoundTrip: true, duplicateRejected: true });
   }
-  console.log(JSON.stringify({ codex: '0.160.0', experimentalApi: false, syntheticMcp: true, modelCalls: 0, results }, null, 2));
+  console.log(JSON.stringify({ codex: codex.version, experimentalApi: false, syntheticMcp: true, modelCalls: 0, results }, null, 2));
 } finally {
   await codex?.close();
   if (previous === undefined) delete process.env.CODEX_HOME; else process.env.CODEX_HOME = previous;
