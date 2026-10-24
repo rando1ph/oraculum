@@ -49,7 +49,9 @@
     "test:process:ui": "tsx scripts/process-ui-contract.ts",
     "test:process:live": "tsx scripts/process-live.ts",
     "test:identity:ui": "tsx scripts/identity-ui.ts",
-    "test:identity:android": "tsx scripts/identity-ui.ts --android"
+    "test:identity:android": "tsx scripts/identity-ui.ts --android",
+    "test:identity:performance": "tsx scripts/identity-performance.ts --optimized",
+    "test:identity:performance:android": "tsx scripts/identity-performance.ts --optimized --android"
   },
   "devDependencies": {
     "@electron-forge/cli": "8.0.1",

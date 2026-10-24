@@ -1,7 +1,8 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { appUrl } from '../../../packages/shared/entry';
 import { OracleEye } from './brand';
-import { AVATAR_SIZE, avatarBlob, centeredCrop, decodeAvatarFile, defaultNames, drawCrop, emptyIdentities, exportAvatar, normalizeNickname, parseIdentities, type Crop, type Identities, type Identity, type IdentityRole } from './identity';
+import { AVATAR_SIZE, centeredCrop, decodeAvatarFile, defaultNames, drawCrop, emptyIdentities, exportAvatar, normalizeNickname, parseIdentities, type Crop, type Identities, type Identity, type IdentityRole } from './identity';
+import { acquireAvatar, avatarBufferSize, observeAvatar } from './avatar-rendering';
 import './identity.css';
 
 const IdentityContext = createContext<{ identities: Identities; save: (role: IdentityRole, value: Identity) => void }>({ identities: emptyIdentities(), save: () => {} });
@@ -22,16 +23,34 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
 export function Avatar({ role, avatar, className = '' }: { role: IdentityRole; avatar: string | null; className?: string }) {
   const canvas = useRef<HTMLCanvasElement>(null), [ready, setReady] = useState('');
   useEffect(() => {
-    let cancelled = false;
-    if (avatar) void createImageBitmap(avatarBlob(avatar)).then(picture => {
-      if (!cancelled && canvas.current) { drawCrop(canvas.current, picture, centeredCrop()); setReady(avatar); }
-      picture.close();
-    }).catch(() => { if (!cancelled) setReady(''); });
-    return () => { cancelled = true; };
+    const target = canvas.current;
+    if (!avatar || !target) return;
+    // Read initial CSS before asynchronous decode/painting. Later size updates
+    // come from ResizeObserver; DPR changes reuse the last CSS dimensions.
+    const style = getComputedStyle(target);
+    let cssWidth = parseFloat(style.width), cssHeight = parseFloat(style.height);
+    let active = true, picture: ImageBitmap | undefined, painted: ImageBitmap | undefined;
+    const paint = (nextWidth?: number, nextHeight?: number) => {
+      if (nextWidth && nextHeight) { cssWidth = nextWidth; cssHeight = nextHeight; }
+      if (!active || !picture) return;
+      const [width, height] = avatarBufferSize(cssWidth, cssHeight, window.devicePixelRatio);
+      if (painted === picture && target.width === width && target.height === height) return;
+      target.width = width; target.height = height;
+      drawCrop(target, picture, centeredCrop()); painted = picture;
+    };
+    const unobserve = observeAvatar(target, paint), lease = acquireAvatar(avatar);
+    void lease.picture.then(bitmap => {
+      if (!active) return;
+      picture = bitmap; paint(); setReady(avatar);
+    }).catch(() => { if (active) setReady(''); });
+    return () => {
+      active = false; unobserve(); lease.release();
+      target.width = target.height = 1; // Release the backing even before DOM GC.
+    };
   }, [avatar]);
   const custom = !!avatar && ready === avatar;
   return <>
-    <canvas ref={canvas} width={AVATAR_SIZE} height={AVATAR_SIZE} className={`message-avatar custom-avatar ${className}`} hidden={!custom} aria-hidden="true"/>
+    {avatar && <canvas ref={canvas} width={1} height={1} className={`message-avatar custom-avatar ${className}`} hidden={!custom} aria-hidden="true"/>}
     {!custom && (role === 'assistant' ? <OracleEye className={`message-avatar ${className}`}/> : <svg className={`message-avatar user-avatar ${className}`} viewBox="0 0 32 32" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden="true"><circle cx="16" cy="12" r="4"/><path d="M8 25v-2a8 8 0 0 1 16 0v2"/></svg>)}
   </>;
 }
