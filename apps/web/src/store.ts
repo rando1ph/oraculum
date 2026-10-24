@@ -71,6 +71,12 @@ export const useSession = create<State>((set, get) => ({
       }
     }
     if (event.method === 'thread/status/changed') changes.thread = { ...state.thread!, status: event.params.status };
+    if (event.method === 'thread/settings/updated') {
+      const settings = event.params.threadSettings;
+      if (settings?.approvalPolicy && settings.sandboxPolicy?.type && settings.approvalsReviewer) {
+        changes.settings = { approvalPolicy: settings.approvalPolicy, sandbox: settings.sandboxPolicy, approvalsReviewer: settings.approvalsReviewer };
+      }
+    }
     if (event.method === 'item/started' || event.method === 'item/completed') {
       const { item, turnId } = event.params;
       const key = itemKey(turnId, item.id);

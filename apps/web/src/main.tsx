@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BridgeClient } from '../../../packages/shared/client';
-import type { BridgeEvent, LocalConfig, Model, ProjectList, Snapshot, Thread, ThreadItem } from '../../../packages/shared/protocol';
+import type { BridgeEvent, LocalConfig, Model, PermissionMode, ProjectList, Snapshot, Thread, ThreadItem } from '../../../packages/shared/protocol';
 import type { ThreadStartResponse } from '../../../.local/codex-protocol/v2/ThreadStartResponse';
 import type { ThreadListResponse } from '../../../.local/codex-protocol/v2/ThreadListResponse';
 import { itemKey, useSession } from './store';
@@ -17,6 +17,7 @@ import { ResizeHandle, useLayout } from './layout';
 import { SessionGate, checkSession } from './auth';
 import { ThemeSettings, useTheme } from './themes';
 import { NativeRequest } from './native-request';
+import { PermissionStatus, permissionModes } from './permissions';
 import './style.css';
 import './mobile.css';
 
@@ -40,6 +41,8 @@ function App() {
   const [models, setModels] = useState<Model[]>([]);
   const [model, setModel] = useState('');
   const [effort, setEffort] = useState('');
+  // Explicit permission choices are scoped to this view, never saved as client defaults.
+  const [permissionMode, setPermissionMode] = useState<PermissionMode>('inherit');
   const [threads, setThreads] = useState<Thread[]>([]);
   // A brand presentation cue, never persisted or sent to the native Harness.
   const [createdThreadId, setCreatedThreadId] = useState('');
@@ -149,6 +152,9 @@ function App() {
   }
   function apply(message: BridgeEvent, restoring = false) {
     const state = useSession.getState();
+    if (message.type === 'settingsChanged' && message.threadId === state.thread?.id) {
+      useSession.setState({ settings: message.settings });
+    }
     if (message.type === 'approval') state.approval(message.request);
     if (message.type === 'requestAnswered') useSession.setState({ pending: state.pending.filter(request => request.id !== message.requestId || request.bridgeToken !== message.bridgeToken) });
     if (message.type === 'event') {
@@ -172,7 +178,7 @@ function App() {
     selected.current = id;
     setSynced(false); setLoadingHistory(false);
     if (changed) {
-      useSession.getState().reset(); setModel(''); setEffort(''); setError(''); setInspected(undefined);
+      useSession.getState().reset(); setModel(''); setEffort(''); setPermissionMode('inherit'); setError(''); setInspected(undefined);
       setText(readDraft()); setDrawer(false); setMenu(false);
     }
     if (!id) { readingRestore.current = null; useSession.getState().reset(); setSynced(true); buffer.current = null; return; }
@@ -222,7 +228,7 @@ function App() {
       if (ticket !== projectEpoch.current) return;
       ++epoch.current; readingRestore.current = null; selected.current = ''; buffer.current = null;
       workspace.current = settings.cwd; save('oraculum.project', settings.cwd);
-      setConfig(settings); setThreads([]); setNextCursor(null); setQuery(''); setModel(''); setEffort(''); setInspected(undefined);
+      setConfig(settings); setThreads([]); setNextCursor(null); setQuery(''); setModel(''); setEffort(''); setPermissionMode('inherit'); setInspected(undefined);
       useSession.getState().reset(); setText(readDraft());
       const saved = restore ? readSaved(storageKey()) : null;
       let page = await listThreads();
@@ -342,10 +348,12 @@ function App() {
   async function createThread() {
     setSending(true); setError('');
     try {
-      const result = await client.current!.request<ThreadStartResponse>('thread/start', { model, cwd: workspace.current });
+      const result = await client.current!.request<ThreadStartResponse>('thread/start', { model, cwd: workspace.current, permissionMode });
       rememberScroll(); ++epoch.current; readingRestore.current = null; buffer.current = null; selected.current = result.thread.id;
       setInspected(undefined); setText(readDraft()); setDrawer(false); follow.current = true;
-      useSession.getState().reset(); useSession.getState().snapshot({ thread: result.thread, pending: [] });
+      useSession.getState().reset(); useSession.getState().snapshot({ thread: result.thread, pending: [], settings: {
+        approvalPolicy: result.approvalPolicy, sandbox: result.sandbox, approvalsReviewer: result.approvalsReviewer,
+      } });
       setCreatedThreadId(result.thread.id);
       save(storageKey(), result.thread.id);
       setThreads(ids => [result.thread, ...ids]); setSynced(true); composer.current?.focus();
@@ -359,7 +367,7 @@ function App() {
     setSending(true); setError(''); follow.current = true;
     const submittedRevision = draftRevision.current;
     try {
-      await client.current!.request('turn/start', { threadId: selected.current, text, model, effort });
+      await client.current!.request('turn/start', { threadId: selected.current, text, model, effort, permissionMode });
       if (draftRevision.current === submittedRevision) writeDraft('');
     } catch (value) { report(value); setSynced(false); }
     finally { setSending(false); }
@@ -483,10 +491,15 @@ function App() {
       <div className="jump-latest-slot">{!atBottom && <button className="jump-latest" onClick={() => { follow.current = true; scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: 'smooth' }); }}><Icon name="arrowDown" size={14}/>返回最新{session.pending.length ? ' · 待审批' : ''}</button>}</div>
       <form data-theme-slot="composer" className={`composer ${expanded ? 'expanded' : ''}`} onSubmit={event => { event.preventDefault(); void send(); }}>
         <div className="composer-input"><label className="sr-only" htmlFor="message">消息</label><textarea ref={composer} id="message" enterKeyHint="enter" onCompositionStart={() => { composing.current = true; }} onCompositionEnd={() => { composing.current = false; }} value={text} onChange={event => writeDraft(event.target.value)} placeholder={brandCopy.placeholder} maxLength={16000} rows={2} onKeyDown={event => { if (event.key === 'Enter' && (event.ctrlKey || event.metaKey) && !event.nativeEvent.isComposing && !composing.current && event.keyCode !== 229) { event.preventDefault(); void send(); } }}/><button className="icon-button expand-composer" type="button" aria-label={expanded ? '收起输入框' : '展开输入框'} title="展开输入框" onClick={() => setExpanded(value => !value)}><Icon name="expand" size={15}/></button></div>
-        <div className="composer-toolbar"><div className="model-controls"><label><span className="sr-only">模型</span><select aria-label="模型" title="下一轮模型" value={model} onChange={event => { setModel(event.target.value); setEffort(''); }}><option value="">继承 · {session.thread?.model ?? config?.model ?? 'Codex 默认'}</option>{models.map(m => <option key={m.id} value={m.model}>{m.displayName}</option>)}</select></label><label><span className="sr-only">思考强度</span><select aria-label="思考强度" title="下一轮思考强度" value={effort} onChange={event => setEffort(event.target.value)}><option value="">继承 · {session.thread?.reasoningEffort ?? config?.effort ?? '默认'}</option>{(models.find(m => m.model === (model || session.thread?.model || config?.model))?.supportedReasoningEfforts ?? []).map(e => <option key={e.reasoningEffort}>{e.reasoningEffort}</option>)}</select></label></div>
+        <div className="composer-toolbar"><div className="model-controls"><label><span className="sr-only">模型</span><select aria-label="模型" title="下一轮模型" value={model} onChange={event => { setModel(event.target.value); setEffort(''); }}><option value="">继承 · {session.thread?.model ?? config?.model ?? 'Codex 默认'}</option>{models.map(m => <option key={m.id} value={m.model}>{m.displayName}</option>)}</select></label><label><span className="sr-only">思考强度</span><select aria-label="思考强度" title="下一轮思考强度" value={effort} onChange={event => setEffort(event.target.value)}><option value="">继承 · {session.thread?.reasoningEffort ?? config?.effort ?? '默认'}</option>{(models.find(m => m.model === (model || session.thread?.model || config?.model))?.supportedReasoningEfforts ?? []).map(e => <option key={e.reasoningEffort}>{e.reasoningEffort}</option>)}</select></label><label className="permission-control"><span className="sr-only">权限模式</span><select aria-label="权限模式" aria-describedby="permission-intent" title="下一次新建或发送时使用的权限" value={permissionMode} disabled={disabled || !synced || !projectAvailable || session.sendBlocked} onChange={event => setPermissionMode(event.target.value as PermissionMode)}>{permissionModes.map(mode => <option key={mode.value} value={mode.value}>{mode.label}</option>)}</select></label></div>
           <div className="composer-actions">{active && <button type="button" className="stop-button" disabled={!connected || !session.activeTurn} onClick={() => void client.current!.request('turn/interrupt', { threadId: selected.current, turnId: session.activeTurn }).catch(report)}><Icon name="stop" size={15}/>停止</button>}<button className="primary send-button" title="发送 · Ctrl+Enter" aria-label="发送" disabled={!canSend}><Icon name="send"/></button></div>
         </div>
-        <div className="composer-caption"><span>{model || effort ? '下一轮使用所选模型 / 思考强度' : '继承 Codex 原生会话设置'}</span><span>Ctrl Enter 发送 · Enter 换行</span></div>
+        <p className="permission-intent" id="permission-intent">{permissionMode === 'inherit'
+          ? session.thread ? '下一轮继承当前会话权限（保留此前覆盖）；新会话继承项目配置。' : '新会话继承当前项目的 Codex 配置。'
+          : `下一次新建 / 发送使用 ${permissionModes.find(mode => mode.value === permissionMode)!.label}；不改变正在运行的轮次。`}</p>
+        {permissionMode === 'full-access' && <p className="permission-warning">Full Access 可读写工作区以外的文件并联网，无需命令审批。</p>}
+        <PermissionStatus settings={session.settings} synced={connected && synced} hasThread={!!session.thread}/>
+        <div className="composer-caption"><span>{model || effort ? '下一轮使用所选模型 / 思考强度' : '模型 / 思考强度继承原生会话'}</span><span>Ctrl Enter 发送 · Enter 换行</span></div>
       </form>
     </section>
     {layout.inspector && <section data-theme-slot="inspector" className="inspector" inert={browsing || settings || (mobile && drawer)} aria-label={inspected?.kind === 'item' ? '工具详情面板' : '文件 Diff 面板'}>
@@ -508,7 +521,7 @@ function App() {
         {models.map(m => <button key={m.id} aria-pressed={model === m.model} onClick={() => { setModel(m.model); setEffort(''); }}>{m.displayName}</button>)}
       </div>
       <h3>思考强度</h3><div className="settings-effort-options" role="group" aria-label="下一轮思考强度"><button aria-pressed={!effort} onClick={() => setEffort('')}>继承</button>{(models.find(m => m.model === (model || session.thread?.model || config?.model))?.supportedReasoningEfforts ?? []).map(e => <button key={e.reasoningEffort} aria-pressed={effort === e.reasoningEffort} onClick={() => setEffort(e.reasoningEffort)}>{e.reasoningEffort}</button>)}</div>
-      <h3>原生权限配置</h3><p>继承当前项目的 Codex 配置。已恢复会话的实际权限见「会话信息与原生事件」。</p><dl className="native-config"><dt>审批策略</dt><dd>{typeof config?.approvalPolicy === 'object' && config.approvalPolicy !== null ? JSON.stringify(config.approvalPolicy) : config?.approvalPolicy ?? '原生默认'}</dd><dt>沙盒</dt><dd>{config?.sandbox ?? '原生默认'}</dd><dt>审批方</dt><dd>{config?.approvalsReviewer ?? '原生默认'}</dd><dt>Web Search</dt><dd>{config?.webSearch ?? '原生默认'}</dd></dl>
+      <h3>原生权限配置</h3><p>以下为项目默认配置。权限模式可在发送区选择；实际会话权限以发送区的原生确认结果为准。「继承原生」保留现有会话之前的权限覆盖。</p><dl className="native-config"><dt>审批策略</dt><dd>{typeof config?.approvalPolicy === 'object' && config.approvalPolicy !== null ? JSON.stringify(config.approvalPolicy) : config?.approvalPolicy ?? '原生默认'}</dd><dt>沙盒</dt><dd>{config?.sandbox ?? '原生默认'}</dd><dt>审批方</dt><dd>{config?.approvalsReviewer ?? '原生默认'}</dd><dt>Web Search</dt><dd>{config?.webSearch ?? '原生默认'}</dd></dl>
       <ThemeSettings theme={theme} open={settings}/>
       <h3>界面与阅读</h3><label className="reading-size">正文大小 <span>{readingSize}%</span><input aria-label="正文大小" type="range" min="100" max="150" step="10" value={readingSize} onChange={event => setReadingSize(Number(event.target.value))}/></label>
       {!mobile && <button onClick={() => setLayout({ navigation: true, inspector: false, navigationWidth: 264, inspectorWidth: 420 })}>恢复面板默认布局</button>}

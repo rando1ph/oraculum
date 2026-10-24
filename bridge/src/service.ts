@@ -16,6 +16,7 @@ import type { ReceiptStore } from './receipts';
 import type { ProjectDirectories } from './projects';
 import { basename, dirname } from 'node:path';
 import { nativeResponse, responseNeedsDirectory, supportedRequest } from './native-requests';
+import { permissionMode, threadPermissions, turnPermissions } from './permissions';
 
 export class BridgeService extends EventEmitter {
   readonly threads = new Set<string>();
@@ -29,6 +30,7 @@ export class BridgeService extends EventEmitter {
   private loaded = new Set<string>();
   private fresh = new Map<string, Thread>();
   private settings = new Map<string, NativeSessionSettings>();
+  private settingsQueries = new Map<string, number>();
   private resuming = new Map<string, Promise<void>>();
   constructor(readonly codex: Pick<Codex, 'request' | 'send'> & { on(event: string, listener: (...args: any[]) => void): unknown }, readonly cwd: string,
     private receipts?: ReceiptStore, private projects?: ProjectDirectories) {
@@ -85,6 +87,18 @@ export class BridgeService extends EventEmitter {
     }
     if (!threadId || !this.threads.has(threadId)) return;
     this.revisions.set(threadId, (this.revisions.get(threadId) ?? 0) + 1);
+    if (message.method === 'thread/settings/updated') {
+      const settings = params.threadSettings as { cwd?: string; approvalPolicy: NativeSessionSettings['approvalPolicy'];
+        sandboxPolicy: NativeSessionSettings['sandbox']; approvalsReviewer: NativeSessionSettings['approvalsReviewer'] } | undefined;
+      if (settings?.cwd === this.threadCwd(threadId) && settings.approvalPolicy && settings.sandboxPolicy?.type && settings.approvalsReviewer) {
+        this.publishSettings(threadId, { approvalPolicy: settings.approvalPolicy, sandbox: settings.sandboxPolicy,
+          approvalsReviewer: settings.approvalsReviewer });
+      } else {
+        this.publishSettings(threadId);
+        this.emit('event', { type: 'notice', threadId, message: '原生权限更新无法核实；请重新查询会话状态。' } satisfies BridgeEvent);
+        return;
+      }
+    }
     if (message.method === 'serverRequest/resolved' && this.pending.get(params.requestId as RpcId)?.params.threadId === threadId) {
       this.resolveRequest(params.requestId as RpcId);
     }
@@ -149,6 +163,7 @@ export class BridgeService extends EventEmitter {
       const cwd = await this.projectCwd(params.cwd);
       const request: ThreadStartParams = {
         cwd,
+        ...threadPermissions(permissionMode(params.permissionMode)),
         ...(typeof params.model === 'string' && params.model ? { model: params.model } : {}),
       };
       const response = await this.codex.request<ThreadStartResponse>('thread/start', request);
@@ -170,7 +185,12 @@ export class BridgeService extends EventEmitter {
     // Even if a directory disappears, Stop and Decline remain available.
     if (needsDirectory && this.projects && await this.projects.resolve(cwd) !== cwd) throw new Error('Project directory changed; refresh the native thread list');
     if (method === 'bridge/subscribe' || method === 'bridge/history') {
+      const wasLoaded = this.loaded.has(threadId);
       await this.resume(threadId);
+      // Stable native notifications need not include permission changes. Rejoin
+      // a loaded thread without overrides to read its actual current settings.
+      // A newly created, empty thread has no rollout yet, so use start's reply.
+      if (wasLoaded && !this.fresh.has(threadId) && !params.cursor) await this.readSettings(threadId);
       const revision = this.revisions.get(threadId) ?? 0;
       const fresh = this.fresh.get(threadId);
       const thread = fresh ?? (await this.codex.request<ThreadReadResponse>('thread/read', { threadId })).thread;
@@ -197,6 +217,7 @@ export class BridgeService extends EventEmitter {
       if (typeof params.text !== 'string' || !params.text.trim() || params.text.length > 16000) throw new Error('Expected 1–16000 characters');
       const request: TurnStartParams = {
         threadId, input: [{ type: 'text', text: params.text, text_elements: [] }],
+        ...turnPermissions(permissionMode(params.permissionMode)),
         ...(typeof params.model === 'string' && params.model ? { model: params.model } : {}),
         ...(typeof params.effort === 'string' && params.effort ? { effort: params.effort } : {}),
       };
@@ -206,6 +227,7 @@ export class BridgeService extends EventEmitter {
       }
       this.busy.add(threadId);
       this.unknownSends.add(threadId);
+      if (params.permissionMode !== undefined && params.permissionMode !== 'inherit') this.publishSettings(threadId);
       const fresh = this.fresh.get(threadId);
       this.fresh.delete(threadId);
       // Deliberately keep unknown sends blocked. A timeout is not a safe retry.
@@ -215,6 +237,9 @@ export class BridgeService extends EventEmitter {
         this.receipts?.observe(cwd, threadId, result.turn);
         this.unknownSends.delete(threadId);
         if (this.busy.has(threadId) && result.turn.status === 'inProgress') this.activeTurns.set(threadId, result.turn.id);
+        // A confirmed turn ACK remains accepted even if the settings read fails.
+        // Never derive effective permissions from the requested preset alone.
+        void this.readSettings(threadId);
         return result;
       } catch (error) {
         if (error instanceof NativeRpcError) {
@@ -274,7 +299,38 @@ export class BridgeService extends EventEmitter {
   }
   private rememberSettings(response: ThreadStartResponse | ThreadResumeResponse) {
     const { approvalPolicy, sandbox, approvalsReviewer } = response;
-    this.settings.set(response.thread.id, { approvalPolicy, sandbox, approvalsReviewer });
+    this.publishSettings(response.thread.id, { approvalPolicy, sandbox, approvalsReviewer });
+  }
+  private publishSettings(threadId: string, settings?: NativeSessionSettings) {
+    this.settingsQueries.set(threadId, (this.settingsQueries.get(threadId) ?? 0) + 1);
+    if (settings) this.settings.set(threadId, settings); else this.settings.delete(threadId);
+    this.emit('event', { type: 'settingsChanged', threadId, settings } satisfies BridgeEvent);
+  }
+  private async readSettings(threadId: string) {
+    const ticket = (this.settingsQueries.get(threadId) ?? 0) + 1;
+    this.settingsQueries.set(threadId, ticket);
+    try {
+      const response = await this.nativeResume(threadId);
+      if (response.thread.id !== threadId || response.thread.cwd !== this.threadCwd(threadId)) throw new Error('Native thread settings belong to another thread or project');
+      if (ticket === this.settingsQueries.get(threadId)) this.rememberSettings(response);
+    } catch {
+      if (ticket !== this.settingsQueries.get(threadId)) return;
+      this.publishSettings(threadId);
+      // Permission readback is ancillary: don't lose history, pending approvals,
+      // or accepted receipts when it fails, and never retry a turn automatically.
+      this.emit('event', { type: 'notice', threadId,
+        message: '实际权限尚未确认，请查询状态；发送回执以原生结果为准，不要重复发送。' } satisfies BridgeEvent);
+    }
+  }
+  private async nativeResume(threadId: string, cwd?: string) {
+    const params = { threadId, ...(cwd ? { cwd } : {}) };
+    try { return await this.codex.request<ThreadResumeResponse>('thread/resume', { ...params, excludeTurns: true }); }
+    catch (error) {
+      // Legacy JSONL threads can reject the metadata-only resume because their
+      // store has no list_turns API. Retry only this known read capability error.
+      if (!(error instanceof NativeRpcError) || error.code !== -32601 || !/list_turns.*not supported/i.test(error.message)) throw error;
+      return this.codex.request<ThreadResumeResponse>('thread/resume', params);
+    }
   }
   private async resume(threadId: string) {
     if (this.loaded.has(threadId)) return;
@@ -286,10 +342,8 @@ export class BridgeService extends EventEmitter {
       if (thread.cwd !== cwd) throw new Error('Thread is outside this workspace');
       try {
         if (this.projects) await this.projects.resolve(cwd);
-        const resumed = await this.codex.request<ThreadResumeResponse>('thread/resume', {
-          threadId, cwd, excludeTurns: true,
-        });
-        if (resumed.thread.cwd !== cwd) throw new Error('Native thread resumed outside the selected project');
+        const resumed = await this.nativeResume(threadId, cwd);
+        if (resumed.thread.id !== threadId || resumed.thread.cwd !== cwd) throw new Error('Native thread resumed outside the selected thread or project');
         this.rememberSettings(resumed);
         this.loaded.add(threadId);
       } catch (error) { this.loaded.delete(threadId); throw error; }

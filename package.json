@@ -31,6 +31,8 @@
     "test:themes:ui": "tsx scripts/themes-ui-contract.ts",
     "test:themes:live": "tsx scripts/themes-live.ts",
     "test:native:config": "tsx scripts/native-config.ts",
+    "test:permissions:native": "tsx scripts/permissions-native.ts",
+    "test:permissions:ui": "tsx scripts/permissions-ui.ts",
     "test:native:elicitation": "tsx scripts/native-elicitation.ts",
     "test:native:capabilities": "tsx scripts/native-capabilities-live.ts",
     "test:native:ui": "tsx scripts/native-requests-ui.ts",

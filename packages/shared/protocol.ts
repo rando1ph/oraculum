@@ -24,12 +24,15 @@ export type WireMessage = {
 };
 export type Approval = Extract<ServerRequest, { method: 'item/commandExecution/requestApproval' | 'item/fileChange/requestApproval' | 'item/tool/requestUserInput' | 'mcpServer/elicitation/request' | 'item/permissions/requestApproval' }> & { bridgeToken?: string; displayThreadIds?: string[] };
 export type NativeSessionSettings = { approvalPolicy: AskForApproval; sandbox: SandboxPolicy; approvalsReviewer: ApprovalsReviewer };
+// Inherit means no override: native turn overrides persist on the thread.
+export type PermissionMode = 'inherit' | 'read-only' | 'auto' | 'full-access';
 export type BridgeEvent =
   | { type: 'event'; event: ServerNotification }
   | { type: 'approval'; request: Approval }
   | { type: 'requestAnswered'; requestId: RpcId; bridgeToken?: string }
   | { type: 'notice'; threadId?: string; displayThreadIds?: string[]; message: string }
   | { type: 'unavailable'; message: string }
+  | { type: 'settingsChanged'; threadId: string; settings?: NativeSessionSettings }
   | { type: 'projectsChanged' };
 export type Snapshot = {
   thread: Thread;

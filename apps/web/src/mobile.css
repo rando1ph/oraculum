@@ -99,15 +99,16 @@
   .composer textarea { min-width: 0; min-height: 52px; max-height: min(26dvh, 168px); padding: 5px 3px; font-size: 15px; line-height: 1.7; overscroll-behavior: contain; }
   .composer.expanded textarea { max-height: min(42dvh, 320px); }
   .expand-composer { width: 44px; min-width: 44px; height: 44px; min-height: 44px; padding: 10px; opacity: 1; }
-  .composer-toolbar { gap: 8px; margin-top: 6px; }
-  .model-controls { flex: 1; display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, .9fr); gap: 6px; }
+  .composer-toolbar { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 6px; margin-top: 6px; }
+  .model-controls { display: contents; }
   .model-controls label { display: block; }
   .model-controls select { max-width: none; height: 44px; min-height: 44px; padding: 7px 4px; font-size: 12px; border-radius: 7px; color: #a6e4ff; text-overflow: ellipsis; }
-  .composer-actions { gap: 6px; }
+  .composer-actions { gap: 6px; margin-left: auto; }
   .composer-actions .send-button { width: 48px; min-width: 48px; min-height: 48px; padding: 10px; }
   .composer-actions .stop-button { min-width: 48px; min-height: 48px; padding: 7px; font-size: 12px; gap: 4px; }
   .composer-caption { font-size: 10px; line-height: 1.5; margin-top: 7px; }
   .composer-caption > span:last-child { display: none; }
+  .permission-intent, .permission-status, .permission-warning { font-size: 11px; line-height: 1.5; }
 
   .navigation, .nav-collapsed .navigation {
     display: none;
@@ -248,7 +249,11 @@
   .composer { margin: 0; padding: 2px 6px; }
   .composer-input { height: 44px; }
   .composer textarea, .composer.expanded textarea { min-height: 44px; max-height: 44px; }
-  .composer-toolbar { height: 48px; margin-top: 0; }
+  .composer-toolbar { display: flex; height: 48px; margin-top: 0; }
+  .model-controls { display: flex; flex: 1; flex-wrap: nowrap; gap: 6px; }
+  .model-controls label { flex: 1; }
+  /* The selected mode remains visible; descriptions return with usable height. */
+  .permission-intent, .permission-status, .permission-warning { display: none; }
   .composer-caption { display: none; }
 }
 }

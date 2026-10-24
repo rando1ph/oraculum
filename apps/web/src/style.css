@@ -139,7 +139,7 @@ nav[aria-label="原生会话"] { margin-top: 11px; flex: 1; overflow-y: auto; mi
 .composer textarea:focus { outline: none; }
 .expand-composer { width: 24px; height: 24px; min-width: 24px; min-height: 24px; opacity: .7; }
 .composer-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 4px; }
-.model-controls { display: flex; gap: 7px; min-width: 0; }
+.model-controls { display: flex; flex-wrap: wrap; gap: 7px; min-width: 0; }
 .model-controls label { min-width: 0; }
 .model-controls select { width: 100%; max-width: 250px; height: 32px; min-height: 32px; padding: 4px 7px; border-color: #1a4258; background: #020e17; font-size: 11px; }
 .composer-actions { display: flex; gap: 7px; flex-shrink: 0; }
@@ -147,6 +147,11 @@ nav[aria-label="原生会话"] { margin-top: 11px; flex: 1; overflow-y: auto; mi
 .stop-button { font-size: 11px; color: #eebd6c; border-color: #685731; padding-inline: 8px; }
 .composer-caption { display: flex; gap: 10px; justify-content: space-between; font-size: 9px; color: var(--subtle); margin: 9px 2px 0; }
 .composer-caption > span:last-child { white-space: nowrap; }
+.permission-intent, .permission-status, .permission-warning { margin: 7px 2px 0; font-size: 10px; line-height: 1.6; overflow-wrap: anywhere; }
+.permission-intent { color: var(--muted); }
+.permission-status { color: var(--foreground); }
+.permission-status > span { color: var(--muted); }
+.permission-warning { color: var(--warning); }
 .jump-latest-slot { position: relative; flex-shrink: 0; height: 0; display: flex; justify-content: center; z-index: 3; }
 .jump-latest { position: absolute; bottom: 10px; align-self: center; z-index: 3; border-color: #265c76; border-radius: 20px; background: #071d2a; color: var(--accent); box-shadow: 0 4px 18px #000a; font-size: 11px; }
 .inspector { position: relative; display: flex; flex-direction: column; background: linear-gradient(155deg, #030c12, #000 60%); }

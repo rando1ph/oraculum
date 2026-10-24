@@ -75,3 +75,17 @@ it('shows a live nested request in any verified ancestor or its own thread', () 
   useSession.getState().approval(request);
   expect(useSession.getState().pending).toEqual([]);
 });
+it('updates effective permissions only from the selected native thread and restores them after reconnect', () => {
+  const initial = { approvalPolicy: 'on-request', sandbox: { type: 'readOnly', networkAccess: false }, approvalsReviewer: 'user' } as const;
+  const fullAccess = { approvalPolicy: 'never', sandbox: { type: 'dangerFullAccess' }, approvalsReviewer: 'user' } as const;
+  useSession.getState().snapshot({ thread: { id: 't', turns: [] } as unknown as Thread, pending: [], settings: initial });
+  emit('thread/settings/updated', { threadId: 'other', threadSettings: { ...fullAccess, sandboxPolicy: fullAccess.sandbox } });
+  expect(useSession.getState().settings).toEqual(initial);
+  emit('thread/settings/updated', { threadId: 't', threadSettings: { ...fullAccess, sandboxPolicy: fullAccess.sandbox } });
+  expect(useSession.getState().settings).toEqual(fullAccess);
+  useSession.getState().reset();
+  useSession.getState().snapshot({ thread: { id: 't', turns: [] } as unknown as Thread, pending: [], settings: fullAccess });
+  expect(useSession.getState().settings).toEqual(fullAccess);
+  useSession.getState().snapshot({ thread: { id: 'new', turns: [] } as unknown as Thread, pending: [] });
+  expect(useSession.getState().settings).toBeUndefined();
+});
