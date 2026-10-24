@@ -47,7 +47,9 @@
     "test:composer:ui": "tsx scripts/composer-ui-contract.ts",
     "test:composer:live": "tsx scripts/composer-live.ts",
     "test:process:ui": "tsx scripts/process-ui-contract.ts",
-    "test:process:live": "tsx scripts/process-live.ts"
+    "test:process:live": "tsx scripts/process-live.ts",
+    "test:identity:ui": "tsx scripts/identity-ui.ts",
+    "test:identity:android": "tsx scripts/identity-ui.ts --android"
   },
   "devDependencies": {
     "@electron-forge/cli": "8.0.1",

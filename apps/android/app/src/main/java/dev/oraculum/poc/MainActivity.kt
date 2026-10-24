@@ -2,6 +2,8 @@ package dev.oraculum.poc
 
 import android.app.Activity
 import android.app.AlertDialog
+import android.content.Intent
+import android.net.Uri
 import android.graphics.Color
 import android.media.AudioManager
 import android.net.http.SslError
@@ -20,6 +22,8 @@ import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.webkit.WebChromeClient
+import android.webkit.ValueCallback
 import android.widget.Button
 import android.widget.EditText
 import android.widget.FrameLayout
@@ -40,6 +44,10 @@ class MainActivity : Activity() {
     private lateinit var recoveryMessage: TextView
     private var settingsDialog: AlertDialog? = null
     private var backPending = false
+    private var imageCallback: ValueCallback<Array<Uri>>? = null
+    private var imageOwner: WebView? = null
+    private val imageRequest = 4105
+    private val imageTypes = arrayOf("image/jpeg", "image/png", "image/webp")
     private var pageFailed = false
     private val preferences by lazy { getSharedPreferences("server-entry", MODE_PRIVATE) }
     private val defaultEntry by lazy {
@@ -161,7 +169,31 @@ class MainActivity : Activity() {
             settings.setGeolocationEnabled(false)
             settings.userAgentString += " OraculumAndroid/1"
             cookieManager(this).setAcceptThirdPartyCookies(this, false)
-            // No addJavascriptInterface, file picker, OS bridge, or credential API.
+            // A user-selected image is the only file capability. No JS/OS bridge,
+            // broad storage permission, camera capture or credential API.
+            webChromeClient = object : WebChromeClient() {
+                override fun onShowFileChooser(view: WebView, callback: ValueCallback<Array<Uri>>,
+                    params: FileChooserParams): Boolean {
+                    if (view !== web || !target.trusts(view.url.orEmpty()) || pageFailed ||
+                        params.mode != FileChooserParams.MODE_OPEN || params.isCaptureEnabled ||
+                        params.acceptTypes.flatMap { it.split(",") }.map { it.trim() }.toSet() != imageTypes.toSet()) return false
+                    // Do not replace an outstanding Android activity/result pairing.
+                    if (imageCallback != null) return false
+                    imageCallback = callback
+                    imageOwner = view
+                    val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                        addCategory(Intent.CATEGORY_OPENABLE)
+                        type = "image/*"
+                        putExtra(Intent.EXTRA_MIME_TYPES, imageTypes)
+                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    }
+                    try {
+                        @Suppress("DEPRECATION")
+                        startActivityForResult(intent, imageRequest)
+                    } catch (_: Exception) { cancelImagePicker() }
+                    return true
+                }
+            }
             webViewClient = object : WebViewClient() {
                 override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                     if (view !== web) return true
@@ -211,6 +243,7 @@ class MainActivity : Activity() {
 
                 override fun onPageStarted(view: WebView, url: String, favicon: android.graphics.Bitmap?) {
                     if (view !== web) return
+                    cancelImagePicker()
                     if (!target.trusts(url)) {
                         view.stopLoading()
                         showRecovery("已阻止离开可信服务器入口")
@@ -273,6 +306,33 @@ class MainActivity : Activity() {
     private fun cookieManager(view: WebView): CookieManager =
         if (WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)) WebViewCompat.getProfile(view).cookieManager
         else CookieManager.getInstance()
+
+    private fun cancelImagePicker() {
+        val callback = imageCallback
+        imageCallback = null
+        imageOwner = null
+        callback?.onReceiveValue(null)
+    }
+
+    @Deprecated("Activity result API used by the minimal Activity shell")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != imageRequest) return
+        val callback = imageCallback ?: return
+        val owner = imageOwner
+        imageCallback = null
+        imageOwner = null
+        val uri = data?.data
+        // Never accept file://, own/private providers, multiple items or a result
+        // without the system-granted read capability. Web UI validates bytes too.
+        val accepted = resultCode == RESULT_OK && owner === web &&
+            entry?.trusts(owner?.url.orEmpty()) == true && !pageFailed &&
+            uri?.scheme == "content" && uri.authority != null &&
+            uri.authority?.startsWith(packageName) == false && data.clipData == null &&
+            data.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION != 0 &&
+            runCatching { contentResolver.getType(uri) in imageTypes }.getOrDefault(false)
+        callback.onReceiveValue(if (accepted) arrayOf(uri!!) else null)
+    }
 
     private fun showServerSettings() {
         if (settingsDialog != null) return
@@ -362,6 +422,7 @@ class MainActivity : Activity() {
     }
 
     private fun destroyWebView() {
+        cancelImagePicker()
         web?.let {
             cookieManager(it).flush()
             it.stopLoading()

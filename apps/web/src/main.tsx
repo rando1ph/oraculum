@@ -8,6 +8,7 @@ import { itemKey, useSession } from './store';
 import { captureReading, parseReading, placeReading, readingDeadline, type ReadingPosition } from './reading';
 import { groupTurns, hasTurnApproval, TurnProcess } from './process';
 import { ItemDetail } from './content';
+import { IdentityProvider, IdentitySettings } from './identity-ui';
 import { androidShell, useMobile } from './mobile';
 import { OracleEye, OracleLogo } from './brand';
 import { brandCopy, emptyBrandState } from './brand-copy';
@@ -748,8 +749,9 @@ function App() {
     </section>}
     {browsing && client.current && <ProjectBrowser client={client.current} projects={projects} onRefresh={refreshProjects} onSelect={selectProject} onClose={() => setBrowsing(false)}/>}
     {actionTarget && targetThread && <SessionActions key={targetThread.id} target={{ ...actionTarget, thread: targetThread }} projectName={projects.projects.find(project => project.cwd === targetThread.cwd)?.name ?? '当前项目'} blocked={actionBlocked} busy={lifecycleBusy} onAction={changeSession} onClose={closeSessionActions}/>}
-    <dialog data-theme-slot="settings" ref={dialog} className="settings-dialog app-settings" aria-label="设置" onCancel={() => setSettings(false)} onClick={event => { if (event.target === event.currentTarget) setSettings(false); }}><div className="settings-content">
+    <dialog data-theme-slot="settings" ref={dialog} className="settings-dialog app-settings" aria-label="设置" onCancel={event => { if (event.target === event.currentTarget) setSettings(false); }} onClick={event => { if (event.target === event.currentTarget) setSettings(false); }}><div className="settings-content">
       <header><div><OracleEye/><h2>设置</h2></div><button className="icon-button" aria-label="关闭设置" onClick={() => setSettings(false)}><Icon name="close"/></button></header>
+      {settings && <IdentitySettings/>}
       <PermissionDetails settings={session.settings} synced={connected && synced} hasThread={!!session.thread}/>
       <ThemeSettings theme={theme} open={settings}/>
       <h3>界面与阅读</h3><label className="reading-size">正文大小 <span>{readingSize}%</span><input aria-label="正文大小" type="range" min="100" max="150" step="10" value={readingSize} onChange={event => setReadingSize(Number(event.target.value))}/></label>
@@ -761,4 +763,4 @@ function App() {
     </div></dialog>
   </main>;
 }
-createRoot(document.getElementById('root')!).render(<SessionGate><App/></SessionGate>);
+createRoot(document.getElementById('root')!).render(<SessionGate><IdentityProvider><App/></IdentityProvider></SessionGate>);

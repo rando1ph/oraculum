@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import Markdown from 'react-markdown';
 import type { ThreadItem } from '../../../packages/shared/protocol';
-import { OracleEye } from './brand';
+import { MessageIdentity } from './identity-ui';
 import { analyzeDiff } from './diff-lines';
 import { displayPath } from './paths';
 import './content.css';
@@ -78,11 +78,11 @@ const itemLabels: Partial<Record<ThreadItem['type'], string>> = {
 
 export function Item({ item, showDiff, showDetails, cwd, live = false, progress }: { item: ThreadItem; showDiff?: (path: string, diff: string) => void; showDetails?: (item: ThreadItem) => void; cwd?: string; live?: boolean; progress?: string[] }) {
   if (item.type === 'agentMessage') return <article data-theme-slot="assistant-message" data-message-role="assistant" className="message agent-message">
-    <header className="message-heading"><OracleEye className="message-avatar"/><span className="message-name">Codex</span><div className="message-actions"><Copy text={item.text}/></div></header>
+    <header className="message-heading"><MessageIdentity role="assistant"/><div className="message-actions"><Copy text={item.text}/></div></header>
     <div className="message-body"><Message text={item.text}/></div>
   </article>;
   if (item.type === 'userMessage') return <article data-theme-slot="user-message" data-message-role="user" className="message user">
-    <header className="message-heading"><svg className="message-avatar user-avatar" viewBox="0 0 32 32" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden="true"><circle cx="16" cy="12" r="4"/><path d="M8 25v-2a8 8 0 0 1 16 0v2"/></svg><span className="message-name user-label">你</span></header>
+    <header className="message-heading"><MessageIdentity role="user"/></header>
     <div className="message-body"><p>{item.content.map(input => input.type === 'text' ? input.text : `[${input.type}]`).join('\n')}</p></div>
   </article>;
   if (item.type === 'plan') return <article data-theme-slot="tool" className="tool plan"><div className="tool-heading"><Glyph kind="plan"/><span>计划</span><span className="native-label">Codex</span></div><Message text={item.text}/></article>;

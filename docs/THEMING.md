@@ -88,7 +88,9 @@ main.app-shell[data-theme-root][data-theme-id]
     .theme-settings
 ```
 
-原八个 Slot 保留，3C.1 新增 composer/approval/settings，4D.3 新增 assistant-message。双方消息共享 `.message` 卡片、`.message-heading` 头像与名称标题行、`.message-body` 正文；现有 `.message.user`、`.agent-message`、`.user-label` 继续兼容。默认用户为「你」与人物轮廓头像，AI 为 Codex 与 Oracle Eye；本阶段不提供自定义身份设置。正文不再为头像预留左侧列，桌面内容容器上限 980px（含边距），移动端卡片近全宽。卡片使用现有表面、文字、边线和圆角 tokens；主题可通过 `.message` 同时覆盖双方材质，或用两个 Slot 分别覆盖。
+原八个 Slot 保留，3C.1 新增 composer/approval/settings，4D.3 新增 assistant-message。双方消息共享 `.message` 卡片、`.message-heading` 头像与名称标题行、`.message-body` 正文；现有 `.message.user`、`.agent-message`、`.user-label` 继续兼容。默认用户为「你」与人物轮廓头像，AI 为 Codex 与 Oracle Eye。4D.5 在设置中增加双方独立昵称与头像，仍使用 `.message-avatar` / `.message-name`；自定义头像为 `canvas.custom-avatar`，默认头像保持原 SVG/PNG。正文不再为头像预留左侧列，桌面内容容器上限 980px（含边距），移动端卡片近全宽。卡片使用现有表面、文字、边线和圆角 tokens；主题可通过 `.message` 同时覆盖双方材质，或用两个 Slot 分别覆盖。
+
+身份设置使用 `.identity-settings`、`.identity-card[data-identity-role="user"/"assistant"]`、`.identity-preview`、`.avatar-crop`；沿用表面、文字、边线、强调与圆角 tokens。昵称最多 32 个 Unicode 字符，按纯文本显示；图片仅选择 JPG/PNG/WebP，最大 8MiB，边长不超过 8192、总像素不超过 3200 万，裁切压缩为 256px 方形。预览后需点击对应保存；重置立即保存默认身份，取消裁切或关闭设置丢弃未保存编辑。身份只存于本机当前 Origin/Base Path 的受控 localStorage，不发送 Bridge、Codex 或第三方；设备、原生 profile 与服务器入口各自独立。清除应用数据/站点存储会清除此偏好。默认头像在损坏的本地图片无法解码时继续可见。画布直接解码本地字节，不扩大主题 CSP，也不允许主题使用 data/blob 或远程资源。
 
 上述语义 class 是推荐覆盖接口；其他 DOM 也可使用，但不能保证所有内部节点跨未来版本永久兼容。业务状态类 `.nav-collapsed`、`.drawer-open`、`.inspector-open`、`.expanded` 控制展开/收起，主题应分别检查这些状态。品牌 PNG 是既有 Oracle Eye 资产，可通过 CSS 调整尺寸/滤镜；CSS 主题不替换业务组件。
 

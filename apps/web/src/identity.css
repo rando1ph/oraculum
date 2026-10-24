@@ -1,0 +1,32 @@
+@layer theme, base, components, utilities, oraculum, theme-defaults;
+@layer oraculum {
+.identity-settings { min-width: 0; }
+.identity-card { margin-top: 12px; padding: 16px; border: 1px solid var(--line-bright); border-radius: var(--radius); background: var(--surface); }
+.identity-card-heading { display: flex; align-items: baseline; gap: 12px; margin-bottom: 16px; font-weight: 600; }
+.identity-role-hint { color: var(--muted); font-size: 11px; font-weight: 400; }
+.identity-fields { display: flex; align-items: center; gap: 16px; }
+.identity-preview { display: flex; flex: 0 0 64px; width: 64px; height: 64px; align-items: center; justify-content: center; border-radius: 50%; background: var(--accent-soft); border: 1px solid var(--line-bright); color: var(--accent); overflow: hidden; }
+.settings-content .identity-preview .message-avatar { width: 64px; height: 64px; object-fit: cover; }
+.identity-fields label { display: grid; gap: 7px; min-width: 0; flex: 1; color: var(--muted); font-size: 12px; }
+.identity-fields input { width: 100%; min-width: 0; min-height: 44px; font-size: 14px; }
+.identity-fields small { color: var(--subtle); font-size: 10px; }
+.identity-actions, .identity-save { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+.identity-card button { min-height: 44px; padding: 8px 12px; }
+.identity-save { border-top: 1px solid var(--line); padding-top: 14px; }
+.identity-file { display: none; }
+.custom-avatar[hidden] { display: none !important; }
+.settings-content .identity-notice { color: var(--accent); margin-bottom: 0; }
+.identity-format-hint { text-align: center; }
+.avatar-crop { margin-top: 16px; padding: 14px; border: 1px solid var(--line-bright); border-radius: var(--radius); background: var(--surface-raised); }
+.avatar-crop-heading { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; color: var(--foreground); font-size: 12px; }
+.avatar-crop-heading span { color: var(--muted); font-size: 11px; }
+.avatar-crop-preview { display: block; width: min(176px, 100%); height: auto; margin: 16px auto; border-radius: 50%; outline: 1px solid var(--line-bright); background: var(--background); }
+.avatar-crop label { display: grid; grid-template-columns: 72px 1fr; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
+.avatar-crop input { width: 100%; min-width: 0; min-height: 44px; accent-color: var(--accent-strong); }
+@media (max-width: 760px), (pointer: coarse) {
+  .identity-card { padding: 14px; }
+  .identity-card button, .identity-fields input, .avatar-crop input { min-height: 48px; }
+  .identity-fields { gap: 12px; }
+  .identity-save button { flex: 1; }
+}
+}
