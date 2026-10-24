@@ -56,7 +56,7 @@ try {
   await expect(desktop.getByRole('dialog')).toHaveCount(0);
   await expect(desktop.getByLabel('项目目录', { exact: true })).toHaveValue(first);
   await desktop.getByRole('button', { name: '新建会话', exact: true }).click();
-  await expect(desktop.getByTestId('thread-id')).toHaveText('fixture-0');
+  await expect(desktop.locator('.conversation')).toHaveAttribute('data-thread-id', 'fixture-0');
   await desktop.getByLabel('消息', { exact: true }).fill('alpha 的独立草稿');
   await mobile.getByRole('button', { name: '打开导航', exact: true }).click();
   await expect(mobile.getByLabel('项目目录', { exact: true }).locator('option')).toHaveCount(2);
@@ -69,10 +69,10 @@ try {
   await expect(desktop.getByLabel('项目目录', { exact: true }).locator('option')).toHaveCount(3);
   await expect(desktop.getByLabel('项目目录', { exact: true }).locator('option').filter({ hasText: second })).toHaveCount(1);
   await desktop.getByLabel('项目目录', { exact: true }).selectOption(second); await ready(desktop);
-  await expect(desktop.getByTestId('thread-id')).toHaveText('尚未选择会话');
+  await expect(desktop.locator('.conversation')).toHaveAttribute('data-thread-id', '');
   await expect(desktop.getByLabel('消息', { exact: true })).toHaveValue('');
   await desktop.getByLabel('项目目录', { exact: true }).selectOption(first); await ready(desktop);
-  await expect(desktop.getByTestId('thread-id')).toHaveText('fixture-0');
+  await expect(desktop.locator('.conversation')).toHaveAttribute('data-thread-id', 'fixture-0');
   await expect(desktop.getByLabel('消息', { exact: true })).toHaveValue('alpha 的独立草稿');
   await open(desktop); await go(desktop, first); await expect(desktop.getByTestId('browsed-directory')).toHaveText(first);
   await desktop.getByRole('button', { name: '选择此项目', exact: true }).click();

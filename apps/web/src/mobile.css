@@ -33,13 +33,10 @@
   .connection-status i { width: 9px; height: 9px; }
 
   .conversation-scroll { scrollbar-gutter: auto; }
-  .conversation-content { width: 100%; max-width: none; padding: 12px 14px 22px; }
-  .message { padding: 15px 0; }
+  .conversation-content { width: 100%; max-width: none; padding: 4px 10px 18px; }
+  .message { margin: 10px 0; padding: 10px 12px 12px; }
   .message-heading { gap: 8px; margin-bottom: 8px; font-size: 14px; }
   .message-heading .message-avatar { width: 28px; height: 28px; flex-basis: 28px; }
-  .message-body { padding-left: 0; }
-  .message.user { margin: 10px 0 12px; padding: 11px 13px; border-color: #204459; background: linear-gradient(110deg, #061925, #030c12); }
-  .user-label { font-size: 11px; margin-bottom: 5px; }
   .message.user p, .markdown { font-size: calc(15px * var(--reading-scale, 1)); line-height: 1.85; }
   .markdown h1 { font-size: calc(21px * var(--reading-scale, 1)); }
   .markdown h2 { font-size: calc(19px * var(--reading-scale, 1)); }
@@ -48,8 +45,8 @@
   .code-block pre { padding: 12px; font-size: 13px; line-height: 1.8; max-height: 55dvh; }
   .code-block-actions { padding: 0 6px; }
   .copy, .item-detail-button { min-height: 44px; padding: 8px 10px; font-size: 12px; }
-  .message-actions .copy { margin-left: -10px; }
-  .tool, .approval, .session-details, .turn-diff, .provenance { margin-left: 0; }
+  .message-actions .copy { margin-right: -6px; }
+  .tool, .approval, .turn-diff { margin-left: 0; }
   .tool { margin-block: 10px; border-color: #193d50; }
   .tool > summary, .tool-heading { min-height: 48px; gap: 8px; padding: 11px 12px; }
   .tool-title { font-size: 13px; max-width: 53%; }
@@ -77,12 +74,10 @@
   .approval details > summary { min-height: 44px; padding: 10px 0; }
   .approval-actions { gap: 10px; margin-top: 12px; }
   .approval-actions button { min-height: 48px; font-size: 15px; }
-  .provenance { font-size: 10px; line-height: 1.6; }
   .history-warning, .error, .disconnect-banner { font-size: 12px; line-height: 1.75; }
   .disconnect-banner { padding: 8px 14px; gap: 8px; }
   .disconnect-banner button { min-height: 44px; flex-shrink: 0; }
-  .history-more, .session-details > summary, .events > summary { min-height: 44px; font-size: 12px; }
-  .session-details > summary, .events > summary { padding-block: 12px; }
+  .history-more { min-height: 44px; font-size: 12px; }
   .jump-latest { min-height: 44px; font-size: 12px; bottom: 8px; }
   .empty-state { min-height: min(410px, 58dvh); padding: 24px 4px 30px; }
   .empty-state .oracle-logo-eye { width: 142px; height: 142px; }

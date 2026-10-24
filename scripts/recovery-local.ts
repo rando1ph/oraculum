@@ -1,5 +1,6 @@
 // Real Electron + Android + native Harness. One controlled model turn.
 // Requires an app-specific CDP forward, ADB reverse, and FREE port 17860.
+import { selectedThreadId, sessionSnapshot } from './ui-state';
 import { _electron as electron, chromium, expect, type Page } from '@playwright/test';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { createServer } from 'node:net';
@@ -66,28 +67,28 @@ try {
   step = 'native turn';
   await phone.getByLabel('模型', { exact: true }).selectOption(process.env.ORACULUM_TEST_MODEL ?? 'gpt-6-luna');
   await phone.getByLabel('思考强度', { exact: true }).selectOption('low');
-  const previousThread = await phone.getByTestId('thread-id').innerText();
+  const previousThread = await selectedThreadId(phone);
   await phone.getByRole('button', { name: '新建会话', exact: true }).click();
-  await expect(phone.getByTestId('thread-id')).not.toHaveText('尚未选择会话');
-  await expect(phone.getByTestId('thread-id')).not.toHaveText(previousThread);
-  const threadId = await phone.getByTestId('thread-id').innerText();
+  await expect(phone.locator('.conversation')).not.toHaveAttribute('data-thread-id', '');
+  await expect(phone.locator('.conversation')).not.toHaveAttribute('data-thread-id', previousThread);
+  const threadId = await selectedThreadId(phone);
   evidence.threadId = threadId;
   await computer.getByRole('button', { name: '刷新列表', exact: true }).click();
-  await computer.getByTitle(threadId, { exact: true }).click();
+  await computer.locator(`.session-link[data-thread-id="${threadId}"]`).click();
   await expect(computer.getByRole('status')).toContainText('状态已查询');
   await phone.getByLabel('消息', { exact: true }).fill('Controlled Oraculum recovery test. Do not use any tools, execute commands, access files, or delegate. Reply only with Markdown heading "## ORACULUM_RECOVERY_OK" and the sentence "双端恢复验证。" No additional work.');
   await phone.getByRole('button', { name: '发送', exact: true }).click();
   evidence.modelTurns = 1;
   for (const page of [phone, computer]) {
     await expect(page.getByRole('heading', { name: 'ORACULUM_RECOVERY_OK', exact: true })).toBeVisible({ timeout: 180_000 });
-    await expect(page.getByTestId('last-turn-status')).toHaveText('completed', { timeout: 30_000 });
-    await expect(page.getByTestId('send-receipt')).toHaveCount(1);
-    await expect(page.getByTestId('send-receipt')).toContainText('原生已确认完成');
+    await expect(page.locator('.conversation')).toHaveAttribute('data-last-turn-status', 'completed', { timeout: 30_000 });
+    await expect.poll(async () => (await sessionSnapshot(page)).receipts?.length).toBe(1);
+    await expect.poll(async () => (await sessionSnapshot(page)).receipts?.[0]?.status).toBe('completed');
   }
   const ids = await itemIds(phone);
   expect(await itemIds(computer)).toEqual(ids);
   evidence.items = ids;
-  evidence.operationId = await phone.getByTestId('send-receipt').getAttribute('data-operation-id');
+  evidence.operationId = (await sessionSnapshot(phone)).receipts?.[0]?.operationId;
   step = 'Bridge and App Server restart';
   await stopBridge();
   for (const page of [phone, computer]) await expect(page.getByRole('status')).toContainText('已断开');
@@ -95,12 +96,12 @@ try {
   for (const page of [phone, computer]) {
     await page.getByRole('button', { name: '重新连接', exact: true }).click();
     await expect(page.getByRole('status')).toContainText('状态已查询', { timeout: 30_000 });
-    await expect(page.getByTestId('thread-id')).toHaveText(threadId);
-    await expect(page.getByTestId('last-turn-status')).toHaveText('completed');
+    await expect(page.locator('.conversation')).toHaveAttribute('data-thread-id', threadId);
+    await expect(page.locator('.conversation')).toHaveAttribute('data-last-turn-status', 'completed');
     expect(await itemIds(page)).toEqual(ids);
-    await expect(page.getByTestId('send-receipt')).toHaveCount(1);
-    await expect(page.getByTestId('send-receipt')).toHaveAttribute('data-operation-id', evidence.operationId as string);
-    await expect(page.getByTestId('send-receipt')).toContainText('原生已确认完成');
+    await expect.poll(async () => (await sessionSnapshot(page)).receipts?.length).toBe(1);
+    await expect.poll(async () => (await sessionSnapshot(page)).receipts?.[0]?.operationId).toBe(evidence.operationId as string);
+    await expect.poll(async () => (await sessionSnapshot(page)).receipts?.[0]?.status).toBe('completed');
     await expect(page.locator('.history-warning').first()).toContainText('部分历史未能恢复');
   }
   evidence.restartRestored = true;

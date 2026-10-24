@@ -1,4 +1,5 @@
 // Opt-in real subscription E2E. Exactly three small turns; never part of pnpm test.
+import { selectedThreadId } from './ui-state';
 import { _electron as electron, expect, type ElectronApplication } from '@playwright/test';
 import { createRequire } from 'node:module';
 import { execFileSync } from 'node:child_process';
@@ -65,8 +66,8 @@ try {
   await page.getByLabel('模型', { exact: true }).selectOption(model);
   await page.getByLabel('思考强度', { exact: true }).selectOption('low');
   await page.getByRole('button', { name: '新建会话', exact: true }).click();
-  await expect(page.getByTestId('thread-id')).not.toHaveText('尚未选择会话');
-  const threadId = await page.getByTestId('thread-id').innerText(); evidence.threadId = threadId;
+  await expect(page.locator('.conversation')).not.toHaveAttribute('data-thread-id', '');
+  const threadId = await selectedThreadId(page); evidence.threadId = threadId;
   await page.getByLabel('消息', { exact: true }).fill('Controlled Oraculum GUI E2E, work ONLY in cwd. No skills, MCP, web, subagents, other projects or global configuration. Read sum.mjs and sum.test.mjs. Fix sum.mjs to add both numbers using apply_patch (leave the test unchanged), then run `node --test sum.test.mjs`. After tests, make TWO SEPARATE approval requests sequentially using the shell tool with sandbox_permissions=require_escalated: first command exactly `printf ORACULUM_ALLOW_OK` with justification="Oraculum harmless allow test"; then command exactly `printf ORACULUM_DECLINE_OK` with justification="Oraculum harmless decline test". The second will be declined: do not retry or run it by another route. Finish with Markdown heading `## ORACULUM_PHASE1_OK` and briefly report the test and approval outcomes. Do not perform any additional work.');
   await page.getByRole('button', { name: '发送', exact: true }).click();
   for (const [marker, decision, button] of [['ORACULUM_ALLOW_OK', 'accept', '允许本次'], ['ORACULUM_DECLINE_OK', 'decline', '拒绝']] as const) {
@@ -83,7 +84,7 @@ try {
     await expect.poll(() => service!.pending.has(request.id), { timeout: 15_000 }).toBe(false);
   }
   await expect(page.getByRole('heading', { name: 'ORACULUM_PHASE1_OK', exact: true })).toBeVisible({ timeout: 180_000 });
-  await expect(page.getByTestId('last-turn-status')).toHaveText('completed', { timeout: 30_000 });
+  await expect(page.locator('.conversation')).toHaveAttribute('data-last-turn-status', 'completed', { timeout: 30_000 });
   await expect(page.getByRole('button', { name: '查看 Diff', exact: true }).first()).toBeVisible();
   await page.getByRole('button', { name: '查看 Diff', exact: true }).first().click();
   await expect(page.locator('.cm-content')).toContainText('a + b');
@@ -103,15 +104,15 @@ try {
   await expect(page.getByTestId('turn-status')).toHaveText('执行中', { timeout: 30_000 });
   await app!.close(); app = undefined;
   page = await launch();
-  await expect(page.getByTestId('thread-id')).toHaveText(threadId);
+  await expect(page.locator('.conversation')).toHaveAttribute('data-thread-id', threadId);
   await expect(page.locator('.message:not(.user)').last()).toContainText('ORACULUM_REOPEN_OK', { timeout: 180_000 });
-  await expect(page.getByTestId('last-turn-status')).toHaveText('completed', { timeout: 30_000 });
+  await expect(page.locator('.conversation')).toHaveAttribute('data-last-turn-status', 'completed', { timeout: 30_000 });
   evidence.guiReopen = 'same native thread completed with GUI closed/reopened';
   await app!.close(); app = undefined;
   await server!.close(); await codex!.close();
   await startBackend();
   page = await launch();
-  await expect(page.getByTestId('thread-id')).toHaveText(threadId);
+  await expect(page.locator('.conversation')).toHaveAttribute('data-thread-id', threadId);
   await expect(page.locator('.message:not(.user)').last()).toContainText('ORACULUM_REOPEN_OK');
   await expect(page.locator('.history-warning').first()).toContainText('部分历史未能恢复');
   evidence.backendRestart = 'native thread/list, resume and paginated history restored after fresh App Server + Bridge';
@@ -121,7 +122,7 @@ try {
   await page.getByRole('button', { name: '发送', exact: true }).click();
   await expect(page.getByTestId('turn-status')).toHaveText('执行中', { timeout: 30_000 });
   await page.getByRole('button', { name: '停止', exact: true }).click();
-  await expect(page.getByTestId('last-turn-status')).toHaveText('interrupted', { timeout: 30_000 });
+  await expect(page.locator('.conversation')).toHaveAttribute('data-last-turn-status', 'interrupted', { timeout: 30_000 });
   evidence.interrupt = 'continued restored native thread and interrupted via GUI';
   await page.screenshot({ path: '.local/evidence/phase1/live-restored.png', fullPage: true });
   expect(await fingerprint()).toBe(baseline); evidence.globalConfigUnchanged = true;

@@ -1,3 +1,4 @@
+import { Fragment } from 'react';
 import type { NativeSessionSettings, PermissionMode } from '../../../packages/shared/protocol';
 
 export const permissionModes: { value: PermissionMode; label: string }[] = [
@@ -23,8 +24,32 @@ export function nativePermissionSummary(settings: NativeSessionSettings) {
 export function PermissionStatus({ settings, synced, hasThread }: {
   settings?: NativeSessionSettings; synced: boolean; hasThread: boolean;
 }) {
-  return <p className="permission-status" data-testid="effective-permissions" aria-live="polite" title={settings ? JSON.stringify(settings) : undefined}>
+  return <p className="permission-status" data-testid="effective-permissions" aria-live="polite">
     {settings ? <><span>{synced ? '原生已确认' : '上次确认 · 待重新查询'}：</span>{nativePermissionSummary(settings)}</>
       : hasThread ? '实际权限待 Codex 确认' : '创建会话后显示原生实际权限'}
   </p>;
+}
+
+// Keep exact permission facts available in Settings without exposing the native
+// protocol envelope or filling the conversation with configuration diagnostics.
+export function PermissionDetails({ settings, synced, hasThread }: {
+  settings?: NativeSessionSettings; synced: boolean; hasThread: boolean;
+}) {
+  const granular = settings && typeof settings.approvalPolicy === 'object' ? settings.approvalPolicy.granular : undefined;
+  const workspace = settings?.sandbox.type === 'workspaceWrite' ? settings.sandbox : undefined;
+  const flag = (value: boolean | undefined) => value === undefined ? '未报告' : value ? '是' : '否';
+  const categories = [
+    ['sandbox_approval', '沙盒审批'], ['rules', '规则审批'], ['skill_approval', '技能审批'],
+    ['request_permissions', '额外权限审批'], ['mcp_elicitations', 'MCP 表单审批'],
+  ] as const;
+  return <details className="permission-details"><summary>当前会话权限详情</summary>
+    <p>{settings ? <>{synced ? '原生已确认' : '上次确认 · 待重新查询'}：{nativePermissionSummary(settings)}</>
+      : hasThread ? '实际权限待 Codex 确认' : '创建会话后显示原生实际权限'}</p>
+    {granular && <><p>审批类别开关</p><dl className="native-config">{categories.map(([key, label]) => <Fragment key={key}><dt>{label}</dt><dd>{granular[key] === undefined ? '未报告' : granular[key] ? '开启' : '关闭'}</dd></Fragment>)}</dl></>}
+    {workspace && <><p>额外可写目录</p>{Array.isArray(workspace.writableRoots)
+      ? workspace.writableRoots.length ? <ul>{workspace.writableRoots.map(root => <li className="path" key={root}>{root}</li>)}</ul> : <p>无额外可写目录</p>
+      : <p>未报告</p>}
+      <dl className="native-config"><dt>排除 $TMPDIR 可写权限</dt><dd>{flag(workspace.excludeTmpdirEnvVar)}</dd><dt>排除 /tmp 可写权限</dt><dd>{flag(workspace.excludeSlashTmp)}</dd></dl>
+    </>}
+  </details>;
 }

@@ -1,5 +1,6 @@
 // Opt-in: real Codex lifecycle + authenticated source Bridge + Electron and
 // optionally an actual Android Debug WebView. No model inference or user history.
+import { selectedThreadId } from './ui-state';
 import { _electron as electron, chromium, expect, type Browser, type Cookie, type ElectronApplication, type Page } from '@playwright/test';
 import { strict as assert } from 'node:assert';
 import { createRequire } from 'node:module';
@@ -107,25 +108,25 @@ try {
   phone.on('pageerror', error => rendererErrors.push(error.message)); await pair(phone, '4D.2 Android fixture');
   if (realAndroid && /mInputShown=true/.test(adb('shell', 'dumpsys', 'input_method'))) adb('shell', 'input', 'keyevent', 'KEYCODE_BACK');
   // UI assertions below intentionally use accessible labels shared by both shells.
-  await desktop.locator(`.session-link[title="${mainId}"]`).click(); await ready(desktop);
-  await nav(phone); await phone.locator(`.session-link[title="${mainId}"]`).click(); await ready(phone);
+  await desktop.locator(`.session-link[data-thread-id="${mainId}"]`).click(); await ready(desktop);
+  await nav(phone); await phone.locator(`.session-link[data-thread-id="${mainId}"]`).click(); await ready(phone);
   await desktop.getByRole('button', { name: '会话操作：归档与恢复 · 测试会话', exact: true }).click();
   await capture(desktop, 'electron-session-menu');
   await desktop.getByRole('dialog').getByRole('button', { name: /^归档会话/ }).click();
   for (const page of [desktop, phone]) {
-    await expect(page.getByTestId('thread-id')).not.toHaveText(mainId);
-    await nav(page); await expect(page.locator(`.session-link[title="${mainId}"]`)).toHaveCount(0);
+    await expect(page.locator('.conversation')).not.toHaveAttribute('data-thread-id', mainId);
+    await nav(page); await expect(page.locator(`.session-link[data-thread-id="${mainId}"]`)).toHaveCount(0);
     await page.getByRole('button', { name: '已归档', exact: true }).click();
-    await expect(page.locator(`.session-link[title="${mainId}"]`)).toBeVisible();
+    await expect(page.locator(`.session-link[data-thread-id="${mainId}"]`)).toBeVisible();
   }
   checks.push('Electron native archive removes selected thread and blocks stale composer on both authenticated clients; archived list synchronized');
   await capture(phone, 'android-archived-list');
   await phone.getByRole('button', { name: '会话操作：归档与恢复 · 测试会话', exact: true }).click();
   await phone.getByRole('dialog').getByRole('button', { name: /^恢复归档/ }).click();
   for (const page of [desktop, phone]) {
-    await expect(page.locator(`.session-link[title="${mainId}"]`)).toHaveCount(0);
+    await expect(page.locator(`.session-link[data-thread-id="${mainId}"]`)).toHaveCount(0);
     await page.getByRole('button', { name: '会话', exact: true }).click();
-    await expect(page.locator(`.session-link[title="${mainId}"]`)).toBeVisible();
+    await expect(page.locator(`.session-link[data-thread-id="${mainId}"]`)).toBeVisible();
   }
   checks.push('Android native unarchive appears in active list on both devices');
   await phone.getByRole('button', { name: '会话操作：删除确认 · 测试会话', exact: true }).click();
@@ -137,7 +138,7 @@ try {
   await phone.getByRole('button', { name: '会话操作：删除确认 · 测试会话', exact: true }).click();
   await phone.getByRole('dialog').getByRole('button', { name: /^永久删除/ }).click();
   await phone.getByRole('button', { name: '确认永久删除', exact: true }).click();
-  for (const page of [desktop, phone]) await expect(page.locator(`.session-link[title="${deleteId}"]`)).toHaveCount(0);
+  for (const page of [desktop, phone]) await expect(page.locator(`.session-link[data-thread-id="${deleteId}"]`)).toHaveCount(0);
   await assert.rejects(codex.request('thread/read', { threadId: deleteId }), /not loaded|not found|no rollout/i);
   checks.push('Android cancel preserves native thread; confirmed permanent delete synchronizes both clients and native read fails');
   // Remaining test thread is deleted from the archived view as a second path.
@@ -147,7 +148,7 @@ try {
   await desktop.getByRole('button', { name: '会话操作：归档与恢复 · 测试会话', exact: true }).click();
   await desktop.getByRole('dialog').getByRole('button', { name: /^永久删除/ }).click();
   await desktop.getByRole('button', { name: '确认永久删除', exact: true }).click();
-  await expect(desktop.locator(`.session-link[title="${mainId}"]`)).toHaveCount(0);
+  await expect(desktop.locator(`.session-link[data-thread-id="${mainId}"]`)).toHaveCount(0);
   await assert.rejects(codex.request('thread/read', { threadId: mainId }), /not loaded|not found|no rollout/i);
   await phone.reload(); await ready(phone);
   assert.equal((await service.dispatch('thread/list', { cwd, archived: true }) as { data: Thread[] }).data.length, 0);
@@ -155,8 +156,8 @@ try {
   checks.push('archived native delete, reload and both native lists confirm removal');
   await desktop.getByRole('button', { name: '会话', exact: true }).click();
   await desktop.locator('.new-session').click(); await ready(desktop);
-  await expect(desktop.getByTestId('thread-id')).toHaveText(/^[0-9a-f-]{36}$/);
-  const emptyId = (await desktop.getByTestId('thread-id').textContent())!;
+  await expect(desktop.locator('.conversation')).toHaveAttribute('data-thread-id', /^[0-9a-f-]{36}$/);
+  const emptyId = (await selectedThreadId(desktop))!;
   await desktop.getByRole('button', { name: '会话操作：新会话', exact: true }).click();
   await desktop.getByRole('dialog').getByRole('button', { name: /^归档会话/ }).click();
   await expect(desktop.getByRole('dialog')).toContainText('空会话尚未进入原生历史');

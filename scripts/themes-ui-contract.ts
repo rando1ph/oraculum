@@ -24,7 +24,8 @@ const codex = {
     if (method === 'config/read') value = { config: { model: 'fixture', model_provider: 'fixture' } };
     else if (method === 'model/list') value = { data: [], nextCursor: null };
     else if (method === 'thread/list') value = { data: [thread], nextCursor: null };
-    else if (method === 'thread/read' || method === 'thread/resume') value = { thread };
+    else if (method === 'thread/read') value = { thread };
+    else if (method === 'thread/resume') value = { thread, approvalPolicy: 'on-request', sandbox: { type: 'readOnly', networkAccess: false }, approvalsReviewer: 'user' };
     else if (method === 'thread/turns/list') value = { data: [...thread.turns].reverse(), nextCursor: null };
     else if (method === 'thread/items/list') value = { data: thread.turns.find(turn => turn.id === params.turnId)!.items.map((item: any) => ({ turnId: params.turnId, item })), nextCursor: null };
     else if (method === 'turn/interrupt') { const turn = thread.turns.at(-1)!; turn.status = 'interrupted'; bus.emit('message', { method: 'turn/completed', params: { threadId: id, turn } }); value = {}; }
@@ -42,7 +43,7 @@ const env = Object.fromEntries(Object.entries(process.env).filter((e): e is [str
 Object.assign(env, { ORACULUM_URL: origin, ORACULUM_USER_DATA_DIR: join(output, 'electron') });
 let app: ElectronApplication | undefined, browser: Browser | undefined, desktop!: Page, phone!: Page;
 const results: string[] = [], errors: string[] = [];
-const ready = (page: Page) => expect(page.getByRole('status', { includeHidden: true })).toContainText('状态已查询');
+const ready = (page: Page) => expect(page.locator('.connection-status')).toContainText('状态已查询');
 async function settings(page: Page) {
   if (await page.locator('.app-settings').isVisible()) return;
   if (page === phone && !await page.locator('.app-shell').evaluate(e => e.classList.contains('drawer-open'))) await page.getByRole('button', { name: '打开导航', exact: true }).click();
@@ -62,7 +63,8 @@ async function record(name: string) { results.push(name); console.log('PASS ' + 
 try {
   await server.listen({ host: '127.0.0.1', port });
   app = await electron.launch({ executablePath: require('electron'), args: [resolve('apps/desktop/main.cjs')], env });
-  desktop = await app.firstWindow(); desktop.on('pageerror', e => errors.push(e.message)); await ready(desktop);
+  await expect.poll(() => app!.windows().some(page => page.url().startsWith(origin)), { timeout: 15_000 }).toBe(true);
+  desktop = app.windows().find(page => page.url().startsWith(origin))!; desktop.on('pageerror', e => errors.push(e.message)); await ready(desktop);
   browser = await chromium.launch(); phone = await browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
   phone.on('pageerror', e => errors.push(e.message)); await phone.goto(origin); await ready(phone);
   await settings(phone); await phone.getByText('从主机主题目录安装', { exact: true }).click();
@@ -75,7 +77,9 @@ try {
   await desktop.getByLabel('消息', { exact: true }).fill('主题切换不发送此草稿');
   await select(desktop, 'oracle-eye'); await expect(desktop.getByLabel('消息', { exact: true })).toHaveValue('主题切换不发送此草稿');
   await select(desktop, 'test-violet'); await app.close();
-  app = await electron.launch({ executablePath: require('electron'), args: [resolve('apps/desktop/main.cjs')], env }); desktop = await app.firstWindow(); await ready(desktop);
+  app = await electron.launch({ executablePath: require('electron'), args: [resolve('apps/desktop/main.cjs')], env });
+  await expect.poll(() => app!.windows().some(page => page.url().startsWith(origin)), { timeout: 15_000 }).toBe(true);
+  desktop = app.windows().find(page => page.url().startsWith(origin))!; await ready(desktop);
   await expect(desktop.locator('.app-shell')).toHaveAttribute('data-theme-id', 'test-violet');
   await expect(phone.locator('.app-shell')).toHaveAttribute('data-theme-id', 'oracle-eye');
   await record('explicit GUI install, independent devices, no turn on switch, actual Electron process restart');
@@ -152,7 +156,7 @@ try {
     await button.click(); await expect(desktop.locator('.approval')).toHaveCount(0); await expect(phone.locator('.approval')).toHaveCount(0);
   }
   await phone.getByRole('button', { name: '停止', exact: true }).click(); expect(replies).toHaveLength(2);
-  await expect(phone.getByTestId('last-turn-status')).toHaveText('interrupted');
+  await expect(phone.locator('.conversation')).toHaveAttribute('data-last-turn-status', 'interrupted');
   await record('themed allow/decline/stop remain reachable and inherit the selected theme palette');
   const installed = join(themes.paths.installed, 'test-violet');
   const originalCss = await readFile(join(installed, 'theme.css'), 'utf8'), originalManifest = await readFile(join(installed, 'manifest.json'), 'utf8');

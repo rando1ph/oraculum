@@ -32,7 +32,7 @@ button.primary:hover:enabled { background: #194c94; color: white; }
 .composer:focus-within { border-color: #235daf; box-shadow: 0 0 0 2px #235daf14; }
 .composer textarea { font-size: 14px; }
 .conversation-content { max-width: 1000px; }
-.message.user { background: #eaf1fc; border-color: #d8e3f3; border-radius: 10px; }
+.message { background: #eaf1fc; border-color: #d8e3f3; border-radius: 10px; }
 .tool { background: white; }
 .approval { background: #fffbef; border-color: #c89c4b; box-shadow: none; }
 .approval pre { background: #fffef9; }

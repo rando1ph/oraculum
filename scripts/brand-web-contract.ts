@@ -96,9 +96,9 @@ try {
 
   await desktop.getByRole('button', { name: '新建会话', exact: true }).click();
   await state(desktop, 'createdThread', '谕章初启，诸界屏息。');
-  await desktop.locator('nav[aria-label="原生会话"] button[title="brand-thread-1"]').click(); await ready(desktop);
+  await desktop.locator('nav[aria-label="原生会话"] button[data-thread-id="brand-thread-1"]').click(); await ready(desktop);
   await state(desktop, 'existingThread', '谕令未书，万象屏息。');
-  await desktop.locator('nav[aria-label="原生会话"] button[title="brand-thread-2"]').click(); await ready(desktop);
+  await desktop.locator('nav[aria-label="原生会话"] button[data-thread-id="brand-thread-2"]').click(); await ready(desktop);
   await state(desktop, 'existingThread', '谕令未书，万象屏息。');
   await desktop.reload(); await ready(desktop);
   await state(desktop, 'existingThread', '谕令未书，万象屏息。');

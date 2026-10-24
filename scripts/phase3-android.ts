@@ -8,6 +8,7 @@
 // Or --approvals for one harmless approval-only turn and final device captures.
 // --manual-hold keeps the fixture online until <output>/manual-finish is created.
 // ORACULUM_MANUAL_PROJECT checks a manually registered path reaches Electron.
+import { selectedThreadId } from './ui-state';
 import { _electron as electron, chromium, expect, type Browser, type ElectronApplication, type Page } from '@playwright/test';
 import { createRequire } from 'node:module';
 import { execFileSync } from 'node:child_process';
@@ -119,7 +120,7 @@ async function pair(page: Page, label: string) {
 }
 async function drawer(page: Page) { if (page === phone && !await page.locator('.app-shell').evaluate(element => element.classList.contains('drawer-open'))) await page.getByRole('button', { name: '打开导航', exact: true }).click(); }
 async function select(page: Page, id: string) {
-  await drawer(page); await page.locator(`nav[aria-label="原生会话"] button[title="${id}"]`).click(); await ready(page); await expect(page.getByTestId('thread-id')).toHaveText(id);
+  await drawer(page); await page.locator(`nav[aria-label="原生会话"] button[data-thread-id="${id}"]`).click(); await ready(page); await expect(page.locator('.conversation')).toHaveAttribute('data-thread-id', id);
   // The native list may already select this thread on initial connect. Ensure
   // the reading test never scrolls the inert conversation beneath a drawer.
   if (page === phone && await page.locator('.app-shell').evaluate(element => element.classList.contains('drawer-open'))) await page.getByRole('button', { name: '折叠导航', exact: true }).click();
@@ -212,14 +213,14 @@ try {
     await expect(phone.locator('.settings-dialog')).not.toBeVisible();
     if (await phone.locator('.app-shell').evaluate(e => e.classList.contains('drawer-open'))) await androidBack();
     await desktop.getByRole('button', { name: '查看 Diff', exact: true }).first().click(); await expect(desktop.locator('.inspector .cm-content')).toContainText(/a\s*\+\s*b/); await screenshot(desktop, 'review-05-electron');
-    await phone.reload(); await ready(phone); await expect(phone.getByTestId('thread-id')).toHaveText(threadId);
+    await phone.reload(); await ready(phone); await expect(phone.locator('.conversation')).toHaveAttribute('data-thread-id', threadId);
     expect(evidence.requests).toHaveLength(0); expect(await readFile(join(cwd, 'sum.test.mjs'), 'utf8')).toBe(originalTest);
     evidence.checks.push(reviewStop || reviewApprovals ? 'prior repair reused; only an explicit bounded continuation may start' : 'zero new native sessions/turns enforced', 'native persisted history and completed receipt after new App Server process', 'Android Back closes drawer/settings/Diff and restores reading', 'Electron real persisted Diff regression');
   } else {
   step = 'create native sessions'; await drawer(phone); await phone.getByRole('button', { name: '新建会话', exact: true }).click();
-  await expect(phone.getByTestId('thread-id')).not.toHaveText('尚未选择会话'); const threadId = (await phone.getByTestId('thread-id').textContent())!; evidence.threadId = threadId;
-  await drawer(phone); await phone.getByRole('button', { name: '新建会话', exact: true }).click(); await expect(phone.getByTestId('thread-id')).not.toHaveText(threadId);
-  const secondId = (await phone.getByTestId('thread-id').textContent())!; evidence.secondThreadId = secondId;
+  await expect(phone.locator('.conversation')).not.toHaveAttribute('data-thread-id', ''); const threadId = (await selectedThreadId(phone))!; evidence.threadId = threadId;
+  await drawer(phone); await phone.getByRole('button', { name: '新建会话', exact: true }).click(); await expect(phone.locator('.conversation')).not.toHaveAttribute('data-thread-id', threadId);
+  const secondId = (await selectedThreadId(phone))!; evidence.secondThreadId = secondId;
   await select(phone, threadId); await desktop.getByRole('button', { name: '刷新列表', exact: true }).click(); await select(desktop, threadId);
   await phone.getByLabel('模型', { exact: true }).selectOption(model!); await phone.getByLabel('思考强度', { exact: true }).selectOption(effort);
   await phone.getByLabel('消息', { exact: true }).fill([
@@ -238,8 +239,8 @@ try {
     await expect(phone.getByRole('heading', { name: '需要审批', exact: true })).toBeVisible();
     await expect(desktop.getByRole('heading', { name: '需要审批', exact: true })).toBeVisible();
     if (decision === 'accept') {
-      await select(phone, secondId); await drawer(phone); await expect(phone.locator(`nav[aria-label="原生会话"] button[title="${threadId}"]`)).toContainText('待审批');
-      await phone.locator(`nav[aria-label="原生会话"] button[title="${threadId}"]`).click(); await ready(phone);
+      await select(phone, secondId); await drawer(phone); await expect(phone.locator(`nav[aria-label="原生会话"] button[data-thread-id="${threadId}"]`)).toContainText('待审批');
+      await phone.locator(`nav[aria-label="原生会话"] button[data-thread-id="${threadId}"]`).click(); await ready(phone);
       expect(service.pending.has(request.id)).toBe(true);
     }
     await phone.getByRole('button', { name: label, exact: true }).scrollIntoViewIfNeeded(); await screenshot(phone, `01-approval-${decision}`);
@@ -248,7 +249,7 @@ try {
     await phone.getByRole('button', { name: label, exact: true }).click(); await expect(desktop.locator('.approval')).toHaveCount(0); pending = undefined;
   }
   await expect(phone.getByRole('heading', { name: '移动端修复完成', exact: true })).toBeVisible({ timeout: 180_000 });
-  await expect(phone.getByTestId('last-turn-status')).toHaveText('completed', { timeout: 30_000 }); await ready(phone);
+  await expect(phone.locator('.conversation')).toHaveAttribute('data-last-turn-status', 'completed', { timeout: 30_000 }); await ready(phone);
   expect(evidence.requests).toEqual([{ method: 'turn/start', threadId, model, effort }]);
   const allowed = evidence.items.find((item: any) => item.id === evidence.approvals[0].itemId), declined = evidence.items.find((item: any) => item.id === evidence.approvals[1].itemId);
   expect(allowed).toMatchObject({ status: 'completed', exitCode: 0 }); expect(allowed.output).toContain('ORACULUM_3B_ALLOW');
@@ -276,7 +277,7 @@ try {
   if (await phone.locator('.app-shell').evaluate(e => e.classList.contains('drawer-open'))) await androidBack();
   await desktop.getByRole('button', { name: '查看 Diff', exact: true }).first().click(); await expect(desktop.locator('.inspector .cm-content')).toContainText(/a\s*\+\s*b/); await screenshot(desktop, '06-electron-regression');
   evidence.checks.push('native Android Back closes drawer/settings/full-screen Diff', 'real Diff read-only/full viewport and reading position restored', 'native sessions retain independent mobile drafts', 'Electron three-column native Diff regression');
-  step = 'reload and completed receipt recovery'; await phone.reload(); await ready(phone); await expect(phone.getByTestId('thread-id')).toHaveText(threadId);
+  step = 'reload and completed receipt recovery'; await phone.reload(); await ready(phone); await expect(phone.locator('.conversation')).toHaveAttribute('data-thread-id', threadId);
   await expect(phone.getByRole('heading', { name: '移动端修复完成', exact: true })).toBeVisible();
   const restored = await service.dispatch('bridge/subscribe', { threadId }) as Snapshot;
   expect(restored.receipts).toEqual([expect.objectContaining({ status: 'completed' })]);
@@ -288,7 +289,7 @@ try {
   step = 'native stop'; await phone.getByLabel('模型', { exact: true }).selectOption(model!); await phone.getByLabel('思考强度', { exact: true }).selectOption(effort);
   await phone.getByLabel('消息', { exact: true }).fill(stopPrompt);
   await phone.getByRole('button', { name: '发送', exact: true }).click(); await expect(phone.getByTestId('turn-status')).toHaveText('执行中', { timeout: 30_000 });
-  await phone.getByRole('button', { name: '停止', exact: true }).click(); await expect(phone.getByTestId('last-turn-status')).toHaveText('interrupted', { timeout: 30_000 });
+  await phone.getByRole('button', { name: '停止', exact: true }).click(); await expect(phone.locator('.conversation')).toHaveAttribute('data-last-turn-status', 'interrupted', { timeout: 30_000 });
   expect(evidence.requests).toHaveLength(reviewStop ? 1 : 2); expect(evidence.requests.at(-1)).toMatchObject({ model, effort, threadId });
   expect(evidence.turns.map((turn: any) => turn.status)).toEqual(reviewStop ? ['interrupted'] : ['completed', 'interrupted']);
   evidence.checks.push('actual HONOR send/stop produces native interrupted turn');
@@ -309,7 +310,7 @@ try {
       await phone.getByRole('button', { name: label, exact: true }).click(); await expect(desktop.locator('.approval')).toHaveCount(0); pending = undefined;
     }
     await expect(phone.getByRole('heading', { name: '移动审批复核完成', exact: true })).toBeVisible({ timeout: 180_000 });
-    await expect(phone.getByTestId('last-turn-status')).toHaveText('completed', { timeout: 30_000 }); await ready(phone);
+    await expect(phone.locator('.conversation')).toHaveAttribute('data-last-turn-status', 'completed', { timeout: 30_000 }); await ready(phone);
     expect(evidence.requests).toEqual([{ method: 'turn/start', threadId, model, effort }]);
     expect(evidence.turns.map((turn: any) => turn.status)).toEqual(['completed']);
     const allowed = evidence.items.find((item: any) => item.id === evidence.approvals[0].itemId), declined = evidence.items.find((item: any) => item.id === evidence.approvals[1].itemId);

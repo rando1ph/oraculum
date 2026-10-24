@@ -59,8 +59,11 @@ main.app-shell[data-theme-root][data-theme-id]
     header.conversation-header[data-theme-slot="header"]
     .conversation-scroll
       div.conversation-content[data-theme-slot="content"]
-        article.message.user[data-theme-slot="user-message"]
-        .message / .message-heading / .markdown
+        article.message.user[data-theme-slot="user-message"][data-message-role="user"]
+        article.message.agent-message[data-theme-slot="assistant-message"][data-message-role="assistant"]
+          header.message-heading
+            .message-avatar / .message-name / .message-actions
+          .message-body / .markdown（AI 正文）
         .tool[data-theme-slot="tool"]（article 或 details）
           .tool-body（部分工具）
         article.approval[data-theme-slot="approval"]
@@ -75,7 +78,9 @@ main.app-shell[data-theme-root][data-theme-id]
     .theme-settings
 ```
 
-原八个 Slot 保留，3C.1 新增 composer/approval/settings。上述语义 class 是推荐覆盖接口；其他 DOM 也可使用，但不能保证所有内部节点跨未来版本永久兼容。业务状态类 `.nav-collapsed`、`.drawer-open`、`.inspector-open`、`.expanded` 控制展开/收起，主题应分别检查这些状态。品牌 PNG 是既有 Oracle Eye 资产，可通过 CSS 调整尺寸/滤镜；CSS 主题不替换业务组件。
+原八个 Slot 保留，3C.1 新增 composer/approval/settings，4D.3 新增 assistant-message。双方消息共享 `.message` 卡片、`.message-heading` 头像与名称标题行、`.message-body` 正文；现有 `.message.user`、`.agent-message`、`.user-label` 继续兼容。默认用户为「你」与人物轮廓头像，AI 为 Codex 与 Oracle Eye；本阶段不提供自定义身份设置。正文不再为头像预留左侧列，桌面内容容器上限 980px（含边距），移动端卡片近全宽。卡片使用现有表面、文字、边线和圆角 tokens；主题可通过 `.message` 同时覆盖双方材质，或用两个 Slot 分别覆盖。
+
+上述语义 class 是推荐覆盖接口；其他 DOM 也可使用，但不能保证所有内部节点跨未来版本永久兼容。业务状态类 `.nav-collapsed`、`.drawer-open`、`.inspector-open`、`.expanded` 控制展开/收起，主题应分别检查这些状态。品牌 PNG 是既有 Oracle Eye 资产，可通过 CSS 调整尺寸/滤镜；CSS 主题不替换业务组件。
 
 ```css
 :root {

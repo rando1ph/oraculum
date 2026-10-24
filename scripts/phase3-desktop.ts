@@ -1,3 +1,4 @@
+import { selectedThreadId as readSelectedThreadId } from './ui-state';
 import { DatabaseSync } from 'node:sqlite';
 // Opt-in acceptance using the real Ubuntu Electron window and official Codex.
 // Exactly two controlled model turns; generated fixtures/evidence stay outside Git.
@@ -92,14 +93,13 @@ async function drag(page: Page, label: string, delta: number) {
   await page.mouse.up();
 }
 async function selectThread(page: Page, id: string) {
-  await page.locator(`nav[aria-label="原生会话"] button[title="${id}"]`).click();
-  await expect(page.getByTestId('thread-id')).toHaveText(id);
+  await page.locator(`nav[aria-label="原生会话"] button[data-thread-id="${id}"]`).click();
+  await expect(page.locator('.conversation')).toHaveAttribute('data-thread-id', id);
   await expect(page.getByRole('status', { includeHidden: true })).toContainText('状态已查询');
 }
 async function selectedThreadId(page: Page) {
-  const id = (await page.getByTestId('thread-id').textContent())?.trim() ?? '';
+  const id = (await readSelectedThreadId(page)).trim();
   expect(id).not.toBe('');
-  expect(id).not.toBe('尚未选择会话');
   return id;
 }
 
@@ -159,11 +159,11 @@ try {
   await page.getByLabel('思考强度', { exact: true }).selectOption(effort);
   console.log(`Connected real Electron ${evidence.electron.version}; native model ${model}, effort ${effort}.`);
   await page.getByRole('button', { name: '新建会话', exact: true }).click();
-  await expect(page.getByTestId('thread-id')).not.toHaveText('尚未选择会话');
+  await expect(page.locator('.conversation')).not.toHaveAttribute('data-thread-id', '');
   const threadId = await selectedThreadId(page); evidence.threadId = threadId;
   await page.getByRole('button', { name: '新建会话', exact: true }).click();
-  await expect(page.getByTestId('thread-id')).not.toHaveText(threadId);
-  await expect(page.getByTestId('thread-id')).not.toHaveText('尚未选择会话');
+  await expect(page.locator('.conversation')).not.toHaveAttribute('data-thread-id', threadId);
+  await expect(page.locator('.conversation')).not.toHaveAttribute('data-thread-id', '');
   const secondId = await selectedThreadId(page); evidence.secondThreadId = secondId;
   await selectThread(page, threadId);
   await page.getByLabel('模型', { exact: true }).selectOption(model!);
@@ -188,7 +188,7 @@ try {
     expect([`printf ${marker}`, `/bin/bash -lc 'printf ${marker}'`, `/bin/bash -lc "printf ${marker}"`, `/bin/sh -lc 'printf ${marker}'`], 'Never approve anything except the exact harmless fixture printf').toContain(command);
     if (decision === 'accept') {
       await selectThread(page, secondId);
-      await expect(page.locator(`nav[aria-label="原生会话"] button[title="${threadId}"]`)).toContainText('待审批', { timeout: 10_000 });
+      await expect(page.locator(`nav[aria-label="原生会话"] button[data-thread-id="${threadId}"]`)).toContainText('待审批', { timeout: 10_000 });
       await selectThread(page, threadId);
       await expect(page.getByRole('heading', { name: '需要审批', exact: true })).toBeVisible();
       expect(service.pending.has(request.id)).toBe(true);
@@ -202,7 +202,7 @@ try {
     console.log(`Real command approval ${decision} submitted and resolved.`);
   }
   await expect(page.getByRole('heading', { name: '加法修复完成', exact: true })).toBeVisible({ timeout: 180_000 });
-  await expect(page.getByTestId('last-turn-status')).toHaveText('completed', { timeout: 30_000 });
+  await expect(page.locator('.conversation')).toHaveAttribute('data-last-turn-status', 'completed', { timeout: 30_000 });
   await expect(page.getByRole('status', { includeHidden: true })).toContainText('状态已查询', { timeout: 30_000 });
   expect(evidence.requests[0]).toMatchObject({ model, effort });
   const testItem = evidence.items.find((item: any) => item.type === 'commandExecution' && item.command.includes('node --test') && item.exitCode === 0);
@@ -254,7 +254,7 @@ try {
   await expect(page.locator('.navigation')).toBeVisible();
   await page.reload();
   await expect(page.getByRole('status', { includeHidden: true })).toContainText('状态已查询', { timeout: 30_000 });
-  await expect(page.getByTestId('thread-id')).toHaveText(threadId);
+  await expect(page.locator('.conversation')).toHaveAttribute('data-thread-id', threadId);
   await expect(page.locator('.inspector')).not.toBeVisible();
   expect((await page.locator('.navigation').boundingBox())!.width).toBeCloseTo(navAfter!.width, 0);
   await page.getByRole('button', { name: '查看 Diff', exact: true }).first().click();
@@ -265,17 +265,17 @@ try {
   const longDraft = '真实长提示词验收：保留当前会话草稿，检查输入框扩展与独立发送。\n'.repeat(30);
   await page.getByLabel('消息', { exact: true }).fill(longDraft);
   await page.getByLabel('项目目录', { exact: true }).selectOption(secondProject);
-  await expect(page.getByTestId('thread-id')).toHaveText('尚未选择会话');
+  await expect(page.locator('.conversation')).toHaveAttribute('data-thread-id', '');
   await page.getByRole('button', { name: '新建会话', exact: true }).click();
-  await expect(page.getByTestId('thread-id')).not.toHaveText('尚未选择会话');
+  await expect(page.locator('.conversation')).not.toHaveAttribute('data-thread-id', '');
   const projectThreadId = await selectedThreadId(page);
   await page.getByLabel('消息', { exact: true }).fill('隔离项目的独立草稿；不向模型发送。');
   const projectThread = await service.dispatch('bridge/subscribe', { threadId: projectThreadId }) as Snapshot;
   expect(projectThread.thread.cwd).toBe(secondProject);
   await page.getByLabel('项目目录', { exact: true }).selectOption(cwd);
-  await expect(page.getByTestId('thread-id')).toHaveText(threadId);
+  await expect(page.locator('.conversation')).toHaveAttribute('data-thread-id', threadId);
   await expect(page.getByLabel('消息', { exact: true })).toHaveValue(longDraft);
-  expect(await page.locator(`nav[aria-label="原生会话"] button[title="${projectThreadId}"]`).count()).toBe(0);
+  expect(await page.locator(`nav[aria-label="原生会话"] button[data-thread-id="${projectThreadId}"]`).count()).toBe(0);
   evidence.checks.push('GUI directory switching creates a native thread in the selected controlled project');
   evidence.projectThread = { id: projectThreadId, cwd: projectThread.thread.cwd };
   await selectThread(page, secondId);
@@ -288,9 +288,9 @@ try {
   await selectThread(page, threadId);
   await page.getByLabel('搜索会话', { exact: true }).fill(secondId);
   await expect(page.locator('nav[aria-label="原生会话"] button')).toHaveCount(1);
-  await expect(page.locator(`nav[aria-label="原生会话"] button[title="${secondId}"]`)).toBeVisible();
+  await expect(page.locator(`nav[aria-label="原生会话"] button[data-thread-id="${secondId}"]`)).toBeVisible();
   await page.getByLabel('搜索会话', { exact: true }).fill('');
-  await expect(page.locator(`nav[aria-label="原生会话"] button[title="${threadId}"]`)).toBeVisible();
+  await expect(page.locator(`nav[aria-label="原生会话"] button[data-thread-id="${threadId}"]`)).toBeVisible();
   await page.getByRole('button', { name: '设置', exact: true }).click();
   await expect(page.getByRole('dialog')).toBeVisible();
   await expect(page.getByRole('dialog')).toContainText(cwd);
@@ -311,7 +311,7 @@ try {
   await page.getByRole('button', { name: '发送', exact: true }).click();
   await expect(page.getByTestId('turn-status')).toHaveText('执行中', { timeout: 30_000 });
   await page.getByRole('button', { name: '停止', exact: true }).click();
-  await expect(page.getByTestId('last-turn-status')).toHaveText('interrupted', { timeout: 30_000 });
+  await expect(page.locator('.conversation')).toHaveAttribute('data-last-turn-status', 'interrupted', { timeout: 30_000 });
   expect(evidence.requests).toHaveLength(2);
   expect(evidence.requests[1]).toMatchObject({ model, effort, threadId });
   expect(evidence.turns.map((turn: any) => turn.status)).toEqual(['completed', 'interrupted']);

@@ -1,5 +1,6 @@
 // Opt-in actual Android WebView + authenticated local Bridge, no model turns.
 // CDP must be forwarded from Oraculum only. Credentials never enter evidence.
+import { selectedThreadId } from './ui-state';
 import { chromium, expect } from '@playwright/test';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { TrustStore, defaultStateDir } from '../bridge/src/trust-store';
@@ -36,9 +37,9 @@ try {
   step = 'pair';
   const firstCode = await pair();
   await expect(page.locator('aside .path')).toContainText('/.cache/oraculum/workspaces/phase2-android-');
-  const threadId = await page.getByTestId('thread-id').innerText();
-  expect(threadId).not.toBe('尚未选择会话');
-  await expect(page.getByTestId('last-turn-status')).toHaveText('completed');
+  const threadId = await selectedThreadId(page);
+  expect(threadId).not.toBe('');
+  await expect(page.locator('.conversation')).toHaveAttribute('data-last-turn-status', 'completed');
   evidence.threadId = threadId;
   evidence.cookies = (await page.context().cookies()).map(({ name, httpOnly, secure, sameSite }) => ({ name, httpOnly, secure, sameSite }));
   expect(evidence.cookies).toEqual([expect.objectContaining({ name: 'oraculum_local', httpOnly: true, sameSite: 'Strict' })]);
@@ -46,8 +47,8 @@ try {
   step = 'reload';
   await page.reload();
   await expect(page.getByRole('status')).toContainText('状态已查询', { timeout: 30_000 });
-  await expect(page.getByTestId('thread-id')).toHaveText(threadId);
-  await expect(page.getByTestId('last-turn-status')).toHaveText('completed');
+  await expect(page.locator('.conversation')).toHaveAttribute('data-thread-id', threadId);
+  await expect(page.locator('.conversation')).toHaveAttribute('data-last-turn-status', 'completed');
   evidence.nativeHistoryReload = true;
   step = 'replay';
   const replay = await page.evaluate(async code => (await fetch('/auth/pair', {
@@ -67,8 +68,8 @@ try {
   step = 're-pair';
   await pair();
   expect(ids[1]).not.toBe(ids[0]);
-  await expect(page.getByTestId('thread-id')).toHaveText(threadId);
-  await expect(page.getByTestId('last-turn-status')).toHaveText('completed');
+  await expect(page.locator('.conversation')).toHaveAttribute('data-thread-id', threadId);
+  await expect(page.locator('.conversation')).toHaveAttribute('data-last-turn-status', 'completed');
   evidence.repaired = true;
   evidence.result = 'passed';
   console.log(JSON.stringify(evidence));

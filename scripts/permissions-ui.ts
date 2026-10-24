@@ -65,7 +65,7 @@ Object.assign(env, { ORACULUM_URL: origin, ORACULUM_USER_DATA_DIR: join(output, 
 let app: ElectronApplication | undefined, browser: Browser | undefined, desktop: Page | undefined, phone: Page | undefined;
 const checks: string[] = [], rendererErrors: string[] = [];
 let failure: string | undefined;
-const ready = (page: Page) => expect(page.getByRole('status', { includeHidden: true })).toContainText('状态已查询', { timeout: 15_000 });
+const ready = (page: Page) => expect(page.locator('.connection-status')).toContainText('状态已查询', { timeout: 15_000 });
 const effective = (page: Page) => page.getByTestId('effective-permissions');
 const choice = (page: Page) => page.getByRole('combobox', { name: '权限模式', exact: true });
 async function screenshot(page: Page, name: string) { await page.screenshot({ path: join(output, name + '.png') }); }
@@ -133,7 +133,7 @@ try {
   expect(requests.find(request => request.method === 'thread/start')!.params).toMatchObject({ approvalPolicy: 'on-request', sandbox: 'workspace-write' });
   await screenshot(desktop, 'desktop-created-auto');
   await choice(desktop).selectOption('full-access');
-  await desktop.locator(`.session-link[title="${secondId}"]`).click(); await ready(desktop);
+  await desktop.locator(`.session-link[data-thread-id="${secondId}"]`).click(); await ready(desktop);
   await expect(choice(desktop)).toHaveValue('inherit'); await expect(effective(desktop)).toContainText('read-only');
   await choice(desktop).selectOption('full-access'); await desktop.reload(); await ready(desktop);
   await expect(choice(desktop)).toHaveValue('inherit'); await expect(effective(desktop)).toContainText('read-only');

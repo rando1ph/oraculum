@@ -14,7 +14,7 @@ export function NativeRequest({ request, busy, canAccept, canReply, reply }: Pro
   const [choices, setChoices] = useState<Record<string, string>>({});
   const [urlCompleted, setUrlCompleted] = useState(false);
   const labels = {
-    'item/commandExecution/requestApproval': '命令执行', 'item/fileChange/requestApproval': '文件变更',
+    'item/commandExecution/requestApproval': request.method === 'item/commandExecution/requestApproval' && request.params.kind === 'writeStdin' ? '终端输入' : '命令执行', 'item/fileChange/requestApproval': '文件变更',
     'item/permissions/requestApproval': '额外权限', 'item/tool/requestUserInput': '用户输入',
     'mcpServer/elicitation/request': 'MCP / App 请求',
   };
@@ -47,9 +47,9 @@ export function NativeRequest({ request, busy, canAccept, canReply, reply }: Pro
   });
   return <article data-theme-slot="approval" className="approval" data-native-method={request.method}>
     <div className="approval-heading"><span className="approval-symbol">!</span><h2>{input ? '需要你的输入' : '需要审批'}</h2><span>{labels[request.method]}</span></div>
-    {!!request.displayThreadIds?.length && <p className="path">子代理请求 · {params.threadId}</p>}
+    {!!request.displayThreadIds?.length && <p className="path">来自子代理的请求</p>}
     {'reason' in params && <p>{params.reason ?? 'Codex 请求确认本次操作'}</p>}
-    {request.method === 'item/commandExecution/requestApproval' && <><pre>{request.params.command ?? '未提供命令内容'}</pre><small className="path">工作目录 · {request.params.cwd}</small></>}
+    {request.method === 'item/commandExecution/requestApproval' && <><pre>{request.params.command ?? '未提供命令内容'}</pre>{request.params.networkApprovalContext && <p>网络访问 · {request.params.networkApprovalContext.protocol} · {request.params.networkApprovalContext.host}</p>}<small className="path">工作目录 · {request.params.cwd}</small></>}
     {request.method === 'item/fileChange/requestApproval' && request.params.grantRoot && <p>此请求涉及写入目录权限：{request.params.grantRoot}</p>}
     {request.method === 'item/permissions/requestApproval' && <><p>允许将授予以下权限，持续至本轮结束。</p><pre aria-label="请求的额外权限">{JSON.stringify(request.params.permissions, null, 2)}</pre><small className="path">工作目录 · {request.params.cwd}</small></>}
     {mcp && <><p>{mcp.message}</p><small>来源服务器 · {mcp.serverName}</small></>}
@@ -64,9 +64,8 @@ export function NativeRequest({ request, busy, canAccept, canReply, reply }: Pro
           : <textarea rows={3} maxLength={16000} value={String(values[question.id] ?? '')} onChange={event => setValue(question.id, event.target.value)} required/>}</label>}
       </fieldset>)}
       {mcp?.mode === 'url' && <><p>复制完整地址，在外部浏览器完成操作后确认。</p><div className="native-url"><code>{mcp.url}</code><Copy text={mcp.url}/></div><label className="native-choice"><input type="checkbox" checked={urlCompleted} onChange={event => setUrlCompleted(event.target.checked)} disabled={disabled}/><span>我已在外部浏览器完成操作</span></label></>}
-      {mcp && mcp.mode !== 'url' && (fields === null ? <p role="alert">当前客户端尚不支持此表单结构。可以拒绝或取消，并将原生请求详情交给维护者。</p> : fields.map(field => <Field key={field.id} field={field} value={values[field.id] ?? field.default} disabled={disabled} setValue={value => setValue(field.id, value)}/>))}
+      {mcp && mcp.mode !== 'url' && (fields === null ? <p role="alert">当前客户端尚不支持此表单结构。请拒绝或取消，并联系维护者检查此表单。</p> : fields.map(field => <Field key={field.id} field={field} value={values[field.id] ?? field.default} disabled={disabled} setValue={value => setValue(field.id, value)}/>))}
     </form>
-    <details><summary>原生请求详情</summary><small>request ID：{String(request.id)}{'itemId' in params && <> · {params.itemId}</>}</small><pre>{JSON.stringify(params, null, 2)}</pre></details>
     <div className="approval-actions">
       {input ? <button disabled={disabled} onClick={() => reply({ result: { answers: {} } })}>跳过</button> : <button disabled={disabled} onClick={() => reply(mcp ? { result: { action: 'decline', content: null } } : { decision: 'decline' })}>拒绝</button>}
       {mcp && <button disabled={disabled} onClick={() => reply({ result: { action: 'cancel', content: null } })}>取消</button>}

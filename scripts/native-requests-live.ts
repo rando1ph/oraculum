@@ -1,5 +1,6 @@
 // Opt-in: one harmless official Codex turn, actual Electron and HONOR WebView.
 // Additional new request shapes are explicitly simulated, after that real turn.
+import { sessionSnapshot } from './ui-state';
 import { _electron as electron, chromium, expect, type Browser, type Cookie, type ElectronApplication, type Page } from '@playwright/test';
 import { createRequire } from 'node:module';
 import { execFileSync } from 'node:child_process';
@@ -98,7 +99,7 @@ try {
   await phone.context().clearCookies({ name: 'oraculum_local', domain: '127.0.0.1', path: '/' }); await phone.evaluate(() => { localStorage.clear(); sessionStorage.clear(); }); await phone.reload();
   await pair(phone, 'P0 HONOR fixture'); await hideIme();
   app = await electron.launch({ executablePath: require('electron'), args: [resolve('apps/desktop/main.cjs')], env }); desktop = await app.firstWindow(); desktop.on('pageerror', error => errors.push(error.message)); await pair(desktop, 'P0 Electron fixture');
-  for (const page of [desktop, phone]) await expect(page.getByTestId('thread-id')).toHaveText(threadId);
+  for (const page of [desktop, phone]) await expect(page.locator('.conversation')).toHaveAttribute('data-thread-id', threadId);
   evidence.android = { manufacturer: adb('shell', 'getprop', 'ro.product.manufacturer'), model: adb('shell', 'getprop', 'ro.product.model'), release: adb('shell', 'getprop', 'ro.build.version.release') };
   expect(evidence.android.manufacturer.toUpperCase()).toBe('HONOR');
   if (inexpensive) { await desktop.getByLabel('模型', { exact: true }).selectOption(inexpensive.model); await desktop.getByLabel('思考强度', { exact: true }).selectOption('low'); }
@@ -115,8 +116,8 @@ try {
     await phone.getByRole('button', { name: button, exact: true }).click(); await expect(desktop.locator('.approval')).toHaveCount(0); pending = undefined;
   }
   await expect(phone.getByRole('heading', { name: '原生审批验收记录', exact: true })).toBeVisible({ timeout: 180_000 });
-  await expect(phone.getByTestId('last-turn-status')).toHaveText('completed'); await ready(phone);
-  for (const page of [desktop, phone]) { await page.reload(); await ready(page); await expect(page.getByTestId('thread-id')).toHaveText(threadId); await expect(page.getByTestId('send-receipt')).toContainText('原生已确认完成'); }
+  await expect(phone.locator('.conversation')).toHaveAttribute('data-last-turn-status', 'completed'); await ready(phone);
+  for (const page of [desktop, phone]) { await page.reload(); await ready(page); await expect(page.locator('.conversation')).toHaveAttribute('data-thread-id', threadId); await expect.poll(async () => (await sessionSnapshot(page)).receipts?.[0]?.status).toBe('completed'); }
   evidence.checks.push('One official Codex turn: exact harmless command allowed and second declined on HONOR; Electron synchronized; pending reload and both-client receipt/history reload');
   await capture('native-completed');
 

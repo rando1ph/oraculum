@@ -33,7 +33,7 @@ const codex = {
     else if (method === 'thread/list') result = { data: Object.values(threads), nextCursor: null };
     else if (method === 'thread/read' || method === 'thread/resume') {
       if (method === 'thread/read' && holdSubscribe) { holdSubscribe = false; await new Promise<void>(accept => { releaseSubscribe = accept; }); }
-      result = { thread: threads[params.threadId] };
+      result = { thread: threads[params.threadId], ...(method === 'thread/resume' ? { approvalPolicy: 'on-request', sandbox: { type: 'readOnly', networkAccess: false }, approvalsReviewer: 'user' } : {}) };
     }
     else if (method === 'thread/turns/list') {
       if (params.cursor === 'earlier') { if (holdHistory) await new Promise<void>(accept => { releaseHistory = accept; }); result = { data: [earlier], nextCursor: null }; }
@@ -52,15 +52,15 @@ await mkdir('.local/evidence/phase3/mobile-contracts', { recursive: true });
 const output = await mkdtemp(resolve('.local/evidence/phase3/mobile-contracts/run-'));
 const results: { name: string; passed: boolean; error?: string }[] = [], errors: string[] = [];
 let browser: Browser | undefined, page: Page;
-const ready = () => expect(page.getByRole('status', { includeHidden: true })).toContainText('状态已查询', { timeout: 15_000 });
+const ready = () => expect(page.locator('.connection-status')).toContainText('状态已查询', { timeout: 15_000 });
 const scrollTop = () => page.locator('.conversation-scroll').evaluate(element => element.scrollTop);
 async function back() { expect(await page.evaluate(() => (window as any).oraculumAndroidBack?.())).toBe(true); }
 async function openDrawer() { await page.getByRole('button', { name: '打开导航', exact: true }).click(); await expect(page.locator('.app-shell')).toHaveClass(/drawer-open/); }
-async function select(id: string) { await openDrawer(); await page.locator(`nav[aria-label="原生会话"] button[title="${id}"]`).click(); await ready(); await expect(page.getByTestId('thread-id')).toHaveText(id); }
+async function select(id: string) { await openDrawer(); await page.locator(`nav[aria-label="原生会话"] button[data-thread-id="${id}"]`).click(); await ready(); await expect(page.locator('.conversation')).toHaveAttribute('data-thread-id', id); }
 async function reset() {
   await page.evaluate(() => { localStorage.clear(); sessionStorage.clear(); });
   await page.setViewportSize({ width: 390, height: 844 }); await page.reload(); await ready();
-  await expect(page.getByTestId('thread-id')).toHaveText(firstId);
+  await expect(page.locator('.conversation')).toHaveAttribute('data-thread-id', firstId);
 }
 async function run(name: string, test: () => Promise<void>) {
   try { await reset(); await test(); results.push({ name, passed: true }); console.log(`PASS ${name}`); }
@@ -91,7 +91,8 @@ try {
       await expect(page.locator('.navigation')).not.toBeInViewport();
       await target('打开导航', 48); await target('发送', 48); await target('会话菜单');
       const body = await page.locator('[data-item-id="reading-message"] .message-body').boundingBox();
-      expect(body!.width, 'Body should use mobile width without avatar indentation').toBeGreaterThanOrEqual(width - 36);
+      // Shared cards add their border and 12px inner padding to the 10px gutters.
+      expect(body!.width, 'Body should use card width without avatar indentation').toBeGreaterThanOrEqual(width - 48);
       await page.screenshot({ path: join(output, `simulated-${width}x${height}.png`) });
     }
   });
@@ -148,7 +149,7 @@ try {
     await openDrawer(); await page.getByRole('button', { name: '设置', exact: true }).click();
     await expect(page.locator('.settings-dialog')).toBeVisible(); await back(); await expect(page.locator('.settings-dialog')).not.toBeVisible();
     // Closing settings must never discard the selected thread or draft state.
-    await expect(page.getByTestId('thread-id')).toHaveText(firstId);
+    await expect(page.locator('.conversation')).toHaveAttribute('data-thread-id', firstId);
   });
   await run('font-scale-and-reduced-height', async () => {
     const original = await page.locator('[data-item-id="reading-message"] .markdown').evaluate(element => parseFloat(getComputedStyle(element).fontSize));

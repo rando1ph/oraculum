@@ -104,7 +104,7 @@ nav[aria-label="原生会话"] { margin-top: 11px; flex: 1; overflow-y: auto; mi
 .inspector-toggle svg { transform: rotate(180deg); }
 .mobile-brand { display: none; }
 .conversation-scroll { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; scrollbar-gutter: stable; }
-.conversation-content { max-width: 980px; padding: 19px 26px 24px; margin: auto; min-height: 100%; }
+.conversation-content { width: 100%; max-width: 980px; padding: 12px 24px 24px; margin: auto; min-height: 100%; }
 .timeline { min-width: 0; }
 .empty-state { min-height: min(480px, 64dvh); display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; padding: 30px 12px 42px; }
 .oracle-logo { display: flex; flex-direction: column; align-items: center; margin: 0; color: var(--foreground); }
@@ -116,7 +116,6 @@ nav[aria-label="原生会话"] { margin-top: 11px; flex: 1; overflow-y: auto; mi
 .empty-state h2 { font-size: clamp(18px, 2vw, 23px); font-weight: 400; line-height: 1.8; letter-spacing: .13em; text-wrap: balance; margin: 0; color: var(--foreground); }
 .empty-state p { color: var(--muted); font-size: 12px; line-height: 1.8; }
 .empty-state button { min-height: 42px; margin-top: 26px; padding-inline: 20px; letter-spacing: .12em; }
-.provenance { display: block; font-size: 9px; color: var(--subtle); margin: -1px 0 8px 37px; }
 .history-warning { font-size: 11px; line-height: 1.7; color: #c8ad7c; border-left: 2px solid #7b612f; padding: 7px 11px; background: #18150c90; border-radius: 0 4px 4px 0; margin: 6px 0 16px; }
 .error { padding: 12px; color: #ffb0b8; background: #250e15; border: 1px solid #6c303d; border-radius: 8px; overflow-wrap: anywhere; font-size: 12px; line-height: 1.7; }
 .disconnect-banner { background: #211b10; color: var(--warning); font-size: 12px; padding: 8px 14px; display: flex; gap: 12px; align-items: center; justify-content: space-between; }
@@ -153,11 +152,6 @@ nav[aria-label="原生会话"] { margin-top: 11px; flex: 1; overflow-y: auto; mi
 .native-config { display: grid; grid-template-columns: auto 1fr; gap: 8px 16px; }
 .native-config dt { color: var(--muted); }
 .native-config dd { margin: 0; overflow-wrap: anywhere; }
-.session-details { margin: 20px 0 0 37px; color: var(--subtle); font-size: 10px; }
-.session-details > summary { padding: 8px 0; }
-.session-meta { display: grid; gap: 7px; margin: 12px 0; overflow-wrap: anywhere; font: 10px/1.6 var(--font-mono); }
-.events { padding: 8px 0; color: var(--muted); font-size: 11px; }
-.events pre { max-height: 220px; }
 .composer { flex-shrink: 0; margin: 0 12px 12px; border: 1px solid #255065; border-radius: 12px; background: linear-gradient(120deg, #07131c, #03090e); padding: 9px 12px 8px; box-shadow: 0 -8px 35px #0008, inset 0 1px 0 #13507125; }
 .composer:focus-within { border-color: #3880a2; box-shadow: 0 0 18px #00aeff10; }
 .composer-input { display: flex; gap: 5px; align-items: flex-start; }
@@ -260,7 +254,7 @@ nav[aria-label="原生会话"] { margin-top: 11px; flex: 1; overflow-y: auto; mi
   .model-controls select { max-width: 160px; font-size: 10px; min-height: 36px; }
   .composer-actions button { min-height: 40px; }
   .composer textarea { font-size: 14px; }
-  .approval, .session-details, .turn-diff, .provenance { margin-left: 0; }
+  .approval, .turn-diff { margin-left: 0; }
   .inspector { inset: 0; width: 100vw; border-radius: 0; z-index: 15; }
   .inspector-header { min-height: 58px; }
   .inspector-header .icon-button { height: 44px; width: 44px; }
@@ -320,7 +314,7 @@ nav[aria-label="原生会话"] { margin-top: 11px; flex: 1; overflow-y: auto; mi
   :where([data-theme-root]:not([data-theme-id="oracle-eye"])) {
     & :is(.navigation, .conversation, .inspector, .settings-dialog) { background: var(--background); }
     & :is(.conversation-header, .inspector-header, .mobile-detail-footer, .composer,
-      .mobile-session-menu, .tool, .message.user, .project-picker, .new-session,
+      .mobile-session-menu, .tool, .message, .project-picker, .new-session,
       .settings-model-options, .settings-effort-options, .reading-size, .server-settings-link) {
       background: var(--surface); border-color: var(--line);
     }

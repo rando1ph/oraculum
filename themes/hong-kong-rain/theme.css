@@ -92,7 +92,7 @@ org.
 .brand-row::after { content: "雨夜"; writing-mode: vertical-rl; color: #ff86b5; font-size: 14px; letter-spacing: 6px; margin-left: auto; text-shadow: 0 0 12px #ff2c86; }
 .conversation-header, .inspector-header { background: #071625b3; border-bottom: 1px solid #6df7ed55; }
 .session-title > span { letter-spacing: .6px; }
-.conversation-content { max-width: 1060px; padding: 22px 28px 30px; }
+.conversation-content { max-width: 1000px; padding: 22px 28px 30px; }
 .theme-decoration { opacity: .55; background: radial-gradient(ellipse at 90% 5%, #dd186b1a, transparent 60%); }
 .theme-decoration::after {
   content: ""; position: absolute; inset: -80px 0; pointer-events: none;
@@ -113,7 +113,7 @@ button.primary:hover:enabled { background: linear-gradient(120deg, #a7ffef, #81e
 .composer:focus-within { border-color: #8affed; box-shadow: 0 0 25px #4ff5dd33; }
 .composer textarea { font-size: 14px; line-height: 1.85; }
 .model-controls select { background: #051824; border-color: #386171; }
-.message.user { background: linear-gradient(110deg, #164756c9, #17243cdd); border: 1px solid #479faa88; border-left: 3px solid #62f9dd; border-radius: 2px 16px 2px 16px; }
+.message { background: linear-gradient(110deg, #164756c9, #17243cdd); border: 1px solid #479faa88; border-left: 3px solid #62f9dd; border-radius: 2px 16px 2px 16px; }
 .markdown { line-height: 1.95; }
 .message-heading { color: #ffadd0; }
 .tool { background: #071c29d9; border: 1px solid #3a6577; border-radius: 3px; }

@@ -17,7 +17,7 @@ import { ResizeHandle, useLayout } from './layout';
 import { SessionGate, checkSession } from './auth';
 import { ThemeSettings, useTheme } from './themes';
 import { NativeRequest } from './native-request';
-import { PermissionStatus, permissionModes } from './permissions';
+import { PermissionDetails, PermissionStatus, permissionModes } from './permissions';
 import { SessionActions, sessionActionBlock, sessionLabel, type SessionAction, type SessionTarget } from './session-actions';
 import './style.css';
 import './mobile.css';
@@ -460,6 +460,8 @@ function App() {
     } catch (value) { report(value); } finally { if (ticket === epoch.current) setLoadingHistory(false); }
   }
   const lastTurn = session.turns[session.lastTurnId ?? ''];
+  const lastReceipt = session.receipts[0];
+  const turnLabel = lastTurn?.status === 'completed' ? '已完成' : lastTurn?.status === 'failed' ? '执行失败' : lastTurn?.status === 'interrupted' ? '已停止' : '空闲';
   const items = Object.values(session.items);
   const emptyBrand = emptyBrandState({ projectAvailable, threadId: session.thread?.id, createdThreadId,
     hasActivity: items.length > 0 || Object.keys(session.turns).length > 0 || session.pending.length > 0 || active || session.sendBlocked });
@@ -474,7 +476,7 @@ function App() {
   const sessionNavigation = <nav aria-label="原生会话" aria-busy={listing}>{threads.filter(thread => `${thread.name} ${thread.preview} ${thread.id}`.toLowerCase().includes(query.toLowerCase())).map(thread => {
         const current = thread.id === session.thread?.id;
         const status = current ? session.pending.length ? '待审批' : active ? '执行中' : '' : thread.status.type === 'active' ? thread.status.activeFlags.includes('waitingOnApproval') ? '待审批' : '执行中' : '';
-        return <div className="session-row" key={thread.id}><button title={thread.id} aria-current={current ? 'page' : undefined} className={`session-link ${current ? 'selected' : ''}`} onClick={event => {
+        return <div className="session-row" key={thread.id}><button data-thread-id={thread.id} title={sessionLabel(thread)} aria-current={current ? 'page' : undefined} className={`session-link ${current ? 'selected' : ''}`} onClick={event => {
           if (archived) { openSessionActions(thread, event.currentTarget); return; }
           setDrawer(false); setMenu(false); void refresh(thread.id).catch(report);
         }} disabled={disabled || unknownThreads.has(thread.id)}>
@@ -514,14 +516,14 @@ function App() {
       <footer className="navigation-footer"><button className="settings-button" onClick={() => setSettings(true)}><Icon name="settings"/>设置</button><div className="connection"><i className={connected ? 'online' : ''}/><span>{connectionLabel}</span><small>{location.protocol === 'https:' ? 'HTTPS' : 'LOCAL'}</small></div></footer>
       <ResizeHandle side="navigation" value={layout.navigationWidth} onChange={navigationWidth => setLayout(l => ({ ...l, navigationWidth }))}/>
     </aside>
-    <section data-theme-slot="conversation" className="conversation" aria-label="对话" inert={browsing || settings || (mobile && (drawer || layout.inspector))}>
+    <section data-theme-slot="conversation" data-thread-id={session.thread?.id ?? ''} data-last-turn-status={lastTurn?.status ?? ''} className="conversation" aria-label="对话" inert={browsing || settings || (mobile && (drawer || layout.inspector))}>
       <div data-theme-slot="decoration" className="theme-decoration" aria-hidden="true"/>
       <header data-theme-slot="header" className="conversation-header">
         <button className="icon-button desktop-nav-toggle" aria-label={layout.navigation ? '折叠导航' : '展开导航'} title={layout.navigation ? '折叠导航' : '展开导航'} onClick={() => setLayout(l => ({ ...l, navigation: !l.navigation }))}><Icon name="panel"/></button>
         <button className="mobile-brand icon-button" aria-label="打开导航" onClick={() => setDrawer(true)}><OracleEye/></button>
         <div className="session-title"><span>{session.thread ? title : 'Oraculum · 神谕'}</span><small>{projects.projects.find(p => p.cwd === config?.cwd)?.name ?? 'Codex'}</small></div>
         <button className="icon-button desktop-header-action" title="新建会话" aria-label="新增会话" disabled={disabled || !projectAvailable} onClick={() => void createThread()}><Icon name="plus"/></button>
-        <div className="header-actions"><span className="connection-status" role="status" title={connectionLabel}><i className={connected ? 'online' : ''}/><span className="sr-only">{connectionLabel}</span></span><span className={`turn-state ${active ? 'running' : ''}`} data-testid="turn-status">{!synced && session.thread ? '状态未确认' : session.pending.length ? '待审批' : active ? '执行中' : session.thread ? '空闲' : '—'}</span><button className="icon-button desktop-header-action" aria-label="查询状态" title="查询状态" disabled={disabled || !session.thread} onClick={() => void refresh().catch(report)}><Icon name="refresh" size={16}/></button><button className="icon-button inspector-toggle" aria-label={layout.inspector ? '收起检查器' : '打开检查器'} title="检查器" onClick={() => setLayout(l => ({ ...l, inspector: !l.inspector }))}><Icon name="panel"/></button><button className="icon-button mobile-menu-toggle" aria-label="会话菜单" aria-expanded={menu} onClick={() => setMenu(value => !value)}><Icon name="more"/></button></div>
+        <div className="header-actions"><span className="connection-status" role="status" title={connectionLabel}><i className={connected ? 'online' : ''}/><span className="sr-only">{connectionLabel}</span></span><span className={`turn-state ${active ? 'running' : ''}`} data-testid="turn-status">{!synced && session.thread ? '状态未确认' : session.pending.length ? '待审批' : active ? '执行中' : session.sendBlocked ? '发送待确认' : session.thread ? turnLabel : '—'}</span><button className="icon-button desktop-header-action" aria-label="查询状态" title="查询状态" disabled={disabled || !session.thread} onClick={() => void refresh().catch(report)}><Icon name="refresh" size={16}/></button><button className="icon-button inspector-toggle" aria-label={layout.inspector ? '收起检查器' : '打开检查器'} title="检查器" onClick={() => setLayout(l => ({ ...l, inspector: !l.inspector }))}><Icon name="panel"/></button><button className="icon-button mobile-menu-toggle" aria-label="会话菜单" aria-expanded={menu} onClick={() => setMenu(value => !value)}><Icon name="more"/></button></div>
         {menu && <div className="mobile-session-menu" role="menu" aria-label="会话操作">
           <button role="menuitem" disabled={disabled || !projectAvailable} onClick={() => { setMenu(false); void createThread(); }}><Icon name="plus"/>新建会话</button>
           <button role="menuitem" disabled={disabled || !session.thread} onClick={() => { setMenu(false); void refresh().catch(report); }}><Icon name="refresh"/>查询状态</button>
@@ -538,7 +540,9 @@ function App() {
           {config && !projectAvailable && <p className="error" role="alert">项目已移除或目录失效。请浏览主机文件夹并重新添加；仍可停止当前执行或拒绝审批。</p>}
           {error && <p className="error" role="alert">{error}</p>}
           {session.notices.map((notice, i) => <p className="history-warning" key={i}>{notice}</p>)}
-          {lastTurn?.error && <p className="error" role="alert">{lastTurn.status}：{lastTurn.error.message}</p>}
+          {lastTurn?.error && <p className="error" role="alert">执行失败：{lastTurn.error.message}</p>}
+          {lastReceipt?.status === 'rejected' && <p className="error" role="alert">最近一次发送已被拒绝，请检查错误提示后再发送。</p>}
+          {!active && !session.history?.warning && items.some(view => view.source === 'live') && <p className="history-warning">部分内容尚未从历史记录确认，重新连接后可能无法恢复。</p>}
           <div className="timeline" aria-label="会话时间线">
             {emptyBrand && <div className="empty-state" data-brand-state={emptyBrand}>
               <OracleLogo/><div className="empty-state-copy">
@@ -550,11 +554,10 @@ function App() {
             </div>}
             {Object.entries(session.items).map(([key, view]) => <div key={key} data-turn-id={view.turnId} data-item-id={view.item.id}>
               <Item item={view.item} cwd={session.thread?.cwd} showDiff={openDiff} showDetails={item => openItem(item, view.turnId)}/>
-              {view.source === 'live' && <small className="provenance">实时事件 · 未确认持久化</small>}
             </div>)}
           </div>
           {session.plan && <details className="tool current-plan"><summary>当前计划 · Codex</summary><pre>{session.plan}</pre></details>}
-          {Object.entries(session.diffs).map(([turnId, diff]) => <button className="turn-diff" key={turnId} onClick={() => openDiff(`轮次 ${turnId} · 实时汇总`, diff)}><Icon name="file" size={14}/>查看轮次 Diff · {turnId.slice(-8)}</button>)}
+          {Object.entries(session.diffs).map(([turnId, diff], index) => <button className="turn-diff" key={turnId} onClick={() => openDiff(`第 ${index + 1} 次变更 · 汇总 Diff`, diff)}><Icon name="file" size={14}/>查看变更 Diff{Object.keys(session.diffs).length > 1 ? ` · ${index + 1}` : ''}</button>)}
           <section aria-label="待审批" className="approvals">
             {session.pending.map(request => <NativeRequest key={`${typeof request.id}:${request.id}:${request.bridgeToken ?? ''}`} request={request} busy={approving} canReply={connected} canAccept={synced && projectAvailable} reply={value => {
                 setApproving(true);
@@ -563,12 +566,6 @@ function App() {
                   .catch(report).finally(() => setApproving(false));
               }}/>)}
           </section>
-          {session.thread && <details className="session-details"><summary>会话信息与原生事件</summary><div className="session-meta"><span data-testid="thread-id">{session.thread.id}</span><span data-testid="last-turn-status">{lastTurn?.status}</span><span>最近查询配置：{session.thread.model ?? '未知'} / {session.thread.reasoningEffort ?? '未指定'}</span></div>
-            {session.settings && <details className="events"><summary>当前会话原生权限</summary><pre>{JSON.stringify(session.settings, null, 2)}</pre></details>}
-            {!!session.receipts.length && <details className="events"><summary>最近发送回执</summary>{session.receipts.map(receipt => <p key={receipt.operationId} data-testid="send-receipt" data-operation-id={receipt.operationId}>{{ unknown: '结果未知 · 禁止重发', accepted: 'Harness 已接收 · 待确认终态', rejected: '发送明确被拒绝', completed: '原生已确认完成', failed: '原生已确认失败', interrupted: '原生已确认中断' }[receipt.status]}<small> · {receipt.turnId ?? '尚无已确认的轮次 ID'}</small></p>)}</details>}
-            <details className="events"><summary>原生事件 · 最近 {session.events.length} 条</summary><pre>{session.events.join('\n')}</pre></details>
-          </details>}
-          {!session.thread && <span className="sr-only" data-testid="thread-id">尚未选择会话</span>}
         </div>
       </div>
       <div className="jump-latest-slot">{!atBottom && <button className="jump-latest" onClick={() => { follow.current = true; scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: 'smooth' }); }}><Icon name="arrowDown" size={14}/>返回最新{session.pending.length ? ' · 待审批' : ''}</button>}</div>
@@ -606,6 +603,7 @@ function App() {
       </div>
       <h3>思考强度</h3><div className="settings-effort-options" role="group" aria-label="下一轮思考强度"><button aria-pressed={!effort} onClick={() => setEffort('')}>继承</button>{(models.find(m => m.model === (model || session.thread?.model || config?.model))?.supportedReasoningEfforts ?? []).map(e => <button key={e.reasoningEffort} aria-pressed={effort === e.reasoningEffort} onClick={() => setEffort(e.reasoningEffort)}>{e.reasoningEffort}</button>)}</div>
       <h3>原生权限配置</h3><p>以下为项目默认配置。权限模式可在发送区选择；实际会话权限以发送区的原生确认结果为准。「继承原生」保留现有会话之前的权限覆盖。</p><dl className="native-config"><dt>审批策略</dt><dd>{typeof config?.approvalPolicy === 'object' && config.approvalPolicy !== null ? JSON.stringify(config.approvalPolicy) : config?.approvalPolicy ?? '原生默认'}</dd><dt>沙盒</dt><dd>{config?.sandbox ?? '原生默认'}</dd><dt>审批方</dt><dd>{config?.approvalsReviewer ?? '原生默认'}</dd><dt>Web Search</dt><dd>{config?.webSearch ?? '原生默认'}</dd></dl>
+      <PermissionDetails settings={session.settings} synced={connected && synced} hasThread={!!session.thread}/>
       <ThemeSettings theme={theme} open={settings}/>
       <h3>界面与阅读</h3><label className="reading-size">正文大小 <span>{readingSize}%</span><input aria-label="正文大小" type="range" min="100" max="150" step="10" value={readingSize} onChange={event => setReadingSize(Number(event.target.value))}/></label>
       {!mobile && <button onClick={() => setLayout({ navigation: true, inspector: false, navigationWidth: 264, inspectorWidth: 420 })}>恢复面板默认布局</button>}

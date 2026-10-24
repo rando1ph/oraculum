@@ -65,9 +65,24 @@ function FileChanges({ item, showDiff, cwd }: { item: Extract<ThreadItem, { type
   })}</div>;
 }
 
+// Less common native items retain their original order and an explicit detail
+// entry, without rendering the protocol envelope in the conversation.
+const itemLabels: Partial<Record<ThreadItem['type'], string>> = {
+  hookPrompt: '上下文提示', functionCallOutput: '工具结果', dynamicToolCall: '工具调用',
+  collabAgentToolCall: '子代理操作', subAgentActivity: '子代理活动', webSearch: '网页搜索',
+  imageView: '查看图片', sleep: '等待', imageGeneration: '图片生成',
+  enteredReviewMode: '开始审阅', exitedReviewMode: '审阅结果', contextCompaction: '上下文整理',
+};
+
 export function Item({ item, showDiff, showDetails, cwd }: { item: ThreadItem; showDiff?: (path: string, diff: string) => void; showDetails?: (item: ThreadItem) => void; cwd?: string }) {
-  if (item.type === 'agentMessage') return <article className="message agent-message"><div className="message-heading"><OracleEye className="message-avatar"/><span>Codex</span></div><div className="message-body"><Message text={item.text}/><div className="message-actions"><Copy text={item.text}/></div></div></article>;
-  if (item.type === 'userMessage') return <article data-theme-slot="user-message" className="message user"><div className="user-label">你</div><p>{item.content.map(input => input.type === 'text' ? input.text : `[${input.type}]`).join('\n')}</p></article>;
+  if (item.type === 'agentMessage') return <article data-theme-slot="assistant-message" data-message-role="assistant" className="message agent-message">
+    <header className="message-heading"><OracleEye className="message-avatar"/><span className="message-name">Codex</span><div className="message-actions"><Copy text={item.text}/></div></header>
+    <div className="message-body"><Message text={item.text}/></div>
+  </article>;
+  if (item.type === 'userMessage') return <article data-theme-slot="user-message" data-message-role="user" className="message user">
+    <header className="message-heading"><svg className="message-avatar user-avatar" viewBox="0 0 32 32" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden="true"><circle cx="16" cy="12" r="4"/><path d="M8 25v-2a8 8 0 0 1 16 0v2"/></svg><span className="message-name user-label">你</span></header>
+    <div className="message-body"><p>{item.content.map(input => input.type === 'text' ? input.text : `[${input.type}]`).join('\n')}</p></div>
+  </article>;
   if (item.type === 'plan') return <article data-theme-slot="tool" className="tool plan"><div className="tool-heading"><Glyph kind="plan"/><span>计划</span><span className="native-label">Codex</span></div><Message text={item.text}/></article>;
   if (item.type === 'commandExecution') return <details data-theme-slot="tool" className="tool command">
     <summary><Glyph kind="command"/><span className="tool-title">命令执行</span><code className="tool-preview" title={item.command}>{item.command}</code><Status value={item.status}/></summary>
@@ -83,13 +98,17 @@ export function Item({ item, showDiff, showDetails, cwd }: { item: ThreadItem; s
     <summary><Glyph kind="tool"/><span className="tool-title">{item.tool}</span><span className="tool-preview">{item.server}</span><Status value={item.status}/></summary>
     <div className="tool-body"><pre className="tool-output">{JSON.stringify(item.result ?? item.error ?? item.arguments, null, 2)}</pre><div className="tool-actions">{item.durationMs !== null && <small>{duration(item.durationMs)}</small>}<DetailButton item={item} showDetails={showDetails}/></div></div>
   </details>;
-  return <details data-theme-slot="tool" className="tool"><summary><Glyph kind="tool"/><span className="tool-title">{item.type}</span>{'status' in item && <Status value={item.status}/>}</summary><div className="tool-body"><pre className="tool-output">{JSON.stringify(item, null, 2)}</pre><DetailButton item={item} showDetails={showDetails}/></div></details>;
+  return <details data-theme-slot="tool" className="tool"><summary><Glyph kind="tool"/><span className="tool-title">{itemLabels[item.type] ?? '执行记录'}</span>{'status' in item && <Status value={item.status}/>}</summary><div className="tool-body">
+    {item.type === 'webSearch' && <p>{item.query}</p>}
+    {(item.type === 'enteredReviewMode' || item.type === 'exitedReviewMode') && <Message text={item.review}/>}
+    <DetailButton item={item} showDetails={showDetails}/>
+  </div></details>;
 }
 
 export function ItemDetail({ item }: { item: ThreadItem }) {
   return <div className="item-detail">
     {item.type === 'commandExecution' && <><div className="tool-meta"><Status value={item.status}/>{item.exitCode !== null && <span>退出码 {item.exitCode}</span>}{item.durationMs !== null && <span>{duration(item.durationMs)}</span>}</div><p className="detail-label">命令</p><pre className="command-text">{item.command}</pre><p className="detail-label">工作目录</p><p className="detail-path">{item.cwd}</p><div className="detail-output-heading"><span>执行输出</span><Copy text={item.aggregatedOutput ?? ''}/></div><pre className="detail-output">{item.aggregatedOutput || '尚无输出'}</pre></>}
     {item.type === 'mcpToolCall' && <><div className="tool-meta"><Status value={item.status}/><span>{item.server}</span>{item.durationMs !== null && <span>{duration(item.durationMs)}</span>}</div><p className="detail-label">参数</p><pre className="detail-output">{JSON.stringify(item.arguments, null, 2)}</pre><p className="detail-label">结果</p><pre className="detail-output">{JSON.stringify(item.result ?? item.error, null, 2)}</pre></>}
-    <details className="native-event" open={item.type !== 'commandExecution' && item.type !== 'mcpToolCall'}><summary>原生事件 · {item.type}</summary><Copy text={JSON.stringify(item, null, 2)}/><pre className="detail-output">{JSON.stringify(item, null, 2)}</pre></details>
+    <details className="native-event"><summary>技术详情</summary><Copy text={JSON.stringify(item, null, 2)}/><pre className="detail-output">{JSON.stringify(item, null, 2)}</pre></details>
   </div>;
 }

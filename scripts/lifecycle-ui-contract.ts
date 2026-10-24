@@ -60,7 +60,7 @@ Object.assign(env, { ORACULUM_URL: origin, ORACULUM_USER_DATA_DIR: join(output, 
 let app: ElectronApplication | undefined, browser: Browser | undefined, desktop: Page | undefined, phone: Page | undefined, failure: string | undefined;
 const checks: string[] = [], errors: string[] = [];
 const ready = (page: Page) => expect(page.locator('.connection-status')).toContainText('状态已查询', { timeout: 15_000 });
-const row = (page: Page, id: string) => page.locator(`.session-link[title="${id}"]`);
+const row = (page: Page, id: string) => page.locator(`.session-link[data-thread-id="${id}"]`);
 const actions = (page: Page, id: string) => page.getByRole('button', { name: `会话操作：${id}`, exact: true }).click();
 const closeActions = (page: Page) => page.getByRole('button', { name: '关闭会话操作', exact: true }).click();
 const archiveButton = (page: Page) => page.getByRole('button', { name: /^归档会话/ });
@@ -132,7 +132,7 @@ try {
   holdSnapshot = 'stale-snapshot'; await desktop.getByRole('button', { name: '查询状态', exact: true }).click(); await expect.poll(() => !!releaseSnapshot).toBe(true);
   // Simulate an external official client changing state while history is read.
   archived.add('stale-snapshot'); emit('thread/archived', { threadId: 'stale-snapshot' });
-  await expect(desktop.getByTestId('thread-id')).not.toHaveText('stale-snapshot');
+  await expect(desktop.locator('.conversation')).not.toHaveAttribute('data-thread-id', 'stale-snapshot');
   releaseSnapshot!(); releaseSnapshot = undefined;
   await expect(desktop.getByLabel('消息', { exact: true })).toHaveValue('');
   await expect(desktop.getByRole('button', { name: '发送', exact: true })).toBeDisabled();

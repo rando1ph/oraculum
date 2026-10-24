@@ -2,13 +2,14 @@
    shared layer order before either file introduces a host rule. */
 @layer theme, base, components, utilities, oraculum, theme-defaults;
 @layer oraculum {
-.message { position: relative; min-width: 0; padding: 17px 0; }
-.message-heading { display: flex; align-items: center; gap: 10px; color: var(--accent); font-size: 13px; font-weight: 600; margin-bottom: 6px; }
-.message-heading .message-avatar { width: 27px; height: 27px; flex: 0 0 27px; object-fit: cover; }
-.message-body { padding-left: 37px; min-width: 0; }
-.message-actions { margin-top: 8px; }
-.message.user { padding: 13px 16px; margin: 12px 0 12px 37px; background: linear-gradient(115deg, var(--surface-raised), var(--surface)); border: 1px solid var(--line); border-radius: var(--radius); }
-.user-label { color: var(--muted); font-size: 11px; margin-bottom: 4px; }
+.message { position: relative; min-width: 0; margin: 12px 0; padding: 16px 18px 18px; border: 1px solid var(--line); border-radius: calc(var(--radius) + 4px); background: linear-gradient(125deg, var(--surface-raised), var(--surface)); }
+.message-heading { display: flex; align-items: center; gap: 10px; min-height: 32px; color: var(--accent); font-size: 13px; font-weight: 600; margin-bottom: 12px; }
+.message-heading .message-avatar { width: 32px; height: 32px; flex: 0 0 32px; object-fit: cover; border-radius: 50%; }
+.user-avatar { color: var(--muted); background: var(--surface-hover); border: 1px solid var(--line); padding: 3px; }
+.message-name { min-width: 0; overflow-wrap: anywhere; }
+.message-body { min-width: 0; }
+.message-actions { margin-left: auto; flex-shrink: 0; }
+.user-label { color: var(--foreground); }
 .message.user p { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; font-size: 14px; line-height: 1.75; }
 .markdown { color: var(--foreground); font-size: 14px; line-height: 1.8; overflow-wrap: anywhere; min-width: 0; }
 .markdown > :first-child { margin-top: 0; }
@@ -81,11 +82,9 @@ code.tool-preview { font-family: var(--font-mono); }
 .diff-editor .cm-editor.cm-focused { outline: 1px solid var(--accent); outline-offset: -1px; }
 .diff-empty { padding: 24px 14px; font-size: 12px; color: var(--muted); border: 1px solid var(--line); border-radius: 7px; }
 @media (max-width: 700px) {
-  .message { padding: 14px 0; }
-  .message-body { padding-left: 0; }
-  .message-heading { margin-bottom: 9px; }
-  .message-heading .message-avatar { width: 25px; height: 25px; flex-basis: 25px; }
-  .message.user { margin-left: 0; padding: 12px; }
+  .message { padding: 12px; }
+  .message-heading { margin-bottom: 8px; }
+  .message-heading .message-avatar { width: 28px; height: 28px; flex-basis: 28px; }
   .tool { margin-left: 0; }
   .tool > summary { gap: 7px; padding-inline: 10px; min-height: 46px; }
   .tool-title { font-size: 12px; }

@@ -1,6 +1,7 @@
 // Opt-in actual HONOR USB WebView + Ubuntu Electron + official Codex.
 // Isolated authenticated Bridge; two bounded turns (fixture Diff, harmless approvals + stop).
 // No production server, user project, remote deployment or global Codex edits.
+import { selectedThreadId } from './ui-state';
 import { _electron as electron, chromium, expect, type Browser, type ElectronApplication, type Page, type Cookie } from '@playwright/test';
 import { createRequire } from 'node:module';
 import { execFileSync } from 'node:child_process';
@@ -196,8 +197,8 @@ try {
   evidence.checks.push(review ? 'existing installed fixture retained without reinstallation' : 'actual Android GUI directory installation, no auto-apply', 'independent preferences across both client process restarts');
   step = 'native Codex approvals with themes';
   if (!review) { await drawer(); await phone.getByRole('button', { name: '新建会话', exact: true }).click(); await ready(phone); }
-  const threadId = (await phone.getByTestId('thread-id').textContent())!; expect(threadId).not.toBe('尚未选择会话'); evidence.threadId = threadId;
-  await desktop.getByRole('button', { name: '刷新列表', exact: true }).click(); await desktop.locator(`nav[aria-label="原生会话"] button[title="${threadId}"]`).click(); await ready(desktop);
+  const threadId = (await selectedThreadId(phone))!; expect(threadId).not.toBe(''); evidence.threadId = threadId;
+  await desktop.getByRole('button', { name: '刷新列表', exact: true }).click(); await desktop.locator(`nav[aria-label="原生会话"] button[data-thread-id="${threadId}"]`).click(); await ready(desktop);
   if (!review) {
   const catalog = await service.dispatch('model/list', {}) as { data: Model[] };
   const model = catalog.data.find(m => m.model === (process.env.ORACULUM_TEST_MODEL ?? 'gpt-6-luna')) ?? catalog.data[0];
@@ -222,13 +223,13 @@ try {
     await button.click(); await expect(desktop.locator('.approval')).toHaveCount(0); await expect(phone.locator('.approval')).toHaveCount(0); pending = undefined;
   }
   await expect(phone.getByRole('heading', { name: '主题验收执行记录', exact: true })).toBeVisible({ timeout: 180_000 });
-  await expect(phone.getByTestId('last-turn-status')).toHaveText('completed', { timeout: 30_000 }); await ready(phone);
+  await expect(phone.locator('.conversation')).toHaveAttribute('data-last-turn-status', 'completed', { timeout: 30_000 }); await ready(phone);
   expect(evidence.items.find((i: any) => i.id === evidence.approvals[0].itemId)).toMatchObject({ status: 'completed', exitCode: 0 });
   expect(evidence.items.find((i: any) => i.id === evidence.approvals[1].itemId)).toMatchObject({ status: 'declined' });
   await screenshot(phone, '07-android-native-result');
   await phone.getByLabel('消息', { exact: true }).fill(stopPrompt); await hideIme(); await phone.getByRole('button', { name: '发送', exact: true }).click();
   await expect(phone.getByTestId('turn-status')).toHaveText('执行中'); await phone.getByRole('button', { name: '停止', exact: true }).click();
-  await expect(phone.getByTestId('last-turn-status')).toHaveText('interrupted', { timeout: 30_000 });
+  await expect(phone.locator('.conversation')).toHaveAttribute('data-last-turn-status', 'interrupted', { timeout: 30_000 });
   await phone.reload(); await ready(phone); await currentTheme(phone, 'hong-kong-rain');
   const snapshot = await service.dispatch('bridge/subscribe', { threadId }) as Snapshot;
   expect(snapshot.receipts?.map(r => r.status).sort()).toEqual(['completed', 'interrupted']);
@@ -327,7 +328,7 @@ x.XFlush(d)
   await currentTheme(phone, 'test-violet'); await expect(phone.getByLabel('当前主题')).toBeHidden();
   await nativeRecoveryTap(); await expect(phone.getByLabel('消息', { exact: true })).toBeVisible(); await screenshot(phone, '11-android-restored');
   await writeFile(join(installed, 'theme.css'), css);
-  await expect(phone.getByTestId('thread-id')).toHaveText(threadId); expect(evidence.requests).toHaveLength(review ? 0 : 2);
+  await expect(phone.locator('.conversation')).toHaveAttribute('data-thread-id', threadId); expect(evidence.requests).toHaveLength(review ? 0 : 2);
   evidence.checks.push('actual Electron native menu and HONOR ADB long-key native dialog recover entirely concealed page, preserving thread and no replay');
   expect(errors).toEqual([]); expect(await hashConfig()).toBe(baselineConfig); evidence.result = 'passed';
 } catch (error) {

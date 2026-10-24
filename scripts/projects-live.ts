@@ -2,6 +2,7 @@
 // Only read-only pwd and exact harmless printf approvals in TWO EXISTING folders.
 // Run with ORACULUM_EXISTING_PROJECTS='["/absolute/project-a","/absolute/project-b"]'
 // and ORACULUM_ANDROID_CDP=http://127.0.0.1:<adb-forwarded-Oraculum-port>.
+import { selectedThreadId, sessionSnapshot } from './ui-state';
 import { _electron as electron, chromium, expect, type ElectronApplication, type Browser, type Page } from '@playwright/test';
 import { createRequire } from 'node:module';
 import { spawn, execFileSync, type ChildProcess } from 'node:child_process';
@@ -131,9 +132,9 @@ async function register(page: Page, cwd: string, name: string) {
   await page.getByLabel('模型', { exact: true }).selectOption(model);
   await page.getByRole('button', { name: '新建会话', exact: true }).click();
   await ready(page);
-  await expect(page.getByTestId('thread-id')).not.toHaveText('尚未选择会话', { timeout: 30_000 });
-  const id = (await page.getByTestId('thread-id').textContent())!;
-  expect(id).not.toBe('尚未选择会话'); testIds.add(id);
+  await expect(page.locator('.conversation')).not.toHaveAttribute('data-thread-id', '', { timeout: 30_000 });
+  const id = (await selectedThreadId(page))!;
+  expect(id).not.toBe(''); testIds.add(id);
   const snapshot = await rpc<Snapshot>(page, 'bridge/subscribe', { threadId: id });
   expect(snapshot.thread.cwd).toBe(cwd);
   evidence.threads.push({ id, cwd, registeredFrom: name });
@@ -141,10 +142,10 @@ async function register(page: Page, cwd: string, name: string) {
 }
 async function select(page: Page, cwd: string, threadId: string) {
   await navigation(page); await page.getByLabel('项目目录', { exact: true }).selectOption(cwd); await ready(page);
-  if (await page.getByTestId('thread-id').textContent() !== threadId) {
-    await navigation(page); await page.locator(`nav[aria-label="原生会话"] button[title="${threadId}"]`).click(); await ready(page);
+  if (await selectedThreadId(page) !== threadId) {
+    await navigation(page); await page.locator(`nav[aria-label="原生会话"] button[data-thread-id="${threadId}"]`).click(); await ready(page);
   }
-  await expect(page.getByTestId('thread-id')).toHaveText(threadId);
+  await expect(page.locator('.conversation')).toHaveAttribute('data-thread-id', threadId);
   if (page === phone && await page.getByRole('button', { name: '关闭导航遮罩', exact: true }).isVisible()) await page.getByRole('button', { name: '折叠导航', exact: true }).click();
 }
 async function send(page: Page, marker: string, approvals = false) {
@@ -160,8 +161,8 @@ async function send(page: Page, marker: string, approvals = false) {
 }
 async function finish(page: Page, marker: string) {
   await expect(page.getByRole('heading', { name: marker, exact: true })).toBeVisible({ timeout: 180_000 });
-  await expect(page.getByTestId('last-turn-status')).toHaveText('completed', { timeout: 30_000 });
-  await expect(page.getByTestId('send-receipt').last()).toContainText('原生已确认完成', { timeout: 30_000 });
+  await expect(page.locator('.conversation')).toHaveAttribute('data-last-turn-status', 'completed', { timeout: 30_000 });
+  await expect.poll(async () => (await sessionSnapshot(page)).receipts?.[0]?.status, { timeout: 30_000 }).toBe('completed');
 }
 try {
   await startBridge(); adb('reverse', 'tcp:17860', 'tcp:17860');
@@ -220,8 +221,8 @@ try {
   await stopBridge(); await expect(desktop.getByText('连接已断开，主机任务不会因此停止。')).toBeVisible();
   await startBridge();
   for (const page of [desktop, phone]) { await page.reload(); await ready(page); }
-  await expect(desktop.getByTestId('thread-id')).toHaveText(first);
-  await expect(phone.getByTestId('thread-id')).toHaveText(second);
+  await expect(desktop.locator('.conversation')).toHaveAttribute('data-thread-id', first);
+  await expect(phone.locator('.conversation')).toHaveAttribute('data-thread-id', second);
   await expect(desktop.getByRole('heading', { name: 'ORACULUM_PROJECT_DESKTOP_OK', exact: true })).toBeVisible();
   await expect(phone.getByRole('heading', { name: 'ORACULUM_PROJECT_ANDROID_OK', exact: true })).toBeVisible();
   expect(await rpc(desktop, 'bridge/projects', {})).toMatchObject({ projects: expect.arrayContaining(targets.map(cwd => expect.objectContaining({ cwd, available: true }))) });

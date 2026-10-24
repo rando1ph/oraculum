@@ -1,5 +1,6 @@
 // Opt-in real Android WebView smoke. Prerequisites and IME checks are documented
 // in PHASE_2_REMOTE.md. CDP must be forwarded from the Oraculum debug app only.
+import { selectedThreadId } from './ui-state';
 import { chromium, expect } from '@playwright/test';
 import { mkdir, writeFile } from 'node:fs/promises';
 
@@ -25,8 +26,8 @@ try {
   await page.getByLabel('模型', { exact: true }).selectOption(process.env.ORACULUM_TEST_MODEL ?? 'gpt-6-luna');
   await page.getByLabel('思考强度', { exact: true }).selectOption('low');
   await page.getByRole('button', { name: '新建会话', exact: true }).click();
-  await expect(page.getByTestId('thread-id')).not.toHaveText('尚未选择会话');
-  const threadId = await page.getByTestId('thread-id').innerText();
+  await expect(page.locator('.conversation')).not.toHaveAttribute('data-thread-id', '');
+  const threadId = await selectedThreadId(page);
   evidence.threadId = threadId;
   await page.getByLabel('消息', { exact: true }).fill(
     '中文真机测试。Controlled Oraculum Android smoke, work ONLY in cwd. Read hello.txt. ' +
@@ -56,7 +57,7 @@ try {
     await expect(approval).toHaveCount(0);
   }
   await expect(page.getByRole('heading', { name: 'ORACULUM_ANDROID_OK', exact: true })).toBeVisible({ timeout: 180_000 });
-  await expect(page.getByTestId('last-turn-status')).toHaveText('completed', { timeout: 30_000 });
+  await expect(page.locator('.conversation')).toHaveAttribute('data-last-turn-status', 'completed', { timeout: 30_000 });
   evidence.items = await page.locator('[data-item-id]').evaluateAll(nodes => nodes.map(n => ({
     itemId: n.getAttribute('data-item-id'), turnId: n.getAttribute('data-turn-id'),
   })));
@@ -65,7 +66,7 @@ try {
   // Reopening the actual WebView reads native history; there is no local replay.
   await page.reload();
   await expect(page.getByRole('status')).toContainText('状态已查询', { timeout: 30_000 });
-  await expect(page.getByTestId('thread-id')).toHaveText(threadId);
+  await expect(page.locator('.conversation')).toHaveAttribute('data-thread-id', threadId);
   await expect(page.getByRole('heading', { name: 'ORACULUM_ANDROID_OK', exact: true })).toBeVisible();
   await expect(page.locator('.history-warning').first()).toContainText('部分历史未能恢复');
   evidence.nativeHistoryReload = true;

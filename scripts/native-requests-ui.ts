@@ -35,7 +35,7 @@ Object.assign(env, { ORACULUM_URL: origin, ORACULUM_USER_DATA_DIR: join(output, 
 let app: ElectronApplication | undefined, browser: Browser | undefined, desktop!: Page, phone!: Page;
 let id = 0;
 const checks: string[] = [], errors: string[] = [];
-const ready = (page: Page) => expect(page.getByRole('status', { includeHidden: true })).toContainText('状态已查询');
+const ready = (page: Page) => expect(page.locator('.connection-status')).toContainText('状态已查询');
 async function request(method: string, params: object) {
   const requestId = ++id;
   bus.emit('message', { id: requestId, method, params: { threadId, turnId, ...params } });
@@ -54,14 +54,15 @@ async function screenshot(name: string) {
 try {
   await server.listen({ host: '127.0.0.1', port });
   app = await electron.launch({ executablePath: require('electron'), args: [resolve('apps/desktop/main.cjs')], env });
-  desktop = await app.firstWindow(); desktop.on('pageerror', error => errors.push(error.message)); await ready(desktop);
+  await expect.poll(() => app!.windows().some(page => page.url().startsWith(origin)), { timeout: 15_000 }).toBe(true);
+  desktop = app.windows().find(page => page.url().startsWith(origin))!; desktop.on('pageerror', error => errors.push(error.message)); await ready(desktop);
   browser = await chromium.launch(); phone = await browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
   phone.on('pageerror', error => errors.push(error.message)); await phone.goto(origin); await ready(phone);
   await desktop.getByRole('button', { name: '设置', exact: true }).click();
   await expect(desktop.locator('.native-config')).toContainText('never'); await expect(desktop.locator('.native-config')).toContainText('read-only'); await expect(desktop.locator('.native-config')).toContainText('disabled');
   await desktop.getByRole('button', { name: '关闭设置', exact: true }).click();
-  await desktop.locator('.session-details > summary').click(); await desktop.getByText('当前会话原生权限', { exact: true }).click();
-  await expect(desktop.locator('.session-details')).toContainText('readOnly'); await desktop.locator('.session-details > summary').click();
+  await expect(desktop.getByTestId('effective-permissions')).toContainText('原生已确认');
+  await expect(desktop.getByTestId('effective-permissions')).toContainText('read-only');
   checks.push('configured policies and actual resumed session settings displayed without fixed workspace-write/on-request labels');
   const form = { type: 'object', required: ['name', 'count', 'allow', 'tier', 'areas'], properties: {
     name: { type: 'string', title: '姓名', minLength: 2 }, count: { type: 'integer', title: '数量', minimum: 1, maximum: 3 },
@@ -127,7 +128,8 @@ try {
   const childId = 'native-child-fixture';
   bus.emit('message', { method: 'thread/started', params: { thread: { ...thread, id: childId, parentThreadId: threadId } } });
   requestId = await request('item/tool/requestUserInput', { threadId: childId, turnId: 'child-turn', itemId: 'child-input', isBlocking: true, autoResolutionMs: null, questions: [{ id: 'answer', header: '子代理', question: '子代理请求输入', isOther: false, isSecret: false, options: null }] });
-  await phone.reload(); await ready(phone); await expect(phone.locator('.approval')).toContainText('子代理请求 · native-child-fixture');
+  await phone.reload(); await ready(phone); await expect(phone.locator('.approval')).toContainText('来自子代理的请求');
+  await expect(phone.locator('.approval')).not.toContainText(childId);
   await phone.getByLabel('你的答案', { exact: true }).fill('原生子线程答案'); await phone.getByRole('button', { name: '提交答案', exact: true }).click();
   await replied(requestId, { answers: { answer: { answers: ['原生子线程答案'] } } });
   requestId = await request('mcpServer/elicitation/request', mcp(null, { threadId: childId, turnId: 'child-turn' }));

@@ -93,8 +93,8 @@ try {
   page.on('pageerror', error => errors.push(error.message));
   await resize(page, 1440, 960);
   await expect(page.getByRole('status', { includeHidden: true })).toContainText('状态已查询', { timeout: 30_000 });
-  await page.locator(`nav[aria-label="原生会话"] button[title="${original.threadId}"]`).click();
-  await expect(page.getByTestId('thread-id')).toHaveText(original.threadId);
+  await page.locator(`nav[aria-label="原生会话"] button[data-thread-id="${original.threadId}"]`).click();
+  await expect(page.locator('.conversation')).toHaveAttribute('data-thread-id', original.threadId);
   const snapshot = await service.dispatch('bridge/subscribe', { threadId: original.threadId }) as Snapshot;
   const recordedTest = original.items.find(item => item.type === 'commandExecution' && item.command?.includes('node --test'));
   const restoredTest = snapshot.thread.turns.flatMap(turn => turn.items).find(item => item.id === recordedTest?.id);

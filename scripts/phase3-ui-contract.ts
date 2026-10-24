@@ -37,7 +37,8 @@ const codex = {
     if (method === 'config/read') response = { config: { model: 'contract-model', model_reasoning_effort: 'low', model_provider: 'fixture' } };
     else if (method === 'model/list') response = { data: [{ id: 'contract-model', model: 'contract-model', displayName: 'Simulated contract model', supportedReasoningEfforts: [{ reasoningEffort: 'low' }] }], nextCursor: null };
     else if (method === 'thread/list') response = { data: [threads[params.cursor ? olderId : recentId]], nextCursor: params.cursor ? null : 'second-page' };
-    else if (method === 'thread/read' || method === 'thread/resume') response = { thread: threads[params.threadId] };
+    else if (method === 'thread/read') response = { thread: threads[params.threadId] };
+    else if (method === 'thread/resume') response = { thread: threads[params.threadId], approvalPolicy: 'on-request', sandbox: { type: 'readOnly', networkAccess: false }, approvalsReviewer: 'user' };
     else if (method === 'thread/turns/list') {
       if (params.cursor === 'older-history') {
         await new Promise<void>(accept => { releaseHistory = accept; });
@@ -78,16 +79,17 @@ async function run(name: string, test: () => Promise<void>) {
     await page.screenshot({ path: join(output, `simulated-${name}.png`) });
   }
 }
-async function ready() { await expect(page.getByRole('status')).toContainText('状态已查询', { timeout: 15_000 }); }
+async function ready() { await expect(page.locator('.connection-status')).toContainText('状态已查询', { timeout: 15_000 }); }
 async function resetRecent() {
   await page.evaluate(key => localStorage.removeItem(key), `oraculum.thread:${cwd}`);
   await page.reload(); await ready();
-  await expect(page.getByTestId('thread-id')).toHaveText(recentId);
+  await expect(page.locator('.conversation')).toHaveAttribute('data-thread-id', recentId);
 }
 try {
   await server.listen({ host: '127.0.0.1', port });
   app = await electron.launch({ executablePath: require('electron'), args: [resolve('apps/desktop/main.cjs')], env });
-  page = await app.firstWindow(); page.on('pageerror', error => errors.push(error.message));
+  await expect.poll(() => app!.windows().some(page => page.url().startsWith(env.ORACULUM_URL)), { timeout: 15_000 }).toBe(true);
+  page = app.windows().find(page => page.url().startsWith(env.ORACULUM_URL))!; page.on('pageerror', error => errors.push(error.message));
   await ready();
   await run('delayed-ack-preserves-next-draft', async () => {
     const message = page.getByLabel('消息', { exact: true });
@@ -109,11 +111,11 @@ try {
   }
   await run('saved-thread-on-second-page', async () => {
     await page.getByRole('button', { name: '加载更多会话', exact: true }).click();
-    await page.locator(`nav[aria-label="原生会话"] button[title="${olderId}"]`).click();
-    await expect(page.getByTestId('thread-id')).toHaveText(olderId);
+    await page.locator(`nav[aria-label="原生会话"] button[data-thread-id="${olderId}"]`).click();
+    await expect(page.locator('.conversation')).toHaveAttribute('data-thread-id', olderId);
     await ready(); await page.reload(); await ready();
-    await expect(page.getByTestId('thread-id')).toHaveText(olderId);
-    await expect(page.locator(`nav[aria-label="原生会话"] button[title="${olderId}"]`)).toHaveAttribute('aria-current', 'page');
+    await expect(page.locator('.conversation')).toHaveAttribute('data-thread-id', olderId);
+    await expect(page.locator(`nav[aria-label="原生会话"] button[data-thread-id="${olderId}"]`)).toHaveAttribute('aria-current', 'page');
   });
   await resetRecent();
   await run('reconnect-serialized', async () => {

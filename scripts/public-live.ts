@@ -1,6 +1,7 @@
 // Opt-in public deployment acceptance. One native model turn; no deployment writes.
 // Run only with the separately approved Bridge/tunnel already running. The operator
 // controls their recorded tunnel PID when tunnel.ready / tunnel.disconnected appear.
+import { selectedThreadId, sessionSnapshot } from './ui-state';
 import { chromium, _electron as electron, expect, type Page } from '@playwright/test';
 import WebSocket from 'ws';
 import { createRequire } from 'node:module';
@@ -111,13 +112,13 @@ try {
   step = 'official native turn and approvals';
   await remote.getByLabel('模型', { exact: true }).selectOption(process.env.ORACULUM_TEST_MODEL ?? 'gpt-6-luna');
   await remote.getByLabel('思考强度', { exact: true }).selectOption('low');
-  const previous = await remote.getByTestId('thread-id').innerText();
+  const previous = await selectedThreadId(remote);
   await remote.getByRole('button', { name: '新建会话', exact: true }).click();
-  await expect(remote.getByTestId('thread-id')).not.toHaveText('尚未选择会话');
-  await expect(remote.getByTestId('thread-id')).not.toHaveText(previous);
-  const threadId = await remote.getByTestId('thread-id').innerText(); evidence.threadId = threadId;
+  await expect(remote.locator('.conversation')).not.toHaveAttribute('data-thread-id', '');
+  await expect(remote.locator('.conversation')).not.toHaveAttribute('data-thread-id', previous);
+  const threadId = await selectedThreadId(remote); evidence.threadId = threadId;
   await local.getByRole('button', { name: '刷新列表', exact: true }).click();
-  await local.getByTitle(threadId, { exact: true }).click();
+  await local.locator(`.session-link[data-thread-id="${threadId}"]`).click();
   await expect(local.getByRole('status')).toContainText('状态已查询');
   await remote.getByLabel('消息', { exact: true }).fill('Controlled Oraculum public HTTPS/WSS acceptance test. Work only in cwd. No files, skills, MCP, web, subagents, configuration changes or other work. Make TWO SEPARATE shell approval requests sequentially with sandbox_permissions=require_escalated: first command exactly `printf ORACULUM_PUBLIC_ALLOW_OK` with justification="Oraculum harmless public allow test"; then exactly `printf ORACULUM_PUBLIC_DECLINE_OK` with justification="Oraculum harmless public decline test". The second will be declined: do not retry or run it another way. Finish with Markdown heading `## ORACULUM_PUBLIC_OK` and briefly report approval outcomes.');
   await remote.getByRole('button', { name: '发送', exact: true }).click(); evidence.modelTurns = 1;
@@ -133,12 +134,12 @@ try {
   }
   for (const page of [remote, local]) {
     await expect(page.getByRole('heading', { name: 'ORACULUM_PUBLIC_OK', exact: true })).toBeVisible({ timeout: 180_000 });
-    await expect(page.getByTestId('last-turn-status')).toHaveText('completed', { timeout: 30_000 });
-    await expect(page.getByTestId('send-receipt')).toHaveCount(1);
-    await expect(page.getByTestId('send-receipt')).toContainText('原生已确认完成');
+    await expect(page.locator('.conversation')).toHaveAttribute('data-last-turn-status', 'completed', { timeout: 30_000 });
+    await expect.poll(async () => (await sessionSnapshot(page)).receipts?.length).toBe(1);
+    await expect.poll(async () => (await sessionSnapshot(page)).receipts?.[0]?.status).toBe('completed');
   }
   const ids = await itemIds(remote); expect(await itemIds(local)).toEqual(ids); evidence.items = ids;
-  evidence.operationId = await remote.getByTestId('send-receipt').getAttribute('data-operation-id');
+  evidence.operationId = (await sessionSnapshot(remote)).receipts?.[0]?.operationId;
   evidence.events = [...nativeMethods];
   expect(nativeMethods.has('item/agentMessage/delta')).toBe(true);
   await remote.screenshot({ path: join(output, 'public-completed.png'), fullPage: true });
@@ -152,11 +153,11 @@ try {
   await expect.poll(() => access(join(output, 'tunnel.restored')).then(() => true, () => false), { timeout: 180_000 }).toBe(true);
   await remote.getByRole('button', { name: '重新连接', exact: true }).click();
   await expect(remote.getByRole('status')).toContainText('状态已查询', { timeout: 30_000 });
-  await expect(remote.getByTestId('thread-id')).toHaveText(threadId);
-  await expect(remote.getByTestId('last-turn-status')).toHaveText('completed');
+  await expect(remote.locator('.conversation')).toHaveAttribute('data-thread-id', threadId);
+  await expect(remote.locator('.conversation')).toHaveAttribute('data-last-turn-status', 'completed');
   expect(await itemIds(remote)).toEqual(ids);
-  await expect(remote.getByTestId('send-receipt')).toHaveCount(1);
-  await expect(remote.getByTestId('send-receipt')).toHaveAttribute('data-operation-id', evidence.operationId);
+  await expect.poll(async () => (await sessionSnapshot(remote)).receipts?.length).toBe(1);
+  await expect.poll(async () => (await sessionSnapshot(remote)).receipts?.[0]?.operationId).toBe(evidence.operationId);
   expect(outboundTurns).toEqual([evidence.operationId]);
   evidence.tunnelRecovery = { nativeIdsRetained: true, receiptRetained: true, turnStartCount: outboundTurns.length, localUnaffected: true };
   step = 'revoke public device';

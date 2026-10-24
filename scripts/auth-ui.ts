@@ -1,4 +1,5 @@
 // Opt-in actual Electron + running authenticated local Bridge; no model turns.
+import { selectedThreadId } from './ui-state';
 import { _electron as electron, expect } from '@playwright/test';
 import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
@@ -27,7 +28,7 @@ try {
   const session = await page.evaluate(async () => (await fetch('/auth/session')).json());
   deviceId = session.device.id;
   evidence.deviceId = deviceId;
-  evidence.nativeThread = await page.getByTestId('thread-id').innerText();
+  evidence.nativeThread = await selectedThreadId(page);
   evidence.cookies = (await page.context().cookies()).map(({ name, httpOnly, secure, sameSite }) => ({ name, httpOnly, secure, sameSite }));
   expect(evidence.cookies).toEqual([expect.objectContaining({ name: 'oraculum_local', httpOnly: true, sameSite: 'Strict' })]);
   expect(await page.evaluate(() => document.cookie)).toBe('');

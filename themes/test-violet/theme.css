@@ -18,7 +18,7 @@
 [data-theme-slot="navigation"] { background-color: var(--surface); border-radius: 18px; }
 [data-theme-slot="header"] { background-color: var(--surface-raised); }
 [data-theme-slot="conversation"] { border-radius: 18px; }
-[data-theme-slot="user-message"] { background-color: var(--surface-raised); border-radius: 18px; }
+[data-theme-slot="user-message"], [data-theme-slot="assistant-message"] { background-color: var(--surface-raised); border-radius: 18px; }
 [data-theme-slot="tool"] { background-color: var(--surface); border-radius: 14px; margin-block: 12px; }
 [data-theme-slot="content"] { max-width: 900px; padding-inline: 24px; }
 [data-theme-slot="decoration"] { background-image: linear-gradient(145deg, #572880, #100c18); }
