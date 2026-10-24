@@ -49,3 +49,13 @@ pnpm test:process:live --reuse /absolute/path/to/fixture.json
 - Existing unclassified agent messages remain visible even when they might be progress. This protects final output on older/different native contracts.
 - Subagent presentation uses only supplied collab/activity items and last-known states; no independent child polling or full trajectory is built.
 - Android Release, DEB installation, public network tests and production service deployment remain outside this task. The Task remains `In progress` for independent acceptance.
+
+## 2026-10-25 revalidation
+
+The renewed user request was checked against the latest Notion Project/Task and the original DOCX p8–p12 text and embedded images. The existing implementation at `88af57ce40ac49d3a44ad9a9563f6468709e0d1f` already covers the requested scope; no product changes were needed. Notion contained a later acceptance/Done record. Per this request, the Task was returned to `In progress` for review, preserving the earlier implementation and acceptance history.
+
+- Fresh `pnpm check`, `pnpm test` (314 tests / 31 files), `pnpm build` and `pnpm test:process:ui` (7 groups) passed. The controlled UI checks include public reasoning deltas, native ordering, approvals/failures, paging/reading anchors, unknown-send, reconnection and four themes; those event paths are not all live model evidence.
+- Fresh `pnpm test:process:live` passed on real Ubuntu Electron and HONOR REA-AN00 / Android 15 Debug WebView over USB ADB reverse. Exactly one official Codex 0.160.0 Turn produced commentary, two commands, one file change, one read-only MCP call and a separate final answer. Native duration was 31,522 ms, including the deliberate eight-second capture wait.
+- Both clients verified advancing elapsed time and Stop while running, automatic completion folding, final-answer visibility, expansion/collapse, actual output/exit code, read-only Diff, refresh, explicit reconnect and four themes. Report: `.local/evidence/phase4d4/live-4FOFzl/acceptance.json`; controlled UI report: `.local/evidence/phase4d4/process-contract/run-mPuqXq/report.json`.
+- The runner deleted its own test thread, restored device cookies/storage and the pre-existing ADB mapping, verified unchanged global Codex configuration, and left the formal Bridge `inactive / dead / MainPID=0`. No cleanup errors occurred. Screenshots remain private/ignored locally and are provided in the original Notion Task.
+- No 4D.5, full trajectory, history-completeness UI, installation or deployment work was performed. Existing limitations above remain; no new product defect was found.
