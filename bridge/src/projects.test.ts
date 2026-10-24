@@ -134,8 +134,8 @@ it('revokes directory operations while keeping observed Stop and Decline availab
   const bridgeToken = service.pending.get('pending')!.bridgeToken;
   await projects.unregister(second);
   codex.request.mockClear();
-  for (const method of ['thread/list', 'thread/start', 'bridge/config', 'bridge/subscribe', 'bridge/history', 'turn/start']) {
-    await expect(service.dispatch(method, { cwd: second, threadId: 'removed-project', text: 'blocked' })).rejects.toThrow('registered');
+  for (const method of ['thread/list', 'thread/start', 'bridge/config', 'bridge/subscribe', 'bridge/history', 'turn/start', 'thread/archive', 'thread/unarchive', 'thread/delete']) {
+    await expect(service.dispatch(method, { cwd: second, threadId: 'removed-project', text: 'blocked', confirm: true })).rejects.toThrow('registered');
   }
   await expect(service.dispatch('bridge/approve', { threadId: 'removed-project', requestId: 'pending', bridgeToken, decision: 'accept' })).rejects.toThrow('registered');
   expect(codex.request).not.toHaveBeenCalled();

@@ -1,7 +1,7 @@
 import { EventEmitter } from 'node:events';
 import { randomUUID } from 'node:crypto';
 import { NativeRpcError, type Codex } from './codex';
-import type { Approval, RpcId, Snapshot, WireMessage, BridgeEvent, LocalConfig, Thread, NativeSessionSettings } from '../../packages/shared/protocol';
+import type { Approval, RpcId, Snapshot, WireMessage, BridgeEvent, LocalConfig, Thread, NativeSessionSettings, ThreadLifecycleState, ThreadLifecycleResult } from '../../packages/shared/protocol';
 import type { ThreadStartParams } from '../../.local/codex-protocol/v2/ThreadStartParams';
 import type { ThreadStartResponse } from '../../.local/codex-protocol/v2/ThreadStartResponse';
 import type { TurnStartParams } from '../../.local/codex-protocol/v2/TurnStartParams';
@@ -32,6 +32,13 @@ export class BridgeService extends EventEmitter {
   private settings = new Map<string, NativeSessionSettings>();
   private settingsQueries = new Map<string, number>();
   private resuming = new Map<string, Promise<void>>();
+  private archived = new Set<string>();
+  private lifecycleRevision = 0;
+  private nativeStatuses = new Map<string, Thread['status']['type']>();
+  private deleted = new Set<string>();
+  private lifecycle = new Set<string>();
+  private inFlight = new Map<string, number>();
+  private uncertainLifecycle = new Map<string, 'active' | 'archived' | 'deleted'>();
   constructor(readonly codex: Pick<Codex, 'request' | 'send'> & { on(event: string, listener: (...args: any[]) => void): unknown }, readonly cwd: string,
     private receipts?: ReceiptStore, private projects?: ProjectDirectories) {
     super();
@@ -86,6 +93,14 @@ export class BridgeService extends EventEmitter {
       return;
     }
     if (!threadId || !this.threads.has(threadId)) return;
+    if (message.method === 'thread/status/changed') {
+      const status = params.status as Thread['status'] | undefined;
+      if (status?.type) this.nativeStatuses.set(threadId, status.type);
+    }
+    if (message.method === 'thread/archived' || message.method === 'thread/unarchived' || message.method === 'thread/deleted') {
+      const state = message.method === 'thread/archived' ? 'archived' : message.method === 'thread/unarchived' ? 'active' : 'deleted';
+      this.publishLifecycle(threadId, state);
+    }
     this.revisions.set(threadId, (this.revisions.get(threadId) ?? 0) + 1);
     if (message.method === 'thread/settings/updated') {
       const settings = params.threadSettings as { cwd?: string; approvalPolicy: NativeSessionSettings['approvalPolicy'];
@@ -123,6 +138,24 @@ export class BridgeService extends EventEmitter {
     this.emit('event', { type: 'event', event: message } as BridgeEvent);
   }
   async dispatch(method: string, params: Record<string, unknown>, context?: { deviceId: string }): Promise<unknown> {
+    const threadId = typeof params.threadId === 'string' ? params.threadId : undefined;
+    const mutation = ['thread/archive', 'thread/unarchive', 'thread/delete'].includes(method);
+    const guarded = mutation || ['bridge/subscribe', 'bridge/history', 'turn/start'].includes(method);
+    if (!threadId || !guarded) return this.dispatchRequest(method, params, context);
+    // Reserve before the first asynchronous directory/read check. Other devices
+    // cannot sneak in a send or native resume while a lifecycle check is running.
+    if ([...this.lifecycle].some(id => this.related(id, threadId)) ||
+      (mutation && [...this.inFlight].some(([id, count]) => count > 0 && this.related(id, threadId)))) {
+      throw new Error('会话操作正在进行，请等待完成后查询状态。');
+    }
+    if (this.deleted.has(threadId)) throw new Error('会话已删除，请刷新会话列表。');
+    if (this.uncertainLifecycle.has(threadId)) throw new Error('会话操作结果未知，请刷新普通及已归档列表核实；不要重复操作。');
+    if (!mutation && this.archived.has(threadId)) throw new Error('会话已归档，请先恢复归档。');
+    if (mutation) this.lifecycle.add(threadId); else this.beginFlight(threadId);
+    try { return await this.dispatchRequest(method, params, context); }
+    finally { if (mutation) this.lifecycle.delete(threadId); else this.endFlight(threadId); }
+  }
+  private async dispatchRequest(method: string, params: Record<string, unknown>, context?: { deviceId: string }): Promise<unknown> {
     if (method === 'bridge/projects') {
       return this.projects?.list() ?? { root: dirname(this.cwd), projects: [{ cwd: this.cwd, name: basename(this.cwd) }] };
     }
@@ -148,14 +181,23 @@ export class BridgeService extends EventEmitter {
     }
     if (method === 'thread/list' || method === 'bridge/threads') {
       const cwd = await this.projectCwd(params.cwd);
+      if (params.archived !== undefined && typeof params.archived !== 'boolean') throw new Error('Expected archived boolean');
+      const archived = params.archived === true;
+      const revision = this.lifecycleRevision;
       const page = await this.codex.request<ThreadListResponse>('thread/list', {
-        cwd, limit: 30, sortKey: 'updated_at', modelProviders: [],
+        cwd, archived, limit: 30, sortKey: 'updated_at', modelProviders: [],
         cursor: typeof params.cursor === 'string' ? params.cursor : undefined,
       });
-      page.data = page.data.filter(thread => thread.cwd === cwd);
-      for (const thread of page.data) this.track(thread.id, cwd);
-      if (!params.cursor) {
-        page.data = [...this.fresh.values()].filter(t => this.threadCwd(t.id) === cwd && !page.data.some(p => p.id === t.id)).concat(page.data);
+      if (revision !== this.lifecycleRevision) throw new Error('会话状态已变化，请刷新列表。');
+      page.data = page.data.filter(thread => thread.cwd === cwd && !this.deleted.has(thread.id));
+      for (const thread of page.data) {
+        this.track(thread.id, cwd);
+        if (archived) this.archived.add(thread.id); else this.archived.delete(thread.id);
+        const expected = this.uncertainLifecycle.get(thread.id);
+        if (expected === (archived ? 'archived' : 'active')) this.publishLifecycle(thread.id, expected);
+      }
+      if (!params.cursor && !archived) {
+        page.data = [...this.fresh.values()].filter(t => this.threadCwd(t.id) === cwd && !this.archived.has(t.id) && !this.deleted.has(t.id) && !this.uncertainLifecycle.has(t.id) && !page.data.some(p => p.id === t.id)).concat(page.data);
       }
       return method === 'bridge/threads' ? page.data.map(t => t.id) : page;
     }
@@ -179,6 +221,9 @@ export class BridgeService extends EventEmitter {
     // A turn/approval/history request cannot reassign an existing thread by
     // supplying a different cwd. Its project came from the validated native list.
     const cwd = this.threadCwd(threadId);
+    if (['thread/archive', 'thread/unarchive', 'thread/delete'].includes(method)) {
+      return this.changeLifecycle(method, threadId, cwd, params);
+    }
     const pendingResponse = method === 'bridge/approve' ? this.pending.get(params.requestId as RpcId) : undefined;
     const needsDirectory = ['bridge/subscribe', 'bridge/history', 'turn/start'].includes(method) ||
       (pendingResponse?.params.threadId === threadId && responseNeedsDirectory(pendingResponse, params));
@@ -268,6 +313,130 @@ export class BridgeService extends EventEmitter {
     }
     throw new Error('Method not exposed by Oraculum');
   }
+  private related(first: string, second: string) {
+    return first === second || this.descendsFrom(first, second) || this.descendsFrom(second, first);
+  }
+  private beginFlight(threadId: string) { this.inFlight.set(threadId, (this.inFlight.get(threadId) ?? 0) + 1); }
+  private endFlight(threadId: string) {
+    const count = (this.inFlight.get(threadId) ?? 1) - 1;
+    if (count) this.inFlight.set(threadId, count); else this.inFlight.delete(threadId);
+  }
+  private assertLifecycleIdle(threadId: string, cwd: string) {
+    if (['active', 'systemError'].includes(this.nativeStatuses.get(threadId) ?? '') || this.busy.has(threadId) || this.activeTurns.has(threadId) || this.unknownSends.has(threadId) || this.receipts?.blocked(cwd, threadId)) {
+      throw new Error('会话运行中或发送结果未知，请先停止并查询状态。');
+    }
+    if ([...this.pending.values()].some(request => this.related(request.params.threadId, threadId))) {
+      throw new Error('会话仍有待处理审批或输入，请先处理并查询状态。');
+    }
+    if (this.threadParents.has(threadId) || [...this.threadParents.values()].includes(threadId)) {
+      throw new Error('会话存在子会话依赖，暂不支持安全归档或删除。');
+    }
+  }
+  private nativeParent(thread: Thread): string | null {
+    if (typeof thread.parentThreadId === 'string' && thread.parentThreadId) return thread.parentThreadId;
+    const source = thread.source;
+    if (source && typeof source === 'object' && 'subAgent' in source) {
+      const subAgent = source.subAgent;
+      if (subAgent && typeof subAgent === 'object' && 'thread_spawn' in subAgent) {
+        if (typeof subAgent.thread_spawn.parent_thread_id === 'string' && subAgent.thread_spawn.parent_thread_id) return subAgent.thread_spawn.parent_thread_id;
+        throw new Error('原生子会话归属不明确，无法安全执行会话操作。');
+      }
+    }
+    // Explicit null also covers native review/compact subagents without a
+    // spawned parent. Their source classification alone is not a dependency.
+    if (thread.parentThreadId !== null) throw new Error('原生会话父子关系无法核实，暂不支持会话操作。');
+    return null;
+  }
+  private async readLifecycleThread(threadId: string, cwd: string) {
+    const { thread } = await this.codex.request<ThreadReadResponse>('thread/read', { threadId });
+    if (thread.id !== threadId || thread.cwd !== cwd) throw new Error('Thread is outside this workspace');
+    if (this.nativeParent(thread)) throw new Error('子会话须由原生父会话管理，暂不支持单独操作。');
+    if (thread.ephemeral) throw new Error('临时会话尚未持久化，不能归档或删除。');
+    if (!['idle', 'notLoaded'].includes(thread.status.type) || thread.turns.some(turn => turn.status === 'inProgress')) {
+      throw new Error('原生会话运行中或状态异常，请先停止并查询状态。');
+    }
+    return thread;
+  }
+  private async lifecycleInventory(threadId: string, cwd: string) {
+    let state: 'active' | 'archived' | undefined;
+    // Native archive/delete cascade spawned children. Include noninteractive and
+    // archived sources, and other projects, because a hidden child can have a
+    // different cwd. This metadata stays inside the Bridge; it grants no access.
+    const sourceKinds = ['cli', 'vscode', 'exec', 'appServer', 'subAgent', 'subAgentReview',
+      'subAgentCompact', 'subAgentThreadSpawn', 'subAgentOther', 'unknown'];
+    for (const archived of [false, true]) {
+      let cursor: string | undefined;
+      const cursors = new Set<string>();
+      for (let pageNumber = 0; ; pageNumber++) {
+        if (pageNumber >= 100) throw new Error('会话关系过多，无法完整核实；未执行会话操作。');
+        const page = await this.codex.request<ThreadListResponse>('thread/list', {
+          archived, sourceKinds, modelProviders: [], limit: 100, ...(cursor ? { cursor } : {}),
+        });
+        for (const thread of page.data) {
+          const parent = this.nativeParent(thread);
+          if (parent === threadId) throw new Error('会话存在子会话依赖，暂不支持安全归档或删除。');
+          if (thread.id === threadId) {
+            if (thread.cwd !== cwd) throw new Error('Thread is outside this workspace');
+            if (parent) throw new Error('子会话须由原生父会话管理，暂不支持单独操作。');
+            if (state) throw new Error('原生会话归档状态发生变化，请刷新后重试。');
+            state = archived ? 'archived' : 'active';
+          }
+        }
+        if (!page.nextCursor) break;
+        if (cursors.has(page.nextCursor)) throw new Error('原生会话分页无法完整核实，未执行会话操作。');
+        cursor = page.nextCursor; cursors.add(cursor);
+      }
+    }
+    return state;
+  }
+  private async changeLifecycle(method: string, threadId: string, cwd: string, params: Record<string, unknown>): Promise<ThreadLifecycleResult> {
+    if (params.cwd !== undefined && params.cwd !== cwd) throw new Error('Thread is outside the selected project');
+    if (method === 'thread/delete' && params.confirm !== true) throw new Error('永久删除必须经过明确的二次确认。');
+    if (this.projects && await this.projects.resolve(cwd) !== cwd) throw new Error('Project directory changed; refresh the native thread list');
+    this.assertLifecycleIdle(threadId, cwd);
+    await this.readLifecycleThread(threadId, cwd);
+    const current = await this.lifecycleInventory(threadId, cwd);
+    if (method === 'thread/unarchive' && current !== 'archived') throw new Error('会话不在已归档列表，请刷新状态。');
+    if (method === 'thread/archive' && current === 'archived') throw new Error('会话已经归档，请刷新状态。');
+    // The native active list omits empty threads even after unarchive. Avoid an
+    // archive/restore flow that would make a new empty thread disappear.
+    if (!current && !(method === 'thread/delete' && this.fresh.has(threadId))) throw new Error(this.fresh.has(threadId)
+      ? '空会话尚未进入原生历史，请先发送消息后再操作。'
+      : '原生列表中未找到会话，请刷新后重试。');
+    // The inventory may span multiple pages; reread native status immediately
+    // before mutating, then include notifications received during that read.
+    await this.readLifecycleThread(threadId, cwd);
+    if (this.projects && await this.projects.resolve(cwd) !== cwd) throw new Error('Project directory changed; refresh the native thread list');
+    this.assertLifecycleIdle(threadId, cwd);
+    const state = method === 'thread/archive' ? 'archived' : method === 'thread/unarchive' ? 'active' : 'deleted';
+    try {
+      const result = await this.codex.request<{ thread?: Thread }>(method, { threadId });
+      if (method === 'thread/unarchive' && (result.thread?.id !== threadId || result.thread.cwd !== cwd)) {
+        throw new Error('Native restored thread belongs to another thread or project');
+      }
+      this.publishLifecycle(threadId, state);
+      return { threadId, state };
+    } catch (error) {
+      if (error instanceof NativeRpcError) {
+        if (error.code === -32601) throw new Error('当前 Codex App Server 不支持此会话操作；未使用文件清理替代。');
+        // A native rejection is not a successful lifecycle operation.
+        if (error.code !== -32603) throw error;
+      }
+      this.uncertainLifecycle.set(threadId, state);
+      this.publishLifecycle(threadId, 'unknown');
+      throw new Error('原生会话操作结果未知，请刷新普通及已归档列表核实；不要重复操作。');
+    }
+  }
+  private publishLifecycle(threadId: string, state: ThreadLifecycleState) {
+    this.lifecycleRevision++;
+    this.loaded.delete(threadId); this.fresh.delete(threadId); this.settings.delete(threadId);
+    this.settingsQueries.set(threadId, (this.settingsQueries.get(threadId) ?? 0) + 1);
+    if (state === 'archived') this.archived.add(threadId);
+    if (state === 'active') this.archived.delete(threadId);
+    if (state === 'deleted') { this.deleted.add(threadId); this.archived.delete(threadId); }
+    if (state !== 'unknown') this.uncertainLifecycle.delete(threadId);
+    this.emit('event', { type: 'threadLifecycleChanged', threadId, cwd: this.threadCwd(threadId), state } satisfies BridgeEvent);
+  }
   private projectCwd(value: unknown) {
     return this.projects ? this.projects.resolve(value) : Promise.resolve(this.cwd);
   }
@@ -323,6 +492,11 @@ export class BridgeService extends EventEmitter {
     }
   }
   private async nativeResume(threadId: string, cwd?: string) {
+    if (this.lifecycle.has(threadId) || this.archived.has(threadId) || this.deleted.has(threadId) || this.uncertainLifecycle.has(threadId)) throw new Error('Thread lifecycle changed; refresh state');
+    this.beginFlight(threadId);
+    try { return await this.requestNativeResume(threadId, cwd); } finally { this.endFlight(threadId); }
+  }
+  private async requestNativeResume(threadId: string, cwd?: string) {
     const params = { threadId, ...(cwd ? { cwd } : {}) };
     try { return await this.codex.request<ThreadResumeResponse>('thread/resume', { ...params, excludeTurns: true }); }
     catch (error) {

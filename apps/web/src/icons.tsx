@@ -1,5 +1,8 @@
-export type IconName = 'plus' | 'close' | 'panel' | 'search' | 'folder' | 'file' | 'settings' | 'send' | 'stop' | 'refresh' | 'chevron' | 'terminal' | 'arrowDown' | 'expand' | 'more' | 'back';
+export type IconName = 'plus' | 'close' | 'panel' | 'search' | 'folder' | 'file' | 'settings' | 'send' | 'stop' | 'refresh' | 'chevron' | 'terminal' | 'arrowDown' | 'expand' | 'more' | 'back' | 'archive' | 'restore' | 'trash';
 const paths: Record<IconName, string> = {
+  archive: 'M3 3h18v5H3ZM5 8v13h14V8M10 12h4',
+  restore: 'M4 10a8 8 0 1 1 0 5M4 4v6h6M12 8v5l3 2',
+  trash: 'M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7',
   more: 'M12 4h.01M12 12h.01M12 20h.01', back: 'M20 12H4m7-7-7 7 7 7',
   plus: 'M12 5v14M5 12h14', close: 'm6 6 12 12M6 18 18 6',
   panel: 'M4 3h16a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1ZM9 3v18',

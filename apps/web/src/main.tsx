@@ -18,6 +18,7 @@ import { SessionGate, checkSession } from './auth';
 import { ThemeSettings, useTheme } from './themes';
 import { NativeRequest } from './native-request';
 import { PermissionStatus, permissionModes } from './permissions';
+import { SessionActions, sessionActionBlock, sessionLabel, type SessionAction, type SessionTarget } from './session-actions';
 import './style.css';
 import './mobile.css';
 
@@ -44,6 +45,13 @@ function App() {
   // Explicit permission choices are scoped to this view, never saved as client defaults.
   const [permissionMode, setPermissionMode] = useState<PermissionMode>('inherit');
   const [threads, setThreads] = useState<Thread[]>([]);
+  const [archived, setArchived] = useState(false);
+  const [listing, setListing] = useState(false);
+  const [listError, setListError] = useState('');
+  const [actionTarget, setActionTarget] = useState<SessionTarget>();
+  const [lifecycleBusy, setLifecycleBusy] = useState(false);
+  const [lifecycleNotice, setLifecycleNotice] = useState('');
+  const [unknownThreads, setUnknownThreads] = useState(new Set<string>());
   // A brand presentation cue, never persisted or sent to the native Harness.
   const [createdThreadId, setCreatedThreadId] = useState('');
   const [nextCursor, setNextCursor] = useState<string | null>(null);
@@ -70,6 +78,10 @@ function App() {
   const connectingNow = useRef(false);
   const projectEpoch = useRef(0);
   const listEpoch = useRef(0);
+  const archivedView = useRef(false);
+  const actionReturnFocus = useRef<HTMLButtonElement | null>(null);
+  const actionTargetId = useRef('');
+  const sessionTabs = useRef<HTMLDivElement>(null);
   const registryEpoch = useRef(0);
   const draftRevision = useRef(0);
   const buffer = useRef<BridgeEvent[] | null>(null);
@@ -143,12 +155,68 @@ function App() {
   }
   async function listThreads(cursor?: string) {
     const cwd = workspace.current;
+    const archived = archivedView.current;
     const ticket = ++listEpoch.current;
-    const page = await client.current!.request<ThreadListResponse>('thread/list', { cursor, cwd });
-    if (cwd !== workspace.current || ticket !== listEpoch.current) return null;
-    setThreads(current => [...new Map([...(cursor ? current : []), ...page.data].map(t => [t.id, t])).values()]);
-    setNextCursor(page.nextCursor);
-    return page;
+    setListing(true); setListError('');
+    try {
+      const page = await client.current!.request<ThreadListResponse>('thread/list', { cursor, cwd, archived });
+      if (cwd !== workspace.current || archived !== archivedView.current || ticket !== listEpoch.current) return null;
+      setThreads(current => [...new Map([...(cursor ? current : []), ...page.data].map(t => [t.id, t])).values()]);
+      setNextCursor(page.nextCursor);
+      return page;
+    } catch (value) {
+      if (ticket === listEpoch.current) setListError(value instanceof Error ? value.message : String(value));
+      throw value;
+    } finally { if (ticket === listEpoch.current) setListing(false); }
+  }
+  function changeSessionView(value: boolean) {
+    archivedView.current = value; setArchived(value); ++listEpoch.current;
+    setThreads([]); setNextCursor(null); setQuery(''); actionTargetId.current = ''; setActionTarget(undefined);
+    void listThreads().catch(() => {});
+  }
+  function closeSessionActions() {
+    actionTargetId.current = ''; setActionTarget(undefined);
+    requestAnimationFrame(() => {
+      if (actionReturnFocus.current?.isConnected) actionReturnFocus.current.focus();
+      else sessionTabs.current?.querySelector<HTMLButtonElement>('[aria-pressed="true"]')?.focus();
+    });
+  }
+  function openSessionActions(thread: Thread, trigger: HTMLButtonElement) {
+    actionReturnFocus.current = trigger;
+    actionTargetId.current = thread.id;
+    setActionTarget({ thread, archived: archivedView.current });
+  }
+  function lifecycleChanged(message: Extract<BridgeEvent, { type: 'threadLifecycleChanged' }>) {
+    // Handle before the subscribe buffer: an older snapshot must never revive
+    // a thread removed by another device while that snapshot was in flight.
+    if (message.state === 'unknown') setUnknownThreads(ids => new Set([...ids, message.threadId]));
+    else setUnknownThreads(ids => { const next = new Set(ids); next.delete(message.threadId); return next; });
+    if (selected.current === message.threadId) {
+      ++epoch.current; readingRestore.current = null; buffer.current = null;
+      selected.current = ''; save(storageKey(), '');
+      useSession.getState().reset(); setText(''); ++draftRevision.current;
+      setSynced(true); setLoadingHistory(false); setCreatedThreadId(''); setInspected(undefined);
+      setModel(''); setEffort(''); setPermissionMode('inherit');
+    }
+    if (actionTargetId.current === message.threadId) closeSessionActions();
+    if (message.cwd !== workspace.current) return;
+    setLifecycleNotice(message.state === 'unknown' ? '会话操作结果尚未确认，请查询原生状态，勿重复操作。' : message.state === 'archived' ? '会话已归档，可从「已归档」恢复。' : message.state === 'active' ? '会话已恢复到会话列表。' : '会话已永久删除。');
+    ++listEpoch.current;
+    setThreads(current => current.filter(thread => thread.id !== message.threadId));
+    void listThreads().catch(() => {});
+  }
+  async function changeSession(action: SessionAction) {
+    if (!actionTarget || lifecycleBusy) return;
+    const target = actionTarget;
+    setLifecycleBusy(true); setError('');
+    try {
+      await client.current!.request(`thread/${action}`, { threadId: target.thread.id, cwd: target.thread.cwd, ...(action === 'delete' ? { confirm: true } : {}) });
+      closeSessionActions();
+      // The broadcast normally refreshes all devices; a query also reconciles
+      // clients whose connection missed it. Never repeat the mutation itself.
+      if (workspace.current === target.thread.cwd) await listThreads();
+    } catch (value) { report(value); throw value; }
+    finally { setLifecycleBusy(false); }
   }
   function apply(message: BridgeEvent, restoring = false) {
     const state = useSession.getState();
@@ -228,6 +296,7 @@ function App() {
       if (ticket !== projectEpoch.current) return;
       ++epoch.current; readingRestore.current = null; selected.current = ''; buffer.current = null;
       workspace.current = settings.cwd; save('oraculum.project', settings.cwd);
+      archivedView.current = false; setArchived(false); actionTargetId.current = ''; setActionTarget(undefined); setLifecycleNotice('');
       setConfig(settings); setThreads([]); setNextCursor(null); setQuery(''); setModel(''); setEffort(''); setPermissionMode('inherit'); setInspected(undefined);
       useSession.getState().reset(); setText(readDraft());
       const saved = restore ? readSaved(storageKey()) : null;
@@ -278,6 +347,7 @@ function App() {
   useEffect(() => {
     client.current = new BridgeClient(message => {
       if (message.type === 'projectsChanged') { void refreshProjects().catch(report); return; }
+      if (message.type === 'threadLifecycleChanged') { lifecycleChanged(message); return; }
       if (message.type === 'unavailable') { ++epoch.current; readingRestore.current = null; buffer.current = null; useSession.setState({ pending: [] }); setError(message.message); setSynced(false); setLoadingHistory(false); return; }
       if (buffer.current) buffer.current.push(message);
       else {
@@ -288,7 +358,7 @@ function App() {
       }
     }, value => {
       setConnected(value);
-      if (!value) { setSynced(false); void checkSession().catch(() => {}); }
+      if (!value) { ++epoch.current; ++listEpoch.current; setListing(false); setSynced(false); void checkSession().catch(() => {}); }
     });
     void connect().catch(report);
     return () => { ++epoch.current; ++connectionEpoch.current; ++registryEpoch.current; client.current?.close(); };
@@ -305,7 +375,7 @@ function App() {
   }, [text, expanded]);
   useEffect(() => { if (settings) dialog.current?.showModal(); else dialog.current?.close(); }, [settings]);
   useEffect(() => { save('oraculum.reading-size', String(readingSize)); }, [readingSize]);
-  const overlay = mobile && (drawer || settings || browsing || menu || layout.inspector);
+  const overlay = mobile && (drawer || settings || browsing || menu || !!actionTarget || layout.inspector);
   useLayoutEffect(() => {
     if (overlay && !overlayPosition.current && scroller.current) {
       overlayPosition.current = { id: selected.current, top: scroller.current.scrollTop };
@@ -330,6 +400,7 @@ function App() {
     // Android invokes this single UI-only callback after the IME has handled Back.
     // It grants no native, filesystem, network or credential capability to JS.
     const back = () => {
+      if (actionTarget) { if (!lifecycleBusy) closeSessionActions(); return true; }
       if (menu) { setMenu(false); return true; }
       if (browsing) { setBrowsing(false); return true; }
       if (settings) { setSettings(false); return true; }
@@ -344,7 +415,7 @@ function App() {
     };
     window.addEventListener('keydown', close);
     return () => { delete window.oraculumAndroidBack; window.removeEventListener('keydown', close); };
-  }, [settings, browsing, menu, drawer, expanded, layout.inspector]);
+  }, [settings, browsing, menu, drawer, expanded, layout.inspector, actionTarget, lifecycleBusy]);
   async function createThread() {
     setSending(true); setError('');
     try {
@@ -356,12 +427,14 @@ function App() {
       } });
       setCreatedThreadId(result.thread.id);
       save(storageKey(), result.thread.id);
-      setThreads(ids => [result.thread, ...ids]); setSynced(true); composer.current?.focus();
+      if (archivedView.current) changeSessionView(false);
+      else setThreads(ids => [result.thread, ...ids]);
+      setSynced(true); composer.current?.focus();
     } catch (value) { report(value); } finally { setSending(false); }
   }
   const active = !!session.activeTurn || session.thread?.status.type === 'active';
   const projectAvailable = !!config && projects.projects.some(p => p.cwd === config.cwd && p.available !== false);
-  const canSend = projectAvailable && connected && synced && !!session.thread && !active && !session.sendBlocked && !sending && !switching && !!text.trim();
+  const canSend = projectAvailable && connected && synced && !!session.thread && !active && !session.sendBlocked && !sending && !switching && !lifecycleBusy && !!text.trim();
   async function send() {
     if (!canSend || composing.current) return;
     setSending(true); setError(''); follow.current = true;
@@ -394,16 +467,24 @@ function App() {
   const tools = items.filter(view => ['commandExecution', 'mcpToolCall'].includes(view.item.type));
   const inspectedItem = inspected?.kind === 'item' ? items.find(view => view.item.id === inspected.id && view.turnId === inspected.turnId)?.item : undefined;
   const title = session.thread?.name || session.thread?.preview.slice(0, 48) || '新会话';
-  const disabled = !connected || connecting || sending || approving || switching;
+  const disabled = !connected || connecting || sending || approving || switching || lifecycleBusy;
+  const targetThread = actionTarget && (threads.find(thread => thread.id === actionTarget.thread.id) ?? actionTarget.thread);
+  const actionBlocked = !connected ? '连接已断开，重新连接后才能操作。' : !projectAvailable ? '项目已移除或目录失效。' : targetThread && unknownThreads.has(targetThread.id) ? '此会话操作结果尚未确认，请查询原生状态，勿重复操作。' : targetThread ? sessionActionBlock(targetThread, targetThread.id === selected.current ? { active, pending: !!session.pending.length, sendBlocked: session.sendBlocked, synced } : undefined) : '';
   const connectionLabel = !connected ? '已断开' : synced ? '状态已查询' : '待查询状态';
-  const sessionNavigation = <nav aria-label="原生会话">{threads.filter(thread => `${thread.name} ${thread.preview} ${thread.id}`.toLowerCase().includes(query.toLowerCase())).map(thread => {
+  const sessionNavigation = <nav aria-label="原生会话" aria-busy={listing}>{threads.filter(thread => `${thread.name} ${thread.preview} ${thread.id}`.toLowerCase().includes(query.toLowerCase())).map(thread => {
         const current = thread.id === session.thread?.id;
         const status = current ? session.pending.length ? '待审批' : active ? '执行中' : '' : thread.status.type === 'active' ? thread.status.activeFlags.includes('waitingOnApproval') ? '待审批' : '执行中' : '';
-        return <button title={thread.id} aria-current={current ? 'page' : undefined} className={`session-link ${current ? 'selected' : ''}`} key={thread.id} onClick={() => { setDrawer(false); setMenu(false); void refresh(thread.id).catch(report); }} disabled={disabled}>
-          <Icon name="file" size={16}/><span>{thread.name || thread.preview.slice(0, 42) || '新会话'}</span>{status && <small className={status === '待审批' ? 'pending-dot' : 'running-dot'} title={status}>{status}</small>}
-        </button>;
-      })}{!threads.length && <p className="nav-empty">此项目还没有会话</p>}{query && !threads.some(t => `${t.name} ${t.preview} ${t.id}`.toLowerCase().includes(query.toLowerCase())) && <p className="nav-empty">没有匹配的会话</p>}
-        {nextCursor && <button className="load-more" disabled={disabled} onClick={() => void listThreads(nextCursor).catch(report)}>加载更多会话</button>}
+        return <div className="session-row" key={thread.id}><button title={thread.id} aria-current={current ? 'page' : undefined} className={`session-link ${current ? 'selected' : ''}`} onClick={event => {
+          if (archived) { openSessionActions(thread, event.currentTarget); return; }
+          setDrawer(false); setMenu(false); void refresh(thread.id).catch(report);
+        }} disabled={disabled || unknownThreads.has(thread.id)}>
+          <Icon name={archived ? 'archive' : 'file'} size={16}/><span>{sessionLabel(thread)}</span>{status && <small className={status === '待审批' ? 'pending-dot' : 'running-dot'} title={status}>{status}</small>}
+        </button><button className="icon-button session-more" aria-label={`会话操作：${sessionLabel(thread)}`} title="会话操作" aria-haspopup="dialog" disabled={disabled} onClick={event => openSessionActions(thread, event.currentTarget)}><Icon name="more" size={17}/></button></div>;
+      })}{!threads.length && !listing && !listError && <p className="nav-empty">{archived ? '此项目没有已归档会话' : '此项目还没有会话'}</p>}{query && threads.length > 0 && !threads.some(t => `${t.name} ${t.preview} ${t.id}`.toLowerCase().includes(query.toLowerCase())) && <p className="nav-empty">已加载会话中没有匹配项</p>}
+        {listing && <p className="nav-empty" role="status">正在加载会话…</p>}
+        {listError && <p className="error" role="alert">{listError}</p>}
+        {query && nextCursor && <p className="session-search-hint">搜索已加载的会话；可加载更多以查找更早记录。</p>}
+        {nextCursor && <button className="load-more" disabled={disabled || listing} onClick={() => void listThreads(nextCursor).catch(() => {})}>加载更多会话</button>}
       </nav>;
   return <main data-theme-root data-theme-id={theme.id} className={`app-shell ${layout.navigation ? '' : 'nav-collapsed'} ${layout.inspector ? 'inspector-open' : ''} ${drawer ? 'drawer-open' : ''}`}
     style={{ '--nav-width': `${layout.navigationWidth}px`, '--inspector-width': `${layout.inspectorWidth}px`, '--reading-scale': readingSize / 100 } as CSSProperties}>
@@ -414,9 +495,11 @@ function App() {
       <label className="project-picker desktop-project-picker"><Icon name="folder"/><select aria-label="项目目录" value={config?.cwd ?? ''} disabled={disabled} onChange={event => void selectProject(event.target.value).catch(report)}>{config && !projects.projects.some(p => p.cwd === config.cwd) && <option value={config.cwd}>项目已移除</option>}{projects.projects.map(project => <option key={project.cwd} value={project.cwd} disabled={project.available === false}>{project.name}{projects.projects.filter(p => p.name === project.name).length > 1 ? ` · ${project.cwd}` : ''}{project.available === false ? ' · 目录失效' : ''}</option>)}</select></label>
       <p className="project-path desktop-project-path" title={config?.cwd}>{config?.cwd ?? '正在连接工作目录…'}</p>
       <button className="browse-projects" disabled={disabled} onClick={() => setBrowsing(true)}><Icon name="folder" size={15}/>浏览主机文件夹 / 添加项目</button>
-      <div className="nav-section-label desktop-session-label"><span>会话</span><button className="icon-button" aria-label="刷新列表" title="刷新列表" disabled={disabled} onClick={() => void listThreads().catch(report)}><Icon name="refresh" size={14}/></button></div>
-      <label className="search-box"><Icon name="search" size={16}/><input aria-label="搜索会话" placeholder="搜索会话…" value={query} onChange={event => setQuery(event.target.value)}/></label>
+      <div className="nav-section-label desktop-session-label"><span>会话</span><button className="icon-button" aria-label="刷新列表" title="刷新列表" disabled={disabled || listing} onClick={() => void listThreads().catch(() => {})}><Icon name="refresh" size={14}/></button></div>
+      <div className="session-view-tabs" ref={sessionTabs} role="group" aria-label="会话列表范围"><button aria-pressed={!archived} disabled={disabled} onClick={() => changeSessionView(false)}>会话</button><button aria-pressed={archived} disabled={disabled} onClick={() => changeSessionView(true)}><Icon name="archive" size={14}/>已归档</button></div>
+      <label className="search-box"><Icon name="search" size={16}/><input aria-label="搜索会话" placeholder={archived ? '搜索已归档会话…' : '搜索会话…'} value={query} onChange={event => setQuery(event.target.value)}/></label>
       <button className="new-session" onClick={() => void createThread()} disabled={disabled || !projectAvailable}><Icon name="plus"/>新建会话</button>
+      {lifecycleNotice && <p className="session-lifecycle-notice" role="status" aria-label="会话操作状态">{lifecycleNotice}</p>}
       {mobile ? <div className="mobile-project-tree">{projects.projects.map(project => {
         const current = config?.cwd === project.cwd;
         const open = current && !treeCollapsed;
@@ -513,6 +596,7 @@ function App() {
       <footer className="mobile-detail-footer"><button onClick={() => setLayout(l => ({ ...l, inspector: false }))}><Icon name="back"/>返回会话</button></footer>
     </section>}
     {browsing && client.current && <ProjectBrowser client={client.current} projects={projects} onRefresh={refreshProjects} onSelect={selectProject} onClose={() => setBrowsing(false)}/>}
+    {actionTarget && targetThread && <SessionActions key={targetThread.id} target={{ ...actionTarget, thread: targetThread }} projectName={projects.projects.find(project => project.cwd === targetThread.cwd)?.name ?? '当前项目'} blocked={actionBlocked} busy={lifecycleBusy} onAction={changeSession} onClose={closeSessionActions}/>}
     <dialog data-theme-slot="settings" ref={dialog} className="settings-dialog app-settings" aria-label="设置" onCancel={() => setSettings(false)} onClick={event => { if (event.target === event.currentTarget) setSettings(false); }}><div className="settings-content">
       <header><div><OracleEye/><h2>设置</h2></div><button className="icon-button" aria-label="关闭设置" onClick={() => setSettings(false)}><Icon name="close"/></button></header>
       <h3>模型与推理</h3><p>选项来自 Codex 实时目录，仅用于新会话或下一轮，不修改全局配置。</p>

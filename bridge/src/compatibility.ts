@@ -33,6 +33,7 @@ export function validateNativeResponse(version: string, method: string, result: 
     require(identifier(entry.id), `${path}.id`);
     require(identifier(entry.cwd), `${path}.cwd`);
     require(text(entry.preview), `${path}.preview`);
+    if (entry.parentThreadId !== undefined) require(entry.parentThreadId === null || identifier(entry.parentThreadId), `${path}.parentThreadId`);
     const status = object(entry.status, `${path}.status`);
     require(['notLoaded', 'idle', 'systemError', 'active'].includes(status.type as string), `${path}.status.type`);
     if (status.type === 'active') require(array(status.activeFlags, `${path}.status.activeFlags`).every(text), `${path}.status.activeFlags`);
@@ -44,7 +45,7 @@ export function validateNativeResponse(version: string, method: string, result: 
   };
 
   if (!['initialize', 'config/read', 'model/list', 'thread/list', 'thread/start', 'thread/resume',
-    'thread/read', 'turn/start', 'turn/interrupt', 'thread/turns/list', 'thread/items/list'].includes(method)) return;
+    'thread/read', 'thread/archive', 'thread/unarchive', 'thread/delete', 'turn/start', 'turn/interrupt', 'thread/turns/list', 'thread/items/list'].includes(method)) return;
   const response = object(result, 'result');
   if (method === 'initialize') require(identifier(response.userAgent), 'userAgent');
   if (method === 'config/read') {
@@ -61,7 +62,7 @@ export function validateNativeResponse(version: string, method: string, result: 
     });
   });
   if (method === 'thread/list') page(response, thread);
-  if (['thread/read', 'thread/start', 'thread/resume'].includes(method)) thread(response.thread, 'thread');
+  if (['thread/read', 'thread/start', 'thread/resume', 'thread/unarchive'].includes(method)) thread(response.thread, 'thread');
   if (method === 'thread/start' || method === 'thread/resume') {
     require(text(response.approvalPolicy) || record(response.approvalPolicy), 'approvalPolicy');
     require(identifier(object(response.sandbox, 'sandbox').type), 'sandbox.type');

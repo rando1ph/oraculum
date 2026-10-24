@@ -52,6 +52,32 @@ nav[aria-label="原生会话"] { margin-top: 11px; flex: 1; overflow-y: auto; mi
 .session-link > span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .session-link.selected { background: linear-gradient(90deg, #0b3046, #0a1c29); color: var(--accent); border-color: #123c53; }
 .session-link small { font-size: 9px; margin-left: auto; white-space: nowrap; }
+.session-row { display: flex; align-items: center; gap: 2px; min-width: 0; }
+.session-row .session-link { flex: 1; min-width: 0; }
+.session-more { flex-shrink: 0; }
+.session-view-tabs { display: flex; gap: 4px; padding: 3px; margin: 3px 0 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+.session-view-tabs button { flex: 1; min-width: 0; padding: 5px 8px; border-color: transparent; background: transparent; color: var(--muted); }
+.session-view-tabs button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); border-color: var(--line-bright); }
+.session-search-hint, .session-lifecycle-notice { font-size: 11px; line-height: 1.7; color: var(--muted); margin: 10px 4px 2px; }
+.session-actions-dialog { width: min(420px, calc(100vw - 28px)); max-height: calc(100dvh - 40px); margin: auto; padding: 0; overflow-y: auto; border: 1px solid var(--line-bright); border-radius: 14px; color: var(--foreground); background: var(--surface); box-shadow: 0 24px 100px #000a; }
+.session-actions-dialog::backdrop { background: #0009; backdrop-filter: blur(4px); }
+.session-actions-content { padding: 21px; }
+.session-actions-content header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
+.session-actions-content h2 { margin: 0; font-size: 17px; }
+.session-action-subject { display: flex; align-items: center; gap: 10px; font-size: 14px; line-height: 1.7; }
+.session-action-subject svg { flex-shrink: 0; color: var(--accent); }
+.session-action-subject span { overflow-wrap: anywhere; }
+.session-actions-content p { font-size: 12px; line-height: 1.9; color: var(--muted); margin: 12px 0 18px; }
+.session-actions-content .error { color: var(--danger); }
+.session-actions-content .session-action-project { font-size: 11px; margin: 3px 0 12px 28px; overflow-wrap: anywhere; color: var(--subtle); }
+.session-action-list { display: grid; gap: 9px; }
+.session-action-list button { min-height: 48px; justify-content: flex-start; }
+.session-action-list button small { margin-left: auto; }
+.session-actions-content .danger-button { color: var(--danger); }
+.session-actions-content .danger-button:hover:enabled { border-color: var(--danger); background: color-mix(in srgb, var(--danger) 10%, var(--surface)); color: var(--danger); }
+.session-confirm-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 22px; }
+.session-confirm-actions button { min-height: 44px; }
+.session-confirm-actions .danger-button { border-color: var(--danger); }
 .running-dot { color: var(--success); }
 .pending-dot { color: var(--warning); }
 .nav-empty { margin: 20px 4px; color: var(--subtle); font-size: 12px; line-height: 1.8; }

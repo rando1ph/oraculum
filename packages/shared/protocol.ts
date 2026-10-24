@@ -33,7 +33,10 @@ export type BridgeEvent =
   | { type: 'notice'; threadId?: string; displayThreadIds?: string[]; message: string }
   | { type: 'unavailable'; message: string }
   | { type: 'settingsChanged'; threadId: string; settings?: NativeSessionSettings }
-  | { type: 'projectsChanged' };
+  | { type: 'projectsChanged' }
+  | { type: 'threadLifecycleChanged'; threadId: string; cwd: string; state: ThreadLifecycleState };
+export type ThreadLifecycleState = 'active' | 'archived' | 'deleted' | 'unknown';
+export type ThreadLifecycleResult = { threadId: string; state: Exclude<ThreadLifecycleState, 'unknown'> };
 export type Snapshot = {
   thread: Thread;
   pending: Approval[];

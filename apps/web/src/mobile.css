@@ -153,6 +153,13 @@
   .session-link { min-height: 48px; font-size: 14px; padding-inline: 10px; }
   .session-link > span { flex: 1; }
   .session-link small { font-size: 11px; flex-shrink: 0; }
+  .session-row .session-more { min-width: 44px; width: 44px; min-height: 48px; }
+  .session-view-tabs button { min-height: 44px; font-size: 13px; }
+  .session-actions-dialog { width: calc(100vw - 24px); max-width: 440px; max-height: calc(var(--app-height, 100dvh) - 32px); border-radius: 16px; }
+  .session-actions-content { padding: 20px; }
+  .session-actions-content .icon-button { min-width: 44px; min-height: 44px; }
+  .session-actions-content p { font-size: 14px; }
+  .session-action-list button, .session-confirm-actions button { min-height: 48px; font-size: 14px; }
   .navigation-footer { padding: 8px 0 max(14px, env(safe-area-inset-bottom)); }
   .settings-button { min-height: 48px; font-size: 14px; margin-bottom: 8px; }
   .connection { min-height: 32px; font-size: 12px; }
