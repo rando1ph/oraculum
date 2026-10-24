@@ -13,8 +13,8 @@ import { createServer } from '../bridge/src/server';
 import { Themes } from '../bridge/src/themes';
 import { modelTrigger, permissionTrigger, selectEffort, selectModel } from './composer-controls';
 
-await mkdir('.local/evidence/phase4d3-patch/composer-contract', { recursive: true });
-const output = await mkdtemp(resolve('.local/evidence/phase4d3-patch/composer-contract/run-'));
+await mkdir('.local/evidence/phase4d3-patch-menu/composer-contract', { recursive: true });
+const output = await mkdtemp(resolve('.local/evidence/phase4d3-patch-menu/composer-contract/run-'));
 const projectRoot = join(output, 'projects'), cwd = join(projectRoot, 'Oraculum'), other = join(projectRoot, 'Notes');
 await Promise.all([cwd, other].map(path => mkdir(path, { recursive: true })));
 const db = new DatabaseSync(':memory:'), projects = new ProjectDirectories(projectRoot, cwd, db);
@@ -36,7 +36,7 @@ const service = new BridgeService({ on: bus.on.bind(bus), send: () => {}, reques
     approval_policy: 'on-request', sandbox_mode: 'read-only', model_provider: 'fixture', approvals_reviewer: 'user' } };
   else if (method === 'model/list') result = { data: [
     { id: 'fixture-one', model: 'fixture-one', displayName: 'Fixture One', defaultReasoningEffort: 'low', supportedReasoningEfforts: [{ reasoningEffort: 'low' }, { reasoningEffort: 'high' }] },
-    { id: 'fixture-two', model: 'fixture-two', displayName: 'Fixture Two', defaultReasoningEffort: 'high', supportedReasoningEfforts: [{ reasoningEffort: 'low' }, { reasoningEffort: 'high' }] },
+    { id: 'fixture-two', model: 'fixture-two', displayName: 'Fixture Two', defaultReasoningEffort: 'high', supportedReasoningEfforts: [{ reasoningEffort: 'medium' }, { reasoningEffort: 'high' }] },
     { id: 'fixture-long', model: 'fixture-long', displayName: 'Long model name to verify narrow menu wrapping', defaultReasoningEffort: 'high', supportedReasoningEfforts: [{ reasoningEffort: 'high' }] },
   ], nextCursor: null };
   else if (method === 'thread/list') result = { data: threads.filter(thread => thread.cwd === params.cwd), nextCursor: null };
@@ -87,6 +87,40 @@ async function insideViewport(page: Page, element: Locator) {
   expect(bounds.x).toBeGreaterThanOrEqual(0); expect(bounds.y).toBeGreaterThanOrEqual(0);
   expect(bounds.x + bounds.width).toBeLessThanOrEqual(viewport.width + 1); expect(bounds.y + bounds.height).toBeLessThanOrEqual(viewport.height + 1);
 }
+async function rootMenu(page: Page) {
+  const menu = dialog(page, '模型与思考强度');
+  await expect(page.locator('.composer').getByRole('dialog')).toHaveCount(1);
+  await expect(menu.getByRole('button')).toHaveCount(2);
+  await expect(menu.getByRole('radiogroup')).toHaveCount(0);
+  await expect(menu.getByRole('radio')).toHaveCount(0);
+  const model = menu.getByRole('button', { name: '模型', exact: true });
+  const effort = menu.getByRole('button', { name: '思考强度', exact: true });
+  await expect(model).toBeVisible(); await expect(effort).toBeVisible();
+  const first = (await model.boundingBox())!, second = (await effort.boundingBox())!;
+  expect(first.height).toBeGreaterThanOrEqual(44); expect(second.height).toBeGreaterThanOrEqual(44);
+  expect(first.y + first.height).toBeLessThanOrEqual(second.y + 1);
+  await insideViewport(page, menu);
+}
+async function choiceMenu(page: Page, label: '模型' | '思考强度', values: string[]) {
+  const menu = dialog(page, '模型与思考强度');
+  await expect(page.locator('.composer').getByRole('dialog')).toHaveCount(1);
+  await expect(menu.getByRole('radiogroup')).toHaveCount(1);
+  await expect(menu.getByRole('button', { name: '模型', exact: true })).toHaveCount(0);
+  await expect(menu.getByRole('button', { name: '思考强度', exact: true })).toHaveCount(0);
+  await expect(menu.getByRole('button', { name: '返回模型与思考强度', exact: true })).toBeVisible();
+  const options = menu.getByRole('radiogroup', { name: label, exact: true }).getByRole('radio');
+  expect(await options.evaluateAll(elements => elements.map(element => element.getAttribute('data-value')))).toEqual(values);
+  const bounds = await options.evaluateAll(elements => elements.map(element => {
+    const { x, y, width, height } = element.getBoundingClientRect(); return { x, y, width, height };
+  }));
+  for (const [index, box] of bounds.entries()) {
+    expect(box.height).toBeGreaterThanOrEqual(page === phone ? 44 : 40);
+    expect(Math.abs(box.x - bounds[0].x)).toBeLessThanOrEqual(1);
+    expect(Math.abs(box.width - bounds[0].width)).toBeLessThanOrEqual(1);
+    if (index) expect(bounds[index - 1].y + bounds[index - 1].height).toBeLessThanOrEqual(box.y + 1);
+  }
+  await insideViewport(page, menu);
+}
 async function setTheme(page: Page, id: string) {
   if (page === phone) await page.getByRole('button', { name: '打开导航', exact: true }).click();
   await page.getByRole('button', { name: '设置', exact: true }).click();
@@ -130,10 +164,61 @@ try {
     }
   }
   record('all menus open/close by Escape and outside click; emulated Android Back closes menus; + tray has no text, children or actions');
+  const modelValues = ['fixture-one', 'fixture-two', 'fixture-long'];
+  for (const page of [desktop, phone]) {
+    const menu = dialog(page, '模型与思考强度');
+    const modelRow = menu.getByRole('button', { name: '模型', exact: true });
+    const effortRow = menu.getByRole('button', { name: '思考强度', exact: true });
+    await modelTrigger(page).click(); await rootMenu(page); await expect(modelRow).toBeFocused();
+    await expect(modelRow).toContainText('Fixture One'); await expect(effortRow).toContainText('low');
+    await page.keyboard.press('Enter'); await choiceMenu(page, '模型', modelValues);
+    await expect(menu.locator('[role="radio"][data-value="fixture-one"]')).toBeFocused();
+    await page.keyboard.press('End'); await expect(menu.locator('[role="radio"][data-value="fixture-long"]')).toBeFocused();
+    await page.keyboard.press('ArrowUp'); await expect(menu.locator('[role="radio"][data-value="fixture-two"]')).toBeFocused();
+    await page.keyboard.press('Home'); await expect(menu.locator('[role="radio"][data-value="fixture-one"]')).toBeFocused();
+    await expect(menu.locator('[role="radio"][data-value="fixture-one"]')).toHaveAttribute('aria-checked', 'true');
+    await expect(modelTrigger(page)).toHaveAccessibleName(/Fixture One.*low/);
+    await menu.getByRole('button', { name: '返回模型与思考强度', exact: true }).click();
+    await rootMenu(page); await expect(modelRow).toBeFocused();
+    await page.keyboard.press('Tab'); await expect(effortRow).toBeFocused();
+    await page.keyboard.press('ArrowUp'); await expect(modelRow).toBeFocused();
+    await page.keyboard.press('ArrowDown'); await expect(effortRow).toBeFocused();
+    await page.keyboard.press('Space'); await choiceMenu(page, '思考强度', ['low', 'high']);
+    await expect(menu.locator('[role="radio"][data-value="low"]')).toBeFocused();
+    await page.keyboard.press('Space'); await rootMenu(page); await expect(effortRow).toBeFocused();
+    await page.keyboard.press('Enter'); await choiceMenu(page, '思考强度', ['low', 'high']);
+    await page.keyboard.press('Escape'); await rootMenu(page); await expect(effortRow).toBeFocused();
+    await page.keyboard.press('ArrowRight'); await choiceMenu(page, '思考强度', ['low', 'high']);
+    await page.keyboard.press('ArrowLeft'); await rootMenu(page); await expect(effortRow).toBeFocused();
+    await page.keyboard.press('Escape'); await expect(menu).toHaveCount(0); await expect(modelTrigger(page)).toBeFocused();
+    await modelTrigger(page).click(); await modelRow.click();
+    await page.locator('.conversation-header').click({ position: { x: 100, y: 20 } }); await expect(menu).toHaveCount(0);
+    if (page === phone) {
+      await modelTrigger(page).tap(); await effortRow.tap();
+      expect(await page.evaluate(() => (window as any).oraculumAndroidBack())).toBe(true);
+      await rootMenu(page); await expect(effortRow).toBeFocused();
+      expect(await page.evaluate(() => (window as any).oraculumAndroidBack())).toBe(true);
+      await expect(menu).toHaveCount(0); await expect(modelTrigger(page)).toBeFocused();
+    }
+  }
+  record('two-row root replaces itself with one vertical list; touch, Enter/Space/Tab, arrows/Home/End, Back, Escape, outside close and focus return work without changing selection on navigation');
+  await selectModel(desktop, 'fixture-long');
+  await modelTrigger(desktop).click(); await dialog(desktop, '模型与思考强度').getByRole('button', { name: '思考强度', exact: true }).click();
+  await choiceMenu(desktop, '思考强度', ['high']);
+  await expect(dialog(desktop, '模型与思考强度').getByRole('radio')).toHaveAttribute('aria-checked', 'true');
+  await desktop.keyboard.press('Escape'); await desktop.keyboard.press('Escape');
+  await selectModel(desktop, 'fixture-two'); await selectEffort(desktop, 'medium');
+  await modelTrigger(desktop).click(); await dialog(desktop, '模型与思考强度').getByRole('button', { name: '思考强度', exact: true }).click();
+  await choiceMenu(desktop, '思考强度', ['medium', 'high']);
+  await expect(dialog(desktop, '模型与思考强度').locator('[role="radio"][data-value="medium"]')).toHaveAttribute('aria-checked', 'true');
+  await desktop.keyboard.press('Escape'); await desktop.keyboard.press('Escape');
+  record('reasoning submenu lists only the selected model supported efforts and preserves the selected radio');
   await selectModel(desktop, 'fixture-two'); await selectEffort(desktop, 'high');
   await expect(modelTrigger(desktop)).toHaveAccessibleName(/Fixture Two.*high/);
   await modelTrigger(desktop).click();
+  await rootMenu(desktop); await dialog(desktop, '模型与思考强度').getByRole('button', { name: '模型', exact: true }).click();
   await expect(dialog(desktop, '模型与思考强度').getByRole('radiogroup', { name: '模型', exact: true }).locator('[data-value="fixture-two"]')).toBeFocused();
+  await desktop.keyboard.press('Escape'); await rootMenu(desktop);
   await desktop.keyboard.press('Escape'); await expect(modelTrigger(desktop)).toBeFocused();
   expect(requests.some(request => request.method === 'turn/start')).toBe(false);
   await desktop.reload(); await ready(desktop); await expect(modelTrigger(desktop)).toHaveAccessibleName(/Fixture Two.*high/);
@@ -149,9 +234,28 @@ try {
     for (const trigger of [modelTrigger(phone), permissionTrigger(phone), moreTrigger(phone)]) {
       await trigger.click(); await insideViewport(phone, phone.locator('.composer').getByRole('dialog')); await phone.keyboard.press('Escape');
     }
+    await modelTrigger(phone).click(); await rootMenu(phone);
+    for (const label of ['模型', '思考强度'] as const) {
+      await dialog(phone, '模型与思考强度').getByRole('button', { name: label, exact: true }).click();
+      await choiceMenu(phone, label, label === '模型' ? modelValues : ['low', 'high']);
+      await phone.keyboard.press('Escape'); await rootMenu(phone);
+    }
+    await phone.keyboard.press('Escape');
   }
+  await modelTrigger(phone).click(); await dialog(phone, '模型与思考强度').getByRole('button', { name: '模型', exact: true }).click();
+  const scrollMenu = dialog(phone, '模型与思考强度');
+  expect(await scrollMenu.evaluate(element => element.scrollHeight > element.clientHeight)).toBe(true);
+  await phone.keyboard.press('End');
+  const lastModel = scrollMenu.locator('[role="radio"][data-value="fixture-long"]');
+  await expect(lastModel).toBeFocused();
+  expect((await lastModel.boundingBox())!.y + (await lastModel.boundingBox())!.height).toBeLessThanOrEqual((await scrollMenu.boundingBox())!.y + (await scrollMenu.boundingBox())!.height);
+  await phone.keyboard.press('Home');
+  const firstModel = scrollMenu.locator('[role="radio"][data-value="fixture-one"]'), back = scrollMenu.locator('header');
+  await expect(firstModel).toBeFocused();
+  expect((await firstModel.boundingBox())!.y).toBeGreaterThanOrEqual((await back.boundingBox())!.y + (await back.boundingBox())!.height);
+  await phone.keyboard.press('Escape'); await phone.keyboard.press('Escape');
   await geometry(phone, 782, 99); await geometry(phone, 390, 844);
-  record('375/390 portrait, landscape and keyboard-sized menus stay within viewport with 44px targets; 99px height retains reachable input/send');
+  record('375/390 portrait, landscape and keyboard-sized menus stay within viewport with 44px touch targets; End/Home keeps focus clear of sticky Back; 99px height retains reachable input/send');
   const message = phone.getByLabel('消息', { exact: true });
   await message.fill('中文输入'); await message.press('End'); await message.press('Enter'); await message.press('A'); await expect(message).toHaveValue('中文输入\nA');
   await message.dispatchEvent('compositionstart', { data: '拼音' });
@@ -164,8 +268,14 @@ try {
   record('Enter newline, simulated composition guard, expanded input/Back and reload preserve draft without sending');
   for (const id of ['oracle-eye', 'test-violet', 'hong-kong-rain', 'minimal-light']) for (const page of [desktop, phone]) {
     await setTheme(page, id); await noNoise(page);
-    await modelTrigger(page).click(); await insideViewport(page, dialog(page, '模型与思考强度'));
-    await page.screenshot({ path: join(output, `${id}-${page === phone ? 'mobile' : 'electron'}-model-menu.png`) });
+    await modelTrigger(page).click(); await rootMenu(page);
+    await page.screenshot({ path: join(output, `${id}-${page === phone ? 'mobile' : 'electron'}-root-menu.png`) });
+    for (const label of ['模型', '思考强度'] as const) {
+      await dialog(page, '模型与思考强度').getByRole('button', { name: label, exact: true }).click();
+      await choiceMenu(page, label, label === '模型' ? modelValues : page === phone ? ['low', 'high'] : ['medium', 'high']);
+      await page.screenshot({ path: join(output, `${id}-${page === phone ? 'mobile' : 'electron'}-${label === '模型' ? 'model' : 'effort'}-menu.png`) });
+      await page.keyboard.press('Escape'); await rootMenu(page);
+    }
     await page.keyboard.press('Escape'); await moreTrigger(page).click(); await expect(dialog(page, '更多操作')).toHaveText(''); await page.keyboard.press('Escape');
   }
   await phone.addStyleTag({ content: '[data-theme-slot="composer"] { border-radius: 20px; } [data-theme-slot="user-message"], [data-theme-slot="assistant-message"] { border-radius: 18px; }' });

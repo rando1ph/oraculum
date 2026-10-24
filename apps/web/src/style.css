@@ -180,17 +180,20 @@ nav[aria-label="原生会话"] { margin-top: 11px; flex: 1; overflow-y: auto; mi
 .composer-popover:focus { outline: none; }
 .composer-popover-more { width: min(260px, 100%); height: 112px; padding: 0; }
 .composer-popover-permission { width: min(232px, 100%); }
-.composer-menu-label { padding: 6px 9px; font-size: 11px; color: var(--subtle); }
+.composer-model-summary { display: grid; gap: 2px; }
+.composer-model-summary button { width: 100%; min-height: 44px; gap: 10px; padding: 10px; border-color: transparent; background: transparent; text-align: left; font-size: 13px; }
+.composer-model-summary button > span:first-child, .composer-model-summary button > svg { flex-shrink: 0; }
+.composer-summary-value { flex: 1; min-width: 0; color: var(--muted); text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.composer-model-summary button > svg { color: var(--muted); }
+.composer-submenu-header { position: sticky; top: -7px; z-index: 1; margin: -7px -7px 5px; padding: 4px 7px; border-bottom: 1px solid var(--line); background: var(--surface-raised); }
+.composer-submenu-header button { width: 100%; min-height: 40px; justify-content: flex-start; gap: 10px; padding: 8px 9px; border-color: transparent; background: transparent; font-size: 13px; }
 .composer-choice-list { display: grid; gap: 2px; }
 .composer-choice-list button { width: 100%; min-height: 42px; justify-content: flex-start; text-align: left; border-color: transparent; background: transparent; padding: 9px; gap: 9px; font-size: 13px; }
 .composer-choice-list button > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .composer-choice-list button > svg { flex-shrink: 0; }
 .composer-choice-list button small { display: block; font-size: 10px; margin-top: 2px; }
-.composer-choice-list [aria-checked="true"], .composer-effort-options [aria-checked="true"] { color: var(--accent); background: var(--accent-soft); }
-.composer-effort-options { display: flex; flex-wrap: wrap; gap: 5px; padding: 1px 7px 7px; }
-.composer-effort-options button { min-width: 52px; flex: 1; padding: 7px 10px; border-color: transparent; font-size: 12px; }
+.composer-choice-list [aria-checked="true"] { color: var(--accent); background: var(--accent-soft); }
 .composer-custom-value { display: flex; align-items: center; justify-content: space-between; gap: 9px; padding: 9px; font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
-.effort-label { border-top: 1px solid var(--line); margin-top: 6px; padding-top: 11px; }
 .composer-add-project { width: 100%; justify-content: flex-start; border: 0; border-top: 1px solid var(--line); border-radius: 0; background: transparent; margin-top: 6px; padding: 11px 9px 5px; }
 .jump-latest-slot { position: relative; flex-shrink: 0; height: 0; display: flex; justify-content: center; z-index: 3; }
 .jump-latest { position: absolute; bottom: 10px; align-self: center; z-index: 3; border-color: #265c76; border-radius: 20px; background: #071d2a; color: var(--accent); box-shadow: 0 4px 18px #000a; font-size: 11px; }

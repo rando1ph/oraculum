@@ -75,6 +75,8 @@ main.app-shell[data-theme-root][data-theme-id]
       .composer-toolbar
         .composer-more / .permission-control / .composer-actions
       .composer-popover（项目、模型与思考强度、权限或空托盘）
+        .composer-model-summary（模型/思考强度的一级两行入口）
+        .composer-submenu-header / .composer-choice-list（二级返回栏与纵向选项）
       .send-button / .stop-button
   section.inspector[data-theme-slot="inspector"]      桌面详情 / 手机全屏
     .diff-editor / .cm-editor / .cm-gutters
@@ -88,6 +90,8 @@ main.app-shell[data-theme-root][data-theme-id]
 上述语义 class 是推荐覆盖接口；其他 DOM 也可使用，但不能保证所有内部节点跨未来版本永久兼容。业务状态类 `.nav-collapsed`、`.drawer-open`、`.inspector-open`、`.expanded` 控制展开/收起，主题应分别检查这些状态。品牌 PNG 是既有 Oracle Eye 资产，可通过 CSS 调整尺寸/滤镜；CSS 主题不替换业务组件。
 
 4D.3-Patch 将项目与模型/思考强度入口合并在 Composer 上排，`+`、权限和发送/停止位于下排；`.model-controls` 兼容 class 保留，但原 `select` 改为 `.composer-control` 按钮和 `.composer-popover` 选择面板。菜单采用现有表面、文字、强调和边线 tokens；空 `+` 托盘没有内容。窄屏隐藏权限文字、保留可访问名称；极小横屏键盘视口临时收起上排，保留输入与发送/停止。不要覆盖菜单依据可见空间计算的最大高度。
+
+模型/思考强度菜单使用替换式两级导航：`.composer-popover-model[data-level="summary"]` 仅有两条纵向入口，`[data-level="model"]` 或 `[data-level="effort"]` 仅显示对应的纵向选项与返回栏。选项沿用 `[aria-checked="true"]` 选中态；主题应保留返回按钮、键盘焦点和选项可滚动性，不能将两级重新平铺。模型入口的 18px 内联 SVG 是简化的 Oracle Eye，颜色继承文字 token，不替换主品牌资产。
 
 ```css
 :root {

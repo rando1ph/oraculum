@@ -29,7 +29,7 @@ function productionStopped() {
   catch (error) { return String((error as { stdout?: unknown }).stdout).trim() === 'inactive'; }
 }
 assert.ok(productionStopped(), 'Installed production Bridge must already be stopped');
-const output = resolve('.local/evidence/phase4d3-patch/live', new Date().toISOString().replaceAll(':', '-'));
+const output = resolve('.local/evidence/phase4d3-patch-menu/live', new Date().toISOString().replaceAll(':', '-'));
 await mkdir(output, { recursive: true, mode: 0o700 });
 const root = await mkdtemp(join(tmpdir(), 'oraculum-messages-')), cwd = join(root, 'Composer-Review'); await mkdir(cwd);
 const configPath = join(process.env.CODEX_HOME ?? join(homedir(), '.codex'), 'config.toml');
@@ -171,9 +171,19 @@ try {
   async function values(page: Page, model: string, effort?: string) {
     await modelTrigger(page).click();
     const dialog = page.getByRole('dialog', { name: '模型与思考强度', exact: true });
+    await expect(dialog.getByRole('radiogroup')).toHaveCount(0);
+    await dialog.getByRole('button', { name: '模型', exact: true }).click();
     await expect(dialog.getByRole('radiogroup', { name: '模型', exact: true }).locator(`[role="radio"][data-value=${JSON.stringify(model)}]`)).toHaveAttribute('aria-checked', 'true');
-    if (effort) await expect(dialog.getByRole('radiogroup', { name: '思考强度', exact: true }).locator(`[role="radio"][data-value=${JSON.stringify(effort)}]`)).toHaveAttribute('aria-checked', 'true');
+    await expect(dialog.getByRole('radiogroup', { name: '思考强度', exact: true })).toHaveCount(0);
+    await dialog.getByRole('button', { name: '返回模型与思考强度', exact: true }).click();
+    if (effort) {
+      await dialog.getByRole('button', { name: '思考强度', exact: true }).click();
+      await expect(dialog.getByRole('radiogroup', { name: '思考强度', exact: true }).locator(`[role="radio"][data-value=${JSON.stringify(effort)}]`)).toHaveAttribute('aria-checked', 'true');
+      await expect(dialog.getByRole('radiogroup', { name: '模型', exact: true })).toHaveCount(0);
+      await page.keyboard.press('Escape');
+    }
     await page.keyboard.press('Escape');
+    await expect(dialog).toHaveCount(0);
   }
   async function choose(page: Page, model: string, effort: string, permission: 'read-only' | 'auto' | 'full-access') {
     if (page === phone) await hideIme();
@@ -255,12 +265,29 @@ try {
     if (page === phone) { await capture(page, 'android-empty-tray'); adb('shell', 'input', 'keyevent', 'KEYCODE_BACK'); }
     else await page.keyboard.press('Escape');
     await expect(tray).toHaveCount(0);
-    await modelTrigger(page).click(); await capture(page, page === phone ? 'android-model-menu' : 'electron-model-menu'); await page.keyboard.press('Escape');
+    await modelTrigger(page).click();
+    const menu = page.getByRole('dialog', { name: '模型与思考强度', exact: true });
+    await expect(menu.getByRole('button')).toHaveCount(2);
+    await expect(menu.getByRole('radiogroup')).toHaveCount(0);
+    await capture(page, page === phone ? 'android-settings-menu' : 'electron-settings-menu');
+    for (const [label, name] of [['模型', 'model'], ['思考强度', 'effort']] as const) {
+      await menu.getByRole('button', { name: label, exact: true }).click();
+      await expect(menu.getByRole('radiogroup')).toHaveCount(1);
+      const options = menu.getByRole('radiogroup', { name: label, exact: true }).getByRole('radio');
+      const bounds = await options.evaluateAll(nodes => nodes.map(node => { const r = node.getBoundingClientRect(); return { x: r.x, y: r.y, bottom: r.bottom }; }));
+      assert.ok(bounds.every((b, i) => !i || (Math.abs(b.x - bounds[0]!.x) <= 1 && b.y >= bounds[i - 1]!.bottom)), 'Second-level choices must be a vertical list');
+      await capture(page, `${page === phone ? 'android' : 'electron'}-${name}-menu`);
+      if (page === phone) adb('shell', 'input', 'keyevent', 'KEYCODE_BACK'); else await page.keyboard.press('Escape');
+      await expect(menu.getByRole('button', { name: label, exact: true })).toBeFocused();
+      await expect(menu.getByRole('radiogroup')).toHaveCount(0);
+    }
+    if (page === phone) adb('shell', 'input', 'keyevent', 'KEYCODE_BACK'); else await page.keyboard.press('Escape');
+    await expect(menu).toHaveCount(0);
     await permissionTrigger(page).click(); await capture(page, page === phone ? 'android-permission-menu' : 'electron-permission-menu');
     if (page === phone) adb('shell', 'input', 'keyevent', 'KEYCODE_BACK'); else await page.keyboard.press('Escape');
     await expect(page.getByRole('dialog', { name: '权限', exact: true })).toHaveCount(0);
   }
-  checks.push('Real desktop/Android compact menus; completely empty plus tray; Android system Back closes each popup');
+  checks.push('Real desktop/Android two-level replacement menus: two-row root, separate vertical model/effort lists, selected values and focus; system Back/Escape return one level then close; completely empty plus tray preserved');
   step = 'Android keyboard, touch and draft';
   const viewportBefore = await phone!.evaluate(() => visualViewport!.height); await phone!.getByLabel('消息', { exact: true }).click();
   await expect.poll(() => /\bmInputShown=true\b/.test(adb('shell', 'dumpsys', 'input_method')), { timeout: 15_000 }).toBe(true);

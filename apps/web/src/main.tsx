@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
+import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BridgeClient } from '../../../packages/shared/client';
 import type { BridgeEvent, LocalConfig, Model, ProjectList, Snapshot, Thread, ThreadItem } from '../../../packages/shared/protocol';
@@ -43,6 +43,7 @@ function App() {
   const [models, setModels] = useState<Model[]>([]);
   const [composerDraft, setComposerDraft] = useState<{ key: string; draft: ComposerDraft }>({ key: '', draft: {} });
   const [composerMenu, setComposerMenu] = useState<'project' | 'model' | 'permission' | 'more' | null>(null);
+  const [modelMenuLevel, setModelMenuLevel] = useState<'summary' | 'model' | 'effort'>('summary');
   const [threads, setThreads] = useState<Thread[]>([]);
   const [archived, setArchived] = useState(false);
   const [listing, setListing] = useState(false);
@@ -90,6 +91,7 @@ function App() {
   const composerForm = useRef<HTMLFormElement>(null);
   const composerPanel = useRef<HTMLDivElement>(null);
   const composerTrigger = useRef<HTMLButtonElement>(null);
+  const modelMenuReturn = useRef<'model' | 'effort'>('model');
   const follow = useRef(true);
   const scrollPositions = useRef(new Map<string, ReadingPosition>());
   const readingRestore = useRef<number | null>(null);
@@ -132,11 +134,41 @@ function App() {
   }
   function closeComposerMenu(restoreFocus = false) {
     setComposerMenu(null);
+    setModelMenuLevel('summary');
     if (restoreFocus) requestAnimationFrame(() => composerTrigger.current?.focus());
   }
   function toggleComposerMenu(value: NonNullable<typeof composerMenu>, trigger: HTMLButtonElement) {
     composerTrigger.current = trigger;
+    modelMenuReturn.current = 'model';
+    setModelMenuLevel('summary');
     setComposerMenu(current => current === value ? null : value);
+  }
+  function openModelMenu(level: 'model' | 'effort') {
+    modelMenuReturn.current = level;
+    setModelMenuLevel(level);
+  }
+  function navigateModelMenu(event: ReactKeyboardEvent<HTMLDivElement>) {
+    if (event.key === 'ArrowLeft' && modelMenuLevel !== 'summary') {
+      event.preventDefault(); setModelMenuLevel('summary'); return;
+    }
+    const panel = event.currentTarget;
+    const options = Array.from(panel.querySelectorAll<HTMLButtonElement>(modelMenuLevel === 'summary'
+      ? '.composer-model-summary button:not(:disabled)' : '[role="radio"]:not(:disabled)'));
+    const current = options.indexOf(document.activeElement as HTMLButtonElement);
+    if (event.key === 'ArrowRight' && modelMenuLevel === 'summary' && current !== -1) {
+      event.preventDefault(); options[current]!.click(); return;
+    }
+    if (!options.length || !['ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) return;
+    event.preventDefault();
+    const index = event.key === 'Home' ? 0 : event.key === 'End' ? options.length - 1
+      : current === -1 ? 0 : (current + (event.key === 'ArrowDown' ? 1 : -1) + options.length) % options.length;
+    const option = options[index]!;
+    option.focus({ preventScroll: true });
+    const bounds = option.getBoundingClientRect();
+    const panelBounds = panel.getBoundingClientRect();
+    const visibleTop = panelBounds.top + (panel.querySelector('header')?.getBoundingClientRect().height ?? 0) + 7;
+    if (bounds.top < visibleTop) panel.scrollTop -= visibleTop - bounds.top;
+    else if (bounds.bottom > panelBounds.bottom - 7) panel.scrollTop += bounds.bottom - panelBounds.bottom + 7;
   }
   function readDraft() {
     try {
@@ -434,15 +466,22 @@ function App() {
   useEffect(() => {
     if (!composerMenu) return;
     const panel = composerPanel.current;
-    const first = panel?.querySelector<HTMLButtonElement>('button[aria-checked="true"]:not(:disabled)')
+    const first = composerMenu === 'model' && modelMenuLevel === 'summary'
+      ? panel?.querySelector<HTMLButtonElement>(`button[data-level="${modelMenuReturn.current}"]`)
+      : panel?.querySelector<HTMLButtonElement>('button[aria-checked="true"]:not(:disabled)')
+      ?? panel?.querySelector<HTMLButtonElement>('[role="radio"]:not(:disabled)')
       ?? panel?.querySelector<HTMLButtonElement>('button:not(:disabled)');
+    if (panel) panel.scrollTop = 0;
     (first ?? panel)?.focus({ preventScroll: true });
+    if (first && panel && first.offsetTop + first.offsetHeight > panel.clientHeight) {
+      panel.scrollTop = first.offsetTop + first.offsetHeight - panel.clientHeight;
+    }
     const outside = (event: PointerEvent) => {
       if (!panel?.contains(event.target as Node) && !composerTrigger.current?.contains(event.target as Node)) closeComposerMenu();
     };
     document.addEventListener('pointerdown', outside);
     return () => document.removeEventListener('pointerdown', outside);
-  }, [composerMenu]);
+  }, [composerMenu, modelMenuLevel]);
   const overlay = mobile && (drawer || settings || browsing || menu || !!composerMenu || !!actionTarget || layout.inspector);
   useLayoutEffect(() => {
     if (overlay && !overlayPosition.current && scroller.current) {
@@ -468,7 +507,11 @@ function App() {
     // Android invokes this single UI-only callback after the IME has handled Back.
     // It grants no native, filesystem, network or credential capability to JS.
     const back = () => {
-      if (composerMenu) { closeComposerMenu(true); return true; }
+      if (composerMenu) {
+        if (composerMenu === 'model' && modelMenuLevel !== 'summary') setModelMenuLevel('summary');
+        else closeComposerMenu(true);
+        return true;
+      }
       if (actionTarget) { if (!lifecycleBusy) closeSessionActions(); return true; }
       if (menu) { setMenu(false); return true; }
       if (browsing) { setBrowsing(false); return true; }
@@ -484,7 +527,7 @@ function App() {
     };
     window.addEventListener('keydown', close);
     return () => { delete window.oraculumAndroidBack; window.removeEventListener('keydown', close); };
-  }, [settings, browsing, menu, composerMenu, drawer, expanded, layout.inspector, actionTarget, lifecycleBusy]);
+  }, [settings, browsing, menu, composerMenu, modelMenuLevel, drawer, expanded, layout.inspector, actionTarget, lifecycleBusy]);
   async function createThread() {
     setSending(true); setError('');
     try {
@@ -674,17 +717,22 @@ function App() {
             : <button className="primary send-button" title="发送 · Ctrl+Enter" aria-label="发送" disabled={!canSend}><Icon name="arrowUp" size={21}/></button>}
           </div>
         </div>
-        {composerMenu && <div ref={composerPanel} className={`composer-popover composer-popover-${composerMenu}`} role="dialog" aria-label={{ project: '项目', model: '模型与思考强度', permission: '权限', more: '更多操作' }[composerMenu]} tabIndex={-1}>
+        {composerMenu && <div ref={composerPanel} className={`composer-popover composer-popover-${composerMenu}`} data-level={composerMenu === 'model' ? modelMenuLevel : undefined} role="dialog" aria-label={{ project: '项目', model: '模型与思考强度', permission: '权限', more: '更多操作' }[composerMenu]} tabIndex={-1} onKeyDown={composerMenu === 'model' ? navigateModelMenu : undefined}>
           {composerMenu === 'project' && <>
             <div role="radiogroup" aria-label="项目" className="composer-choice-list">{projects.projects.map(project => <button type="button" role="radio" aria-checked={project.cwd === config?.cwd} data-value={project.cwd} key={project.cwd} disabled={disabled || project.available === false} onClick={() => { closeComposerMenu(true); void selectProject(project.cwd).catch(report); }}><Icon name="folder" size={17}/><span>{project.name}{projects.projects.filter(entry => entry.name === project.name).length > 1 && <small>{project.cwd}</small>}</span>{project.cwd === config?.cwd && <Icon name="check" size={16}/>}</button>)}</div>
             <button type="button" className="composer-add-project" onClick={() => { closeComposerMenu(); setBrowsing(true); }}><Icon name="plus" size={17}/>添加项目</button>
           </>}
-          {composerMenu === 'model' && <>
-            <div className="composer-menu-label">模型</div>
-            <div role="radiogroup" aria-label="模型" className="composer-choice-list">{model && !models.some(entry => entry.model === model) && <div className="composer-custom-value">{model}</div>}{models.filter(entry => !entry.hidden || entry.model === model).map(entry => <button type="button" role="radio" aria-checked={entry.model === model} data-value={entry.model} key={entry.id} onClick={() => chooseSetting('model', entry.model)}><span>{entry.displayName}</span>{entry.model === model && <Icon name="check" size={16}/>}</button>)}</div>
-            <div className="composer-menu-label effort-label">思考强度</div>
-            <div role="radiogroup" aria-label="思考强度" className="composer-effort-options">{effort && !selectedModel?.supportedReasoningEfforts.some(option => option.reasoningEffort === effort) && <div className="composer-custom-value">{effort}</div>}{(selectedModel?.supportedReasoningEfforts ?? []).map(option => <button type="button" role="radio" aria-checked={option.reasoningEffort === effort} data-value={option.reasoningEffort} key={option.reasoningEffort} onClick={() => chooseSetting('effort', option.reasoningEffort)}>{option.reasoningEffort}</button>)}</div>
-          </>}
+          {composerMenu === 'model' && (modelMenuLevel === 'summary'
+            ? <div className="composer-model-summary">
+              <button type="button" aria-label="模型" data-level="model" onClick={() => openModelMenu('model')}><span>模型</span><span className="composer-summary-value">{modelLabel}</span><Icon name="chevron" size={14}/></button>
+              <button type="button" aria-label="思考强度" data-level="effort" onClick={() => openModelMenu('effort')}><span>思考强度</span><span className="composer-summary-value">{effort || '未读取'}</span><Icon name="chevron" size={14}/></button>
+            </div>
+            : <>
+              <header className="composer-submenu-header"><button type="button" aria-label="返回模型与思考强度" onClick={() => setModelMenuLevel('summary')}><Icon name="back" size={17}/><span>{modelMenuLevel === 'model' ? '模型' : '思考强度'}</span></button></header>
+              {modelMenuLevel === 'model'
+                ? <div role="radiogroup" aria-label="模型" className="composer-choice-list">{model && !models.some(entry => entry.model === model) && <div className="composer-custom-value">{model}</div>}{models.filter(entry => !entry.hidden || entry.model === model).map(entry => <button type="button" role="radio" aria-checked={entry.model === model} data-value={entry.model} key={entry.id} onClick={() => { chooseSetting('model', entry.model); setModelMenuLevel('summary'); }}><span>{entry.displayName}</span>{entry.model === model && <Icon name="check" size={16}/>}</button>)}</div>
+                : <div role="radiogroup" aria-label="思考强度" className="composer-choice-list">{effort && !selectedModel?.supportedReasoningEfforts.some(option => option.reasoningEffort === effort) && <div className="composer-custom-value">{effort}</div>}{(selectedModel?.supportedReasoningEfforts ?? []).map(option => <button type="button" role="radio" aria-checked={option.reasoningEffort === effort} data-value={option.reasoningEffort} key={option.reasoningEffort} onClick={() => { chooseSetting('effort', option.reasoningEffort); setModelMenuLevel('summary'); }}><span>{option.reasoningEffort}</span>{option.reasoningEffort === effort && <Icon name="check" size={16}/>}</button>)}</div>}
+            </>)}
           {composerMenu === 'permission' && <div role="radiogroup" aria-label="权限" className="composer-choice-list">{permissionMode === 'custom' && <div className="composer-custom-value">{permissionLabel}<Icon name="check" size={16}/></div>}{permissionModes.map(mode => <button type="button" role="radio" aria-checked={permissionMode === mode.value} data-value={mode.value} key={mode.value} onClick={() => { chooseSetting('permissionMode', mode.value); closeComposerMenu(true); }}><Icon name="shield" size={17}/><span>{mode.label}</span>{permissionMode === mode.value && <Icon name="check" size={16}/>}</button>)}</div>}
         </div>}
       </form>

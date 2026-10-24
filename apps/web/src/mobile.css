@@ -106,7 +106,7 @@
   .composer-actions { margin-left: auto; }
   .composer-actions .send-button, .composer-actions .stop-button { width: 48px; height: 48px; min-width: 48px; min-height: 48px; padding: 10px; border-radius: 50%; }
   .composer-popover { max-height: var(--composer-popup-height, calc(var(--app-height, 100dvh) - 235px)); border-radius: 15px; }
-  .composer-choice-list button, .composer-effort-options button { min-height: 44px; }
+  .composer-choice-list button, .composer-submenu-header button { min-height: 44px; }
 
 
   .navigation, .nav-collapsed .navigation {

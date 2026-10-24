@@ -108,11 +108,20 @@ try {
       else await page.getByRole('button', { name: '关闭面板', exact: true }).click();
       if (themeId === 'minimal-light') {
         await modelTrigger(page).click();
-        for (const selector of ['.composer', '.conversation-header', '.tool', '.composer [role="dialog"]']) {
-          const colors = await page.locator(selector).first().evaluate(e => ({ color: getComputedStyle(e).color, background: getComputedStyle(e).backgroundColor }));
-          const luminance = (color: string) => color.match(/\d+/g)!.slice(0, 3).map(v => +v / 255).map(v => v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4).reduce((sum, v, i) => sum + v * [.2126, .7152, .0722][i], 0);
-          expect((luminance(colors.background) + .05) / (luminance(colors.color) + .05), selector + ' light contrast').toBeGreaterThanOrEqual(4.5);
-          expect(colors.background).not.toBe('rgb(0, 0, 0)');
+        const menu = page.getByRole('dialog', { name: '模型与思考强度', exact: true });
+        for (const level of ['root', '模型', '思考强度'] as const) {
+          if (level === 'root') await expect(menu.getByRole('button')).toHaveCount(2);
+          else {
+            await menu.getByRole('button', { name: level, exact: true }).click();
+            await expect(menu.getByRole('radiogroup', { name: level, exact: true })).toBeVisible();
+          }
+          for (const selector of ['.composer', '.conversation-header', '.tool', '.composer [role="dialog"]']) {
+            const colors = await page.locator(selector).first().evaluate(e => ({ color: getComputedStyle(e).color, background: getComputedStyle(e).backgroundColor }));
+            const luminance = (color: string) => color.match(/\d+/g)!.slice(0, 3).map(v => +v / 255).map(v => v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4).reduce((sum, v, i) => sum + v * [.2126, .7152, .0722][i], 0);
+            expect((luminance(colors.background) + .05) / (luminance(colors.color) + .05), selector + ' ' + level + ' light contrast').toBeGreaterThanOrEqual(4.5);
+            expect(colors.background).not.toBe('rgb(0, 0, 0)');
+          }
+          if (level !== 'root') await page.keyboard.press('Escape');
         }
         await page.keyboard.press('Escape');
         expect(await page.locator('.app-shell').evaluate(e => getComputedStyle(e).colorScheme)).toBe('light');
