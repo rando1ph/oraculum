@@ -41,6 +41,8 @@ function Glyph({ kind }: { kind: 'command' | 'file' | 'plan' | 'tool' | 'reasoni
 const statusLabels: Record<string, string> = {
   inProgress: '进行中', completed: '已完成', failed: '失败', declined: '已拒绝',
   interrupted: '已中断', pending: '等待中', cancelled: '已取消',
+  running: '运行中', pendingInit: '启动中', errored: '错误', shutdown: '已关闭', notFound: '未找到',
+  started: '已启动', interacted: '已交互',
 };
 
 function Status({ value }: { value: string }) {
@@ -74,7 +76,7 @@ const itemLabels: Partial<Record<ThreadItem['type'], string>> = {
   enteredReviewMode: '开始审阅', exitedReviewMode: '审阅结果', contextCompaction: '上下文整理',
 };
 
-export function Item({ item, showDiff, showDetails, cwd }: { item: ThreadItem; showDiff?: (path: string, diff: string) => void; showDetails?: (item: ThreadItem) => void; cwd?: string }) {
+export function Item({ item, showDiff, showDetails, cwd, live = false, progress }: { item: ThreadItem; showDiff?: (path: string, diff: string) => void; showDetails?: (item: ThreadItem) => void; cwd?: string; live?: boolean; progress?: string[] }) {
   if (item.type === 'agentMessage') return <article data-theme-slot="assistant-message" data-message-role="assistant" className="message agent-message">
     <header className="message-heading"><OracleEye className="message-avatar"/><span className="message-name">Codex</span><div className="message-actions"><Copy text={item.text}/></div></header>
     <div className="message-body"><Message text={item.text}/></div>
@@ -93,10 +95,23 @@ export function Item({ item, showDiff, showDetails, cwd }: { item: ThreadItem; s
     <summary><Glyph kind="file"/><span className="tool-title">文件变更</span><span className="tool-count">{item.changes.length}</span><Status value={item.status}/></summary>
     <FileChanges item={item} showDiff={showDiff} cwd={cwd}/>
   </details>;
-  if (item.type === 'reasoning') return <details data-theme-slot="tool" className="tool reasoning"><summary><Glyph kind="reasoning"/><span className="tool-title">思考摘要</span></summary><div className="tool-body"><Message text={item.summary.join('\n') || '暂无公开摘要'}/><DetailButton item={item} showDetails={showDetails}/></div></details>;
+  if (item.type === 'reasoning') return item.summary.some(part => part.trim()) ? <details data-theme-slot="tool" className="tool reasoning" open={live}><summary><Glyph kind="reasoning"/><span className="tool-title">思考摘要</span></summary><div className="tool-body"><Message text={item.summary.join('\n')}/><DetailButton item={item} showDetails={showDetails}/></div></details> : null;
   if (item.type === 'mcpToolCall') return <details data-theme-slot="tool" className="tool">
-    <summary><Glyph kind="tool"/><span className="tool-title">{item.tool}</span><span className="tool-preview">{item.server}</span><Status value={item.status}/></summary>
-    <div className="tool-body"><pre className="tool-output">{JSON.stringify(item.result ?? item.error ?? item.arguments, null, 2)}</pre><div className="tool-actions">{item.durationMs !== null && <small>{duration(item.durationMs)}</small>}<DetailButton item={item} showDetails={showDetails}/></div></div>
+    <summary><Glyph kind="tool"/><span className="tool-title">{item.tool}</span><span className="tool-preview" title={progress?.at(-1)}>{progress?.at(-1) ?? item.server}</span><Status value={item.status}/></summary>
+    <div className="tool-body"><p className="detail-label">参数</p><pre className="tool-output">{JSON.stringify(item.arguments, null, 2)}</pre>{progress?.map((message, index) => <p className="mcp-progress" key={index}>{message}</p>)}<p className="detail-label">结果</p><pre className="tool-output">{JSON.stringify(item.result ?? item.error, null, 2)}</pre><div className="tool-actions">{item.durationMs != null && <small>{duration(item.durationMs)}</small>}<DetailButton item={item} showDetails={showDetails}/></div></div>
+  </details>;
+  if (item.type === 'collabAgentToolCall') return <details data-theme-slot="tool" className="tool subagents" open={live}>
+    <summary><Glyph kind="tool"/><span className="tool-title">子代理 · {({ spawnAgent: '启动', sendInput: '发送消息', resumeAgent: '恢复', wait: '等待', closeAgent: '关闭' } as Record<string, string>)[item.tool] ?? item.tool}</span><span className="tool-count">{item.receiverThreadIds.length}</span><Status value={item.status}/></summary>
+    <div className="tool-body">{item.prompt && <Message text={item.prompt}/>}<ul className="agent-states">{item.receiverThreadIds.map((id, index) => <li key={id}><span>子代理 {index + 1}</span>{item.agentsStates[id] && <><Status value={item.agentsStates[id]!.status}/>{item.agentsStates[id]!.message && <p>{item.agentsStates[id]!.message}</p>}</>}</li>)}</ul><DetailButton item={item} showDetails={showDetails}/></div>
+  </details>;
+  if (item.type === 'subAgentActivity') return <article data-theme-slot="tool" className="tool subagent-activity"><div className="tool-heading"><Glyph kind="tool"/><span>子代理 {item.agentPath}</span><Status value={item.kind}/><DetailButton item={item} showDetails={showDetails}/></div></article>;
+  if (item.type === 'dynamicToolCall') return <details data-theme-slot="tool" className="tool">
+    <summary><Glyph kind="tool"/><span className="tool-title">{item.tool}</span><span className="tool-preview">{item.namespace}</span><Status value={item.status}/></summary>
+    <div className="tool-body"><p className="detail-label">参数</p><pre className="tool-output">{JSON.stringify(item.arguments, null, 2)}</pre><p className="detail-label">结果</p>{item.contentItems?.map((content, index) => content.type === 'inputText' ? <pre className="tool-output" key={index}>{content.text}</pre> : <p key={index}>[{content.type === 'inputImage' ? '图片' : '音频'}]</p>)}<DetailButton item={item} showDetails={showDetails}/></div>
+  </details>;
+  if (item.type === 'functionCallOutput') return <details data-theme-slot="tool" className="tool">
+    <summary><Glyph kind="tool"/><span className="tool-title">{item.name}</span><span className="tool-preview">工具结果</span></summary>
+    <div className="tool-body"><pre className="tool-output">{typeof item.output === 'string' ? item.output : item.output.map(content => content.type === 'input_text' ? content.text : `[${content.type}]`).join('\n')}</pre><DetailButton item={item} showDetails={showDetails}/></div>
   </details>;
   return <details data-theme-slot="tool" className="tool"><summary><Glyph kind="tool"/><span className="tool-title">{itemLabels[item.type] ?? '执行记录'}</span>{'status' in item && <Status value={item.status}/>}</summary><div className="tool-body">
     {item.type === 'webSearch' && <p>{item.query}</p>}

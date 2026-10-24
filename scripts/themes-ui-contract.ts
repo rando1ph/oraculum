@@ -100,6 +100,8 @@ try {
     await themes.install(themeId);
     for (const page of [desktop, phone]) {
       await select(page, themeId);
+      const process = page.locator('.process-toggle').first();
+      if (await process.getAttribute('aria-expanded') === 'false') await process.click();
       await page.getByRole('button', { name: '查看 Diff', exact: true }).first().click();
       await expect(page.locator('.cm-content')).toContainText('+light');
       if (themeId === 'minimal-light') expect(await page.locator('.cm-gutters').evaluate(e => getComputedStyle(e).backgroundColor)).toBe('rgb(238, 241, 245)');

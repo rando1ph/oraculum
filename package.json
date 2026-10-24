@@ -45,7 +45,9 @@
     "build:runtime": "pnpm build && node scripts/build-runtime.mjs",
     "build:deb": "pnpm build:runtime && node scripts/build-desktop.mjs",
     "test:composer:ui": "tsx scripts/composer-ui-contract.ts",
-    "test:composer:live": "tsx scripts/composer-live.ts"
+    "test:composer:live": "tsx scripts/composer-live.ts",
+    "test:process:ui": "tsx scripts/process-ui-contract.ts",
+    "test:process:live": "tsx scripts/process-live.ts"
   },
   "devDependencies": {
     "@electron-forge/cli": "8.0.1",

@@ -6,7 +6,8 @@ import type { ThreadStartResponse } from '../../../.local/codex-protocol/v2/Thre
 import type { ThreadListResponse } from '../../../.local/codex-protocol/v2/ThreadListResponse';
 import { itemKey, useSession } from './store';
 import { captureReading, parseReading, placeReading, readingDeadline, type ReadingPosition } from './reading';
-import { Item, ItemDetail } from './content';
+import { groupTurns, hasTurnApproval, TurnProcess } from './process';
+import { ItemDetail } from './content';
 import { androidShell, useMobile } from './mobile';
 import { OracleEye, OracleLogo } from './brand';
 import { brandCopy, emptyBrandState } from './brand-copy';
@@ -673,7 +674,6 @@ function App() {
           {config && !projectAvailable && <p className="error" role="alert">项目已移除或目录失效。请浏览主机文件夹并重新添加；仍可停止当前执行或拒绝审批。</p>}
           {error && <p className="error" role="alert">{error}</p>}
           {session.notices.map((notice, i) => <p className="history-warning" key={i}>{notice}</p>)}
-          {lastTurn?.error && <p className="error" role="alert">执行失败：{lastTurn.error.message}</p>}
           {lastReceipt?.status === 'rejected' && <p className="error" role="alert">最近一次发送已被拒绝，请检查错误提示后再发送。</p>}
           <div className="timeline" aria-label="会话时间线">
             {emptyBrand && <div className="empty-state" data-brand-state={emptyBrand}>
@@ -684,12 +684,11 @@ function App() {
                   : !session.thread && <button className="primary" disabled={disabled} onClick={() => void createThread()}><Icon name="plus"/>{brandCopy.create}</button>}
               </div>
             </div>}
-            {Object.entries(session.items).map(([key, view]) => <div key={key} data-turn-id={view.turnId} data-item-id={view.item.id}>
-              <Item item={view.item} cwd={session.thread?.cwd} showDiff={openDiff} showDetails={item => openItem(item, view.turnId)}/>
-            </div>)}
+            {groupTurns(items, session.turns).map(group => <TurnProcess key={`${session.thread?.id}:${group.id}`} {...group} threadId={session.thread?.id}
+              pending={hasTurnApproval(session.pending, session.thread?.id, group.id, session.activeTurn)}
+              connected={connected} synced={synced} plan={session.plans[group.id]} planAfter={session.planAfter[group.id]} diff={session.diffs[group.id]} cwd={session.thread?.cwd}
+              showDiff={openDiff} showDetails={openItem} onToggle={() => { follow.current = false; }}/>) }
           </div>
-          {session.plan && <details className="tool current-plan"><summary>当前计划 · Codex</summary><pre>{session.plan}</pre></details>}
-          {Object.entries(session.diffs).map(([turnId, diff], index) => <button className="turn-diff" key={turnId} onClick={() => openDiff(`第 ${index + 1} 次变更 · 汇总 Diff`, diff)}><Icon name="file" size={14}/>查看变更 Diff{Object.keys(session.diffs).length > 1 ? ` · ${index + 1}` : ''}</button>)}
           <section aria-label="待审批" className="approvals">
             {session.pending.map(request => <NativeRequest key={`${typeof request.id}:${request.id}:${request.bridgeToken ?? ''}`} request={request} busy={approving} canReply={connected} canAccept={synced && projectAvailable} reply={value => {
                 setApproving(true);

@@ -8,7 +8,7 @@ export type ReadingPosition = {
 };
 
 function itemElements(scroller: HTMLElement) {
-  return Array.from(scroller.querySelectorAll<HTMLElement>('[data-turn-id][data-item-id]'));
+  return Array.from(scroller.querySelectorAll<HTMLElement>('[data-turn-id][data-item-id]')).filter(item => item.getClientRects().length > 0);
 }
 
 export function captureReading(scroller: HTMLElement): ReadingPosition {
@@ -36,7 +36,8 @@ export function parseReading(stored: string | null): ReadingPosition | undefined
 
 export function placeReading(scroller: HTMLElement, position?: ReadingPosition) {
   if (!position || position.bottom) { scroller.scrollTop = scroller.scrollHeight; return; }
-  const anchor = position.itemId && itemElements(scroller).find(item => item.dataset.itemId === position.itemId && item.dataset.turnId === position.turnId);
+  const anchor = (position.itemId && itemElements(scroller).find(item => item.dataset.itemId === position.itemId && item.dataset.turnId === position.turnId))
+    || Array.from(scroller.querySelectorAll<HTMLElement>('.turn-process')).find(turn => turn.dataset.turnId === position.turnId)?.querySelector<HTMLElement>('.process-toggle');
   scroller.scrollTop = anchor
     ? scroller.scrollTop + anchor.getBoundingClientRect().top - scroller.getBoundingClientRect().top - position.offset
     : position.top;

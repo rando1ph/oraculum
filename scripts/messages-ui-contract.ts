@@ -125,6 +125,7 @@ try {
     expect(await page.evaluate(() => (window as any).BAD)).toBeUndefined(); await expect(page.locator('a[href^="javascript:"]')).toHaveCount(0);
     expect(await page.locator('.code-block pre').evaluate(element => element.scrollWidth > element.clientWidth)).toBe(true);
     await page.locator('.code-block .copy').click(); await expect(page.locator('.code-block .copy')).toHaveText('已复制');
+    await page.locator('.process-toggle').click();
     await page.locator('.command summary').click(); await expect(page.getByLabel('命令输出')).toContainText('pass 3');
     await page.getByRole('button', { name: '查看 Diff', exact: true }).click();
     await expect(page.locator('.cm-content')).toContainText('a + b'); expect(await page.locator('.cm-content').getAttribute('contenteditable')).not.toBe('true');
@@ -155,6 +156,8 @@ try {
   for (const value of ['test-violet', 'minimal-light', 'hong-kong-rain']) {
     for (const page of [desktop, phone]) {
       await theme(page, value); await cards(page, page === phone); await noNoise(page);
+      const process = page.locator('.process-toggle').first();
+      if (await process.getAttribute('aria-expanded') === 'false') await process.click();
       await page.getByRole('button', { name: '查看 Diff', exact: true }).click(); await expect(page.locator('.cm-content')).toContainText('a + b');
       await page.getByRole('button', { name: '关闭面板', exact: true }).click();
       if (value === 'test-violet') expect(await page.locator('.message').first().evaluate(element => getComputedStyle(element).getPropertyValue('--accent').trim())).toBe('#dbb3ff');

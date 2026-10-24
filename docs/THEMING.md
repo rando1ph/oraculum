@@ -59,6 +59,9 @@ main.app-shell[data-theme-root][data-theme-id]
     header.conversation-header[data-theme-slot="header"]
     .conversation-scroll
       div.conversation-content[data-theme-slot="content"]
+        section.turn-process[data-turn-id][data-status]  原生 Turn 分组
+          .process-status / .process-toggle[aria-expanded] / .process-counts
+          .turn-records / .process-records[hidden]       执行过程（最终回答不在 process-records）
         article.message.user[data-theme-slot="user-message"][data-message-role="user"]
         article.message.agent-message[data-theme-slot="assistant-message"][data-message-role="assistant"]
           header.message-heading
@@ -92,6 +95,8 @@ main.app-shell[data-theme-root][data-theme-id]
 4D.3-Patch 将项目与模型/思考强度入口合并在 Composer 上排，`+`、权限和发送/停止位于下排；`.model-controls` 兼容 class 保留，但原 `select` 改为 `.composer-control` 按钮和 `.composer-popover` 选择面板。菜单采用现有表面、文字、强调和边线 tokens；空 `+` 托盘没有内容。窄屏隐藏权限文字、保留可访问名称；极小横屏键盘视口临时收起上排，保留输入与发送/停止。不要覆盖菜单依据可见空间计算的最大高度。
 
 模型/思考强度菜单使用替换式两级导航：`.composer-popover-model[data-level="summary"]` 仅有两条纵向入口，`[data-level="model"]` 或 `[data-level="effort"]` 仅显示对应的纵向选项与返回栏。选项沿用 `[aria-checked="true"]` 选中态；主题应保留返回按钮、键盘焦点和选项可滚动性，不能将两级重新平铺。模型入口的 18px 内联 SVG 是简化的 Oracle Eye，颜色继承文字 token，不替换主品牌资产。
+
+4D.4 按原生 Turn 包装时间线。运行时 `.process-status` 位于过程下方，显示已确认状态与原生时间；正常完成后 `.process-toggle` 可展开/收起过程，`.process-counts` 来自实际 Item。双方消息卡片及原有工具 Slot 保留；已确认的最终回答与未知 phase 消息不放入 `.process-records`，审批仍在独立区域。主题不要覆盖 `[hidden]` 的收起语义，也不要隐藏失败/中断/审批行。按钮保持可见键盘焦点和至少 44px（移动端 48px）触摸高度；计数可换行，移动端不增加多层缩进。手动展开是设备当前页面会话的阅读偏好，刷新保持；运行结束的首次显示默认收起。
 
 ```css
 :root {
