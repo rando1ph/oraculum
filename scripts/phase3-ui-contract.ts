@@ -155,7 +155,9 @@ try {
     const before = (await anchor.boundingBox())!.y;
     releaseHistory!(); releaseHistory = undefined;
     await expect(page.locator('[data-item-id="earlier-message"]')).toHaveCount(1);
-    await expect.poll(async () => (await anchor.boundingBox())!.y, { message: 'History should preserve the position at response time, including scrolling while awaiting it' }).toBeCloseTo(before, 0);
+    // scrollHeight is integer-valued while Electron lays text out at fractional
+    // CSS pixels; permit only that subpixel rounding, not a visible anchor jump.
+    await expect.poll(async () => Math.abs((await anchor.boundingBox())!.y - before), { message: 'History should preserve the position at response time, including scrolling while awaiting it' }).toBeLessThanOrEqual(1);
   });
   historyEnabled = false;
   await resetRecent();

@@ -8,6 +8,7 @@
 // Or --approvals for one harmless approval-only turn and final device captures.
 // --manual-hold keeps the fixture online until <output>/manual-finish is created.
 // ORACULUM_MANUAL_PROJECT checks a manually registered path reaches Electron.
+import { selectModel, selectEffort } from './composer-controls';
 import { selectedThreadId } from './ui-state';
 import { _electron as electron, chromium, expect, type Browser, type ElectronApplication, type Page } from '@playwright/test';
 import { createRequire } from 'node:module';
@@ -222,7 +223,7 @@ try {
   await drawer(phone); await phone.getByRole('button', { name: '新建会话', exact: true }).click(); await expect(phone.locator('.conversation')).not.toHaveAttribute('data-thread-id', threadId);
   const secondId = (await selectedThreadId(phone))!; evidence.secondThreadId = secondId;
   await select(phone, threadId); await desktop.getByRole('button', { name: '刷新列表', exact: true }).click(); await select(desktop, threadId);
-  await phone.getByLabel('模型', { exact: true }).selectOption(model!); await phone.getByLabel('思考强度', { exact: true }).selectOption(effort);
+  await selectModel(phone, model!); await selectEffort(phone, effort);
   await phone.getByLabel('消息', { exact: true }).fill([
     '这是 Oraculum Android 真机受控验收。只在当前 cwd 进行以下有限任务，不用 Skills、MCP、web、子代理，不读其他目录或全局配置。',
     '读取 sum.mjs 和 sum.test.mjs，用 apply_patch 修复 sum.mjs 的加法错误，测试文件保持原样；运行 node --test sum.test.mjs。',
@@ -286,7 +287,7 @@ try {
   }
   if (!review || reviewStop) {
   const threadId: string = evidence.threadId;
-  step = 'native stop'; await phone.getByLabel('模型', { exact: true }).selectOption(model!); await phone.getByLabel('思考强度', { exact: true }).selectOption(effort);
+  step = 'native stop'; await selectModel(phone, model!); await selectEffort(phone, effort);
   await phone.getByLabel('消息', { exact: true }).fill(stopPrompt);
   await phone.getByRole('button', { name: '发送', exact: true }).click(); await expect(phone.getByTestId('turn-status')).toHaveText('执行中', { timeout: 30_000 });
   await phone.getByRole('button', { name: '停止', exact: true }).click(); await expect(phone.locator('.conversation')).toHaveAttribute('data-last-turn-status', 'interrupted', { timeout: 30_000 });
@@ -297,7 +298,7 @@ try {
   if (reviewApprovals) {
     step = 'final native approval captures';
     const threadId: string = evidence.threadId;
-    await phone.getByLabel('模型', { exact: true }).selectOption(model!); await phone.getByLabel('思考强度', { exact: true }).selectOption(effort);
+    await selectModel(phone, model!); await selectEffort(phone, effort);
     await phone.getByLabel('消息', { exact: true }).fill(approvalsPrompt); await hideIme(); await phone.getByRole('button', { name: '发送', exact: true }).click();
     for (const [marker, decision, label] of [['ORACULUM_3B_ALLOW_FINAL', 'accept', '允许本次'], ['ORACULUM_3B_DECLINE_FINAL', 'decline', '拒绝']] as const) {
       await expect.poll(() => pending?.method === 'item/commandExecution/requestApproval' ? pending.params.command : '', { timeout: 180_000 }).toContain(marker);

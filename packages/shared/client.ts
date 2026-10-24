@@ -47,9 +47,10 @@ export class BridgeClient {
       socket.onerror = () => { clearTimeout(timer); reject(new Error('无法连接 Bridge')); };
     });
   }
-  request<T>(method: string, params: object): Promise<T> {
+  request<T>(method: string, params: object, requestId?: string): Promise<T> {
     if (this.socket?.readyState !== WebSocket.OPEN) return Promise.reject(new Error('连接已断开；请重新连接并查询状态'));
-    const id = crypto.randomUUID();
+    const id = requestId ?? crypto.randomUUID();
+    if (this.pending.has(id)) return Promise.reject(new Error('请求仍在等待确认，不能重复发送'));
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(id);

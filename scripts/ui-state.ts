@@ -17,21 +17,24 @@ export async function sessionSnapshot(page: Page): Promise<Snapshot> {
     const url = new URL('ws', new URL('.', location.href));
     url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
     const socket = new WebSocket(url.href), id = crypto.randomUUID();
-    const finish = (error?: Error, snapshot?: Snapshot) => {
+    // A method avoids tsx's inferred-function-name helper in serialized browser
+    // code; that helper exists in Node, not the target Electron/WebView page.
+    const probe = { finish(error?: Error, snapshot?: Snapshot) {
       clearTimeout(timeout); socket.onclose = null; socket.onerror = null; socket.close();
       if (error) reject(error); else resolve(snapshot!);
+    }
     };
-    const timeout = setTimeout(() => finish(new Error('Snapshot probe timed out')), 30_000);
+    const timeout = setTimeout(() => probe.finish(new Error('Snapshot probe timed out')), 30_000);
     socket.onopen = () => socket.send(JSON.stringify({ id, method: 'bridge/subscribe', params: { threadId } }));
-    socket.onerror = () => finish(new Error('Snapshot probe could not connect'));
-    socket.onclose = () => finish(new Error('Snapshot probe closed before replying'));
+    socket.onerror = () => probe.finish(new Error('Snapshot probe could not connect'));
+    socket.onclose = () => probe.finish(new Error('Snapshot probe closed before replying'));
     socket.onmessage = ({ data }) => {
       try {
         const message = JSON.parse(data);
         if (message.id !== id) return;
-        if (message.error) finish(new Error(message.error.message));
-        else finish(undefined, message.result as Snapshot);
-      } catch (error) { finish(error instanceof Error ? error : new Error(String(error))); }
+        if (message.error) probe.finish(new Error(message.error.message));
+        else probe.finish(undefined, message.result as Snapshot);
+      } catch (error) { probe.finish(error instanceof Error ? error : new Error(String(error))); }
     };
   }), threadId);
 }

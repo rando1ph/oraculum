@@ -1,6 +1,7 @@
 // Opt-in public deployment acceptance. One native model turn; no deployment writes.
 // Run only with the separately approved Bridge/tunnel already running. The operator
 // controls their recorded tunnel PID when tunnel.ready / tunnel.disconnected appear.
+import { selectModel, selectEffort } from './composer-controls';
 import { selectedThreadId, sessionSnapshot } from './ui-state';
 import { chromium, _electron as electron, expect, type Page } from '@playwright/test';
 import WebSocket from 'ws';
@@ -110,13 +111,13 @@ try {
   const local = await desktop.firstWindow();
   await pair(local, 'Electron public closeout E2E', 'http://127.0.0.1:17860/');
   step = 'official native turn and approvals';
-  await remote.getByLabel('模型', { exact: true }).selectOption(process.env.ORACULUM_TEST_MODEL ?? 'gpt-6-luna');
-  await remote.getByLabel('思考强度', { exact: true }).selectOption('low');
   const previous = await selectedThreadId(remote);
   await remote.getByRole('button', { name: '新建会话', exact: true }).click();
   await expect(remote.locator('.conversation')).not.toHaveAttribute('data-thread-id', '');
   await expect(remote.locator('.conversation')).not.toHaveAttribute('data-thread-id', previous);
   const threadId = await selectedThreadId(remote); evidence.threadId = threadId;
+  await selectModel(remote, process.env.ORACULUM_TEST_MODEL ?? 'gpt-6-luna');
+  await selectEffort(remote, 'low');
   await local.getByRole('button', { name: '刷新列表', exact: true }).click();
   await local.locator(`.session-link[data-thread-id="${threadId}"]`).click();
   await expect(local.getByRole('status')).toContainText('状态已查询');

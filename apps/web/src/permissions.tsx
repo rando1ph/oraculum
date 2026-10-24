@@ -2,7 +2,6 @@ import { Fragment } from 'react';
 import type { NativeSessionSettings, PermissionMode } from '../../../packages/shared/protocol';
 
 export const permissionModes: { value: PermissionMode; label: string }[] = [
-  { value: 'inherit', label: '继承原生' },
   { value: 'read-only', label: 'Read Only' },
   { value: 'auto', label: 'Auto' },
   { value: 'full-access', label: 'Full Access' },
@@ -19,15 +18,6 @@ export function nativePermissionSummary(settings: NativeSessionSettings) {
       : '网络状态未报告';
   const roots = sandbox.type === 'workspaceWrite' ? ` · 额外可写目录 ${Array.isArray(sandbox.writableRoots) ? sandbox.writableRoots.length : '未报告'}` : '';
   return `沙盒 ${sandboxName} · 审批 ${policy} · ${network}${roots} · 审批方 ${approvalsReviewer}`;
-}
-
-export function PermissionStatus({ settings, synced, hasThread }: {
-  settings?: NativeSessionSettings; synced: boolean; hasThread: boolean;
-}) {
-  return <p className="permission-status" data-testid="effective-permissions" aria-live="polite">
-    {settings ? <><span>{synced ? '原生已确认' : '上次确认 · 待重新查询'}：</span>{nativePermissionSummary(settings)}</>
-      : hasThread ? '实际权限待 Codex 确认' : '创建会话后显示原生实际权限'}
-  </p>;
 }
 
 // Keep exact permission facts available in Settings without exposing the native

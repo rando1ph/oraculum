@@ -17,14 +17,14 @@ let deviceId: string | undefined;
 try {
   const page = await app.firstWindow();
   await expect(page.getByRole('heading', { name: '信任此设备', exact: true })).toBeVisible();
-  expect(await page.getByLabel('模型', { exact: true }).count()).toBe(0);
+  expect(await page.getByRole('button', { name: /^模型与思考强度：/ }).count()).toBe(0);
   expect(await page.evaluate(async () => (await fetch('/auth/session')).status)).toBe(401);
   const { code } = trust.createPairing();
   await page.getByLabel('设备名称', { exact: true }).fill('Electron auth E2E');
   await page.getByLabel('配对码', { exact: true }).fill(code);
   await page.getByRole('button', { name: '配对并连接', exact: true }).click();
   await expect(page.getByRole('status')).toContainText('状态已查询', { timeout: 30_000 });
-  expect(await page.getByLabel('模型', { exact: true }).count()).toBe(1);
+  expect(await page.getByRole('button', { name: /^模型与思考强度：/ }).count()).toBe(1);
   const session = await page.evaluate(async () => (await fetch('/auth/session')).json());
   deviceId = session.device.id;
   evidence.deviceId = deviceId;
@@ -40,7 +40,7 @@ try {
   await page.screenshot({ path: '.local/evidence/phase2/auth-electron-paired.png' });
   trust.revoke(deviceId!);
   await expect(page.getByRole('heading', { name: '信任此设备', exact: true })).toBeVisible({ timeout: 10_000 });
-  expect(await page.getByLabel('模型', { exact: true }).count()).toBe(0);
+  expect(await page.getByRole('button', { name: /^模型与思考强度：/ }).count()).toBe(0);
   evidence.revocation = 'open WebSocket closed; private GUI removed; re-pair required';
   evidence.result = 'passed';
   console.log(JSON.stringify(evidence));

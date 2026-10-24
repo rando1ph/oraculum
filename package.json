@@ -43,7 +43,9 @@
     "test:native:ui": "tsx scripts/native-requests-ui.ts",
     "test:native:devices": "tsx scripts/native-requests-live.ts",
     "build:runtime": "pnpm build && node scripts/build-runtime.mjs",
-    "build:deb": "pnpm build:runtime && node scripts/build-desktop.mjs"
+    "build:deb": "pnpm build:runtime && node scripts/build-desktop.mjs",
+    "test:composer:ui": "tsx scripts/composer-ui-contract.ts",
+    "test:composer:live": "tsx scripts/composer-live.ts"
   },
   "devDependencies": {
     "@electron-forge/cli": "8.0.1",

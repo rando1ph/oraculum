@@ -116,7 +116,8 @@ try {
   expect(readingWidth).toBeGreaterThanOrEqual(920); expect(readingWidth).toBeLessThanOrEqual(1000);
   for (const page of [desktop, phone]) {
     await cards(page, page === phone); await noNoise(page);
-    await expect(page.locator('.history-warning').first()).toContainText('部分历史未能恢复');
+    await expect(page.locator('.history-warning')).toHaveCount(0);
+    await expect(page.getByText(/部分历史未能恢复/)).toHaveCount(0);
     await expect(page.locator('[data-item-id="answer"] .markdown h2')).toHaveText('清晰的对话');
     await expect(page.locator('[data-item-id="answer"] .markdown strong')).toHaveText('Markdown');
     await expect(page.locator('[data-item-id="answer"] .markdown li')).toHaveCount(2);

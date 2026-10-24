@@ -117,7 +117,8 @@ try {
   expect(decision).toEqual({ decision: 'accept' }); expect(starts).toBe(1);
   await page.getByRole('button', { name: '查询状态', exact: true }).click();
   await expect(page.locator('.connection-status')).toContainText('状态已查询');
-  await expect(page.locator('.history-warning').first()).toContainText('部分历史未能恢复');
+  await expect(page.locator('.history-warning')).toHaveCount(0);
+  await expect(page.getByText(/部分历史未能恢复/)).toHaveCount(0);
   expect(await page.locator('[data-item-id="file"]').count()).toBe(1);
   turn.status = 'failed'; turn.error = { message: 'Simulated provider failure' };
   emit('turn/started', { turn: { ...turn, status: 'inProgress' } });

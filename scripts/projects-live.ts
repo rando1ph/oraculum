@@ -2,6 +2,7 @@
 // Only read-only pwd and exact harmless printf approvals in TWO EXISTING folders.
 // Run with ORACULUM_EXISTING_PROJECTS='["/absolute/project-a","/absolute/project-b"]'
 // and ORACULUM_ANDROID_CDP=http://127.0.0.1:<adb-forwarded-Oraculum-port>.
+import { selectModel, selectEffort } from './composer-controls';
 import { selectedThreadId, sessionSnapshot } from './ui-state';
 import { _electron as electron, chromium, expect, type ElectronApplication, type Browser, type Page } from '@playwright/test';
 import { createRequire } from 'node:module';
@@ -129,10 +130,11 @@ async function register(page: Page, cwd: string, name: string) {
   await expect(page.getByRole('dialog')).toHaveCount(0, { timeout: 45_000 });
   await ready(page); await navigation(page);
   await expect(page.getByLabel('项目目录', { exact: true })).toHaveValue(cwd);
-  await page.getByLabel('模型', { exact: true }).selectOption(model);
+  const previousThread = await selectedThreadId(page);
   await page.getByRole('button', { name: '新建会话', exact: true }).click();
   await ready(page);
   await expect(page.locator('.conversation')).not.toHaveAttribute('data-thread-id', '', { timeout: 30_000 });
+  await expect(page.locator('.conversation')).not.toHaveAttribute('data-thread-id', previousThread);
   const id = (await selectedThreadId(page))!;
   expect(id).not.toBe(''); testIds.add(id);
   const snapshot = await rpc<Snapshot>(page, 'bridge/subscribe', { threadId: id });
@@ -149,8 +151,8 @@ async function select(page: Page, cwd: string, threadId: string) {
   if (page === phone && await page.getByRole('button', { name: '关闭导航遮罩', exact: true }).isVisible()) await page.getByRole('button', { name: '折叠导航', exact: true }).click();
 }
 async function send(page: Page, marker: string, approvals = false) {
-  await page.getByLabel('模型', { exact: true }).selectOption(model);
-  await page.getByLabel('思考强度', { exact: true }).selectOption(effort);
+  await selectModel(page, model);
+  await selectEffort(page, effort);
   await page.getByLabel('消息', { exact: true }).fill([
     '这是已获用户授权的 Oraculum 只读工作目录验收，不是项目开发。只执行准确的 shell 命令 `pwd` 来核对本会话真实 cwd。',
     '不要读取、创建、编辑、移动或删除任何项目文件；不要运行仓库命令、Git、Skills、MCP、web、子代理，也不要读取任何凭据或配置。',

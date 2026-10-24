@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { NativeSessionSettings } from '../../../packages/shared/protocol';
-import { nativePermissionSummary, PermissionDetails, PermissionStatus } from './permissions';
+import { nativePermissionSummary, PermissionDetails } from './permissions';
 
 const readOnly: NativeSessionSettings = { approvalPolicy: 'on-request', approvalsReviewer: 'user', sandbox: { type: 'readOnly', networkAccess: false } };
 
@@ -13,12 +13,12 @@ it('shows the native policy and sandbox without guessing a selected preset', () 
 });
 
 it('labels stale permissions and never treats an unconfirmed selection as effective', () => {
-  expect(renderToStaticMarkup(<PermissionStatus settings={readOnly} synced={true} hasThread={true}/>)).toContain('原生已确认');
-  const stale = renderToStaticMarkup(<PermissionStatus settings={readOnly} synced={false} hasThread={true}/>);
+  expect(renderToStaticMarkup(<PermissionDetails settings={readOnly} synced={true} hasThread={true}/>)).toContain('原生已确认');
+  const stale = renderToStaticMarkup(<PermissionDetails settings={readOnly} synced={false} hasThread={true}/>);
   expect(stale).toContain('上次确认 · 待重新查询');
   expect(stale).not.toContain('原生已确认');
-  expect(renderToStaticMarkup(<PermissionStatus synced={true} hasThread={true}/>)).toContain('实际权限待 Codex 确认');
-  expect(renderToStaticMarkup(<PermissionStatus synced={true} hasThread={false}/>)).toContain('创建会话后显示原生实际权限');
+  expect(renderToStaticMarkup(<PermissionDetails synced={true} hasThread={true}/>)).toContain('实际权限待 Codex 确认');
+  expect(renderToStaticMarkup(<PermissionDetails synced={true} hasThread={false}/>)).toContain('创建会话后显示原生实际权限');
 });
 
 it('preserves additive native sandbox names without inventing network restrictions', () => {
@@ -46,7 +46,7 @@ it('keeps exact current-session permissions readable in settings without a JSON 
   expect(detail).not.toContain('title=');
   expect(detail).not.toContain('sandbox_approval');
   expect(detail).not.toContain('writableRoots');
-  expect(renderToStaticMarkup(<PermissionStatus settings={settings} synced={true} hasThread={true}/>)).not.toContain('title=');
+  expect(renderToStaticMarkup(<PermissionDetails settings={settings} synced={true} hasThread={true}/>)).not.toContain('title=');
   const missing = { ...settings, sandbox: { type: 'workspaceWrite' } } as unknown as NativeSessionSettings;
   expect(renderToStaticMarkup(<PermissionDetails settings={missing} synced={true} hasThread={true}/>)).toContain('<dt>排除 /tmp 可写权限</dt><dd>未报告</dd>');
 });

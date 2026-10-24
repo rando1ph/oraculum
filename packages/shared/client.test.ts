@@ -39,6 +39,18 @@ it('rejects an unacknowledged operation on disconnect and never retransmits on r
   expect(Socket.instances[0].sent).toHaveLength(1); expect(Socket.instances[1].sent).toEqual([]);
   client.close();
 });
+it('correlates a caller-prepared operation with the receipt and refuses a duplicate pending ID', async () => {
+  const client = new BridgeClient(vi.fn(), vi.fn());
+  const connected = client.connect(); const socket = Socket.instances[0]; socket.open(); await connected;
+  const operationId = '12345678-1234-1234-1234-123456789abc';
+  const request = client.request('turn/start', { threadId: 't', text: 'once' }, operationId);
+  expect(JSON.parse(socket.sent[0])).toMatchObject({ id: operationId, params: { operationId } });
+  await expect(client.request('turn/start', { threadId: 't', text: 'duplicate' }, operationId)).rejects.toThrow('不能重复发送');
+  expect(socket.sent).toHaveLength(1);
+  socket.onmessage!({ data: JSON.stringify({ id: operationId, result: { accepted: true } }) });
+  await expect(request).resolves.toEqual({ accepted: true });
+  client.close();
+});
 it('times out without retrying and ignores a late reply', async () => {
   const onEvent = vi.fn(); const client = new BridgeClient(onEvent, vi.fn());
   const connected = client.connect(); const socket = Socket.instances[0]; socket.open(); await connected;

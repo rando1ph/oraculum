@@ -4,12 +4,14 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type WebSocket from 'ws';
+import { DatabaseSync } from 'node:sqlite';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { BridgeEvent, NativeSessionSettings, PermissionMode, Snapshot, Thread, Turn } from '../../packages/shared/protocol';
 import type { ThreadResumeResponse } from '../../.local/codex-protocol/v2/ThreadResumeResponse';
 import { BridgeService } from './service';
 import { NativeRpcError } from './codex';
 import { ReceiptStore } from './receipts';
+import { ThreadPermissionStore } from './thread-permissions';
 import { createServer } from './server';
 import { TrustStore } from './trust-store';
 
@@ -20,12 +22,15 @@ const cleanups: (() => void | Promise<void>)[] = [];
 afterEach(async () => { for (const cleanup of cleanups.reverse()) await cleanup(); cleanups.length = 0; });
 
 const inherited: NativeSessionSettings = {
+  model: 'native-model', effort: null,
   approvalPolicy: 'untrusted', sandbox: { type: 'readOnly', networkAccess: true }, approvalsReviewer: 'guardian_subagent',
 };
 const fullAccess: NativeSessionSettings = {
+  model: 'native-model', effort: null,
   approvalPolicy: 'never', sandbox: { type: 'dangerFullAccess' }, approvalsReviewer: 'guardian_subagent',
 };
 const readOnly: NativeSessionSettings = {
+  model: 'native-model', effort: null,
   approvalPolicy: 'on-request', sandbox: { type: 'readOnly', networkAccess: false }, approvalsReviewer: 'guardian_subagent',
 };
 
@@ -34,10 +39,10 @@ function storage() {
   cleanups.push(() => rmSync(directory, { recursive: true, force: true }));
   const trust = new TrustStore(directory);
   cleanups.push(() => trust.close());
-  return { trust, receipts: new ReceiptStore(trust.db) };
+  return { trust, receipts: new ReceiptStore(trust.db), permissionChoices: new ThreadPermissionStore(trust.db) };
 }
 
-function fixture(receipts?: ReceiptStore) {
+function fixture(receipts?: ReceiptStore, permissionChoices?: ThreadPermissionStore) {
   const thread: Thread = {
     id: threadId, sessionId: threadId, forkedFromId: null, parentThreadId: null,
     preview: '', ephemeral: false, section: null, sectionEnteredAt: null, projectId: null,
@@ -72,7 +77,7 @@ function fixture(receipts?: ReceiptStore) {
   const service = new BridgeService({
     on: codex.on.bind(codex), send: codex.send,
     request: async <T>(method: string, params: object): Promise<T> => await codex.request(method, params) as T,
-  }, cwd, receipts);
+  }, cwd, receipts, undefined, permissionChoices);
   const events: BridgeEvent[] = [];
   service.on('event', event => events.push(event));
   const send = (permissionMode?: unknown, operationId = randomUUID()) => service.dispatch('turn/start', {
@@ -86,6 +91,86 @@ function fixture(receipts?: ReceiptStore) {
   return { service, codex, events, start, resume, thread, turn, settingsReply, send, snapshot, loadExisting, complete,
     setSettings: (settings: NativeSessionSettings) => { effective = settings; } };
 }
+
+describe('native session model and reasoning readback', () => {
+  it('publishes the actual start/resume model and effort, independent of requested overrides', async () => {
+    const f = fixture();
+    await f.service.dispatch('thread/start', { model: 'requested-model' });
+    expect((await f.snapshot()).settings).toMatchObject({ model: 'native-model', effort: null });
+    f.resume.mockResolvedValueOnce({ ...f.settingsReply(), model: 'effective-model', reasoningEffort: 'high' });
+    await f.service.dispatch('turn/start', { threadId, text: 'hello', model: 'requested-model', effort: 'medium' });
+    await vi.waitFor(() => expect(f.events.at(-1)).toMatchObject({ type: 'settingsChanged', threadId,
+      settings: { model: 'effective-model', effort: 'high' } }));
+  });
+});
+
+describe('native settings broadcasts and concurrent readback', () => {
+  it('keeps model and effort when a permission-only notification arrives, then accepts actual native model changes', async () => {
+    const f = fixture();
+    await f.loadExisting();
+    f.codex.emit('message', { method: 'thread/settings/updated', params: { threadId,
+      threadSettings: { cwd, approvalPolicy: fullAccess.approvalPolicy,
+        sandboxPolicy: fullAccess.sandbox, approvalsReviewer: fullAccess.approvalsReviewer } } });
+    expect(f.events).toContainEqual({ type: 'settingsChanged', threadId, settings: fullAccess });
+    f.codex.emit('message', { method: 'thread/settings/updated', params: { threadId,
+      threadSettings: { cwd, approvalPolicy: readOnly.approvalPolicy, sandboxPolicy: readOnly.sandbox,
+        approvalsReviewer: readOnly.approvalsReviewer, model: 'native-changed', effort: 'high' } } });
+    expect(f.events).toContainEqual({ type: 'settingsChanged', threadId,
+      settings: { ...readOnly, model: 'native-changed', effort: 'high' } });
+    const events = [...f.events];
+    f.codex.emit('message', { method: 'thread/settings/updated', params: { threadId: 'unowned-thread',
+      threadSettings: { cwd, ...readOnly, sandboxPolicy: readOnly.sandbox, model: 'foreign', effort: 'low' } } });
+    expect(f.events).toEqual(events);
+  });
+
+  it('invalidates an older readback as soon as model/effort changes are sent', async () => {
+    const f = fixture();
+    await f.loadExisting();
+    let releaseQuery!: (value: unknown) => void;
+    f.resume.mockImplementationOnce(() => new Promise(resolve => { releaseQuery = resolve; }));
+    const oldSnapshot = f.snapshot();
+    await vi.waitFor(() => expect(f.resume).toHaveBeenCalledTimes(2));
+    let releaseTurn!: (value: unknown) => void;
+    f.start.mockImplementationOnce(() => new Promise(resolve => { releaseTurn = resolve; }));
+    const send = f.service.dispatch('turn/start', { threadId, text: 'change model', model: 'chosen', effort: 'high' });
+    await vi.waitFor(() => expect(f.start).toHaveBeenCalledTimes(1));
+    releaseQuery(f.settingsReply());
+    expect((await oldSnapshot).settings).toBeUndefined();
+    f.resume.mockResolvedValueOnce({ ...f.settingsReply(), model: 'chosen', reasoningEffort: 'high' });
+    releaseTurn({ turn: f.turn });
+    await send;
+    await vi.waitFor(() => expect(f.events.at(-1)).toMatchObject({ type: 'settingsChanged', threadId,
+      settings: { model: 'chosen', effort: 'high' } }));
+  });
+
+  it('does not let an older resume overwrite a newer native settings notification', async () => {
+    const f = fixture();
+    await f.loadExisting();
+    let releaseQuery!: (value: unknown) => void;
+    f.resume.mockImplementationOnce(() => new Promise(resolve => { releaseQuery = resolve; }));
+    const oldSnapshot = f.snapshot();
+    await vi.waitFor(() => expect(f.resume).toHaveBeenCalledTimes(2));
+    f.codex.emit('message', { method: 'thread/settings/updated', params: { threadId,
+      threadSettings: { cwd, approvalPolicy: readOnly.approvalPolicy, sandboxPolicy: readOnly.sandbox,
+        approvalsReviewer: readOnly.approvalsReviewer, model: 'newer-native', effort: 'medium' } } });
+    releaseQuery(f.settingsReply());
+    expect((await oldSnapshot).settings).toEqual({ ...readOnly, model: 'newer-native', effort: 'medium' });
+  });
+
+  it('preserves an accepted model change receipt when actual readback fails, without claiming the request took effect', async () => {
+    const { receipts } = storage();
+    const f = fixture(receipts);
+    await f.loadExisting();
+    f.resume.mockRejectedValueOnce(new Error('native settings temporarily unavailable'));
+    const operationId = randomUUID();
+    await expect(f.service.dispatch('turn/start', { threadId, text: 'change model', model: 'requested', effort: 'high', operationId }, context))
+      .resolves.toEqual({ turn: f.turn });
+    await vi.waitFor(() => expect(f.events.at(-1)).toMatchObject({ type: 'notice', threadId }));
+    expect(receipts.list(cwd, threadId)[0]).toMatchObject({ operationId, status: 'accepted' });
+    expect(f.events.at(-2)).toEqual({ type: 'settingsChanged', threadId, settings: undefined });
+    expect(f.events).not.toContainEqual(expect.objectContaining({ settings: expect.objectContaining({ model: 'requested' }) }));
+  });
+});
 
 describe('native permission presets at the Bridge boundary', () => {
   it.each([undefined, 'inherit'])('omits permission overrides for %s and ignores renderer policy/config injection', async permissionMode => {
@@ -337,6 +422,133 @@ describe('permission verification keeps native send and approval safety', () => 
     await expect(f.service.dispatch('bridge/approve', { threadId, requestId: 'approval', bridgeToken, decision: 'accept' })).rejects.toThrow('no longer');
     await expect(f.service.dispatch('turn/start', { threadId: 'private-thread', text: 'no', permissionMode: 'full-access' })).rejects.toThrow('outside');
     expect(f.start).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('persistent explicit thread permission choices', () => {
+  it('retains only choice metadata after closing and reopening the SQLite file', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'oraculum-thread-choices-'));
+    cleanups.push(() => rmSync(directory, { recursive: true, force: true }));
+    const path = join(directory, 'choices.sqlite');
+    let db = new DatabaseSync(path);
+    const first = new ThreadPermissionStore(db);
+    first.confirm(cwd, threadId, 'read-only', readOnly);
+    db.close();
+    db = new DatabaseSync(path);
+    try {
+      const restored = new ThreadPermissionStore(db);
+      expect(restored.get(cwd, threadId)).toBe('read-only');
+      expect(db.prepare('SELECT * FROM thread_permission_choices').all()).toEqual([
+        { workspace: cwd, thread_id: threadId, mode: 'read-only' },
+      ]);
+    } finally { db.close(); }
+  });
+
+  it('saves only after an accepted turn and confirmed native readback, then reapplies only on first resume', async () => {
+    const { receipts, permissionChoices } = storage();
+    const f = fixture(receipts, permissionChoices);
+    await f.loadExisting();
+    expect(permissionChoices.get(cwd, threadId)).toBeUndefined();
+    let release!: (value: unknown) => void;
+    f.resume.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
+    await f.send('read-only');
+    expect(permissionChoices.get(cwd, threadId)).toBeUndefined();
+    release({ ...f.settingsReply(), ...readOnly });
+    await vi.waitFor(() => expect(permissionChoices.get(cwd, threadId)).toBe('read-only'));
+    f.complete();
+    const restarted = fixture(receipts, permissionChoices);
+    restarted.setSettings(readOnly);
+    expect((await restarted.loadExisting()).settings).toEqual(readOnly);
+    expect(restarted.codex.request).toHaveBeenCalledWith('thread/resume', {
+      threadId, cwd, excludeTurns: true, approvalPolicy: 'on-request', sandbox: 'read-only',
+    });
+    restarted.codex.request.mockClear();
+    await restarted.snapshot();
+    expect(restarted.codex.request).toHaveBeenCalledWith('thread/resume', { threadId, excludeTurns: true });
+  });
+
+  it('confirms an accepted choice from a newer subscribe even if it supersedes the turn readback', async () => {
+    const { permissionChoices } = storage();
+    const f = fixture(undefined, permissionChoices);
+    await f.loadExisting();
+    let release!: (value: unknown) => void;
+    f.resume.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
+    await f.send('read-only');
+    expect(permissionChoices.get(cwd, threadId)).toBeUndefined();
+    f.setSettings(readOnly);
+    await f.snapshot();
+    expect(permissionChoices.get(cwd, threadId)).toBe('read-only');
+    release(f.settingsReply());
+    await vi.waitFor(() => expect(f.events.at(-1)).toMatchObject({ type: 'settingsChanged', settings: readOnly }));
+    expect(permissionChoices.get(cwd, threadId)).toBe('read-only');
+  });
+
+  it('does not treat absent native sandbox flags as a confirmed false value', () => {
+    const { permissionChoices } = storage();
+    permissionChoices.confirm(cwd, threadId, 'read-only', { ...readOnly, sandbox: { type: 'readOnly' } } as NativeSessionSettings);
+    expect(permissionChoices.get(cwd, threadId)).toBeUndefined();
+    permissionChoices.confirm(cwd, threadId, 'auto', { ...readOnly,
+      sandbox: { type: 'workspaceWrite', networkAccess: false, writableRoots: [] } } as unknown as NativeSessionSettings);
+    expect(permissionChoices.get(cwd, threadId)).toBeUndefined();
+  });
+
+  it.each([new NativeRpcError('rejected', -32602), new Error('unknown turn ACK')])('does not record a rejected or unknown choice: %s', async error => {
+    const { permissionChoices } = storage();
+    const f = fixture(undefined, permissionChoices);
+    await f.loadExisting();
+    permissionChoices.confirm(cwd, threadId, 'read-only', readOnly);
+    f.start.mockRejectedValueOnce(error);
+    await expect(f.send('full-access')).rejects.toBe(error);
+    expect(permissionChoices.get(cwd, threadId)).toBe('read-only');
+  });
+
+  it('does not freeze initial custom settings or overwrite an existing choice when overrides are omitted', async () => {
+    const { permissionChoices } = storage();
+    const f = fixture(undefined, permissionChoices);
+    await f.service.dispatch('thread/start', {});
+    expect(permissionChoices.get(cwd, threadId)).toBeUndefined();
+    permissionChoices.confirm(cwd, threadId, 'read-only', readOnly);
+    for (const mode of [undefined, 'inherit']) {
+      await f.send(mode);
+      await vi.waitFor(() => expect(f.events.at(-1)).toMatchObject({ type: 'settingsChanged', settings: inherited }));
+      expect(permissionChoices.get(cwd, threadId)).toBe('read-only');
+      f.complete();
+    }
+  });
+
+  it('keeps accepted but unreadable settings unpersisted and never replaces them with a requested name', async () => {
+    const { permissionChoices } = storage();
+    const f = fixture(undefined, permissionChoices);
+    await f.loadExisting();
+    f.resume.mockRejectedValueOnce(new Error('settings unavailable'));
+    await f.send('full-access');
+    await vi.waitFor(() => expect(f.events.at(-1)).toMatchObject({ type: 'notice' }));
+    expect(permissionChoices.get(cwd, threadId)).toBeUndefined();
+  });
+
+  it('removes an old preset when a newly accepted choice resolves to a different custom native policy', async () => {
+    const { permissionChoices } = storage();
+    const f = fixture(undefined, permissionChoices);
+    await f.loadExisting();
+    permissionChoices.confirm(cwd, threadId, 'full-access', fullAccess);
+    await f.send('read-only');
+    await vi.waitFor(() => expect(f.events.at(-1)).toMatchObject({ type: 'settingsChanged', settings: inherited }));
+    expect(permissionChoices.get(cwd, threadId)).toBeUndefined();
+  });
+
+  it('isolates choices by both project and thread and removes only a confirmed deleted thread', async () => {
+    const { trust, permissionChoices } = storage();
+    permissionChoices.confirm(cwd, threadId, 'read-only', readOnly);
+    permissionChoices.confirm(cwd, 'other-thread', 'full-access', fullAccess);
+    permissionChoices.confirm('/other-project', threadId, 'full-access', fullAccess);
+    const reopened = new ThreadPermissionStore(trust.db);
+    expect(reopened.get(cwd, threadId)).toBe('read-only');
+    const f = fixture(undefined, reopened);
+    f.service.threads.add(threadId);
+    f.codex.emit('message', { method: 'thread/deleted', params: { threadId } });
+    expect(reopened.get(cwd, threadId)).toBeUndefined();
+    expect(reopened.get(cwd, 'other-thread')).toBe('full-access');
+    expect(reopened.get('/other-project', threadId)).toBe('full-access');
   });
 });
 

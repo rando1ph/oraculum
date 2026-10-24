@@ -47,7 +47,7 @@ enabled = false
       assert.equal(started.approvalPolicy, approval);
       assert.equal(started.sandbox.type, enabled ? 'workspaceWrite' : 'readOnly');
       const initial = await service.dispatch('bridge/subscribe', { threadId: started.thread.id }) as Snapshot;
-      assert.deepEqual(initial.settings, { approvalPolicy: started.approvalPolicy, sandbox: started.sandbox, approvalsReviewer: started.approvalsReviewer });
+      assert.deepEqual(initial.settings, { approvalPolicy: started.approvalPolicy, sandbox: started.sandbox, approvalsReviewer: started.approvalsReviewer, model: started.model, effort: started.reasoningEffort });
       // Empty threads are not persisted by 0.160.0. Restart/resume is covered
       // separately using real completed turns, never fabricated history here.
       console.log(JSON.stringify({ enabled, cliMatchesBridge: true, explicitDisabledMcpPreserved: true, sandbox, approval }));

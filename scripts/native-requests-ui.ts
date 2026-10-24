@@ -59,11 +59,12 @@ try {
   browser = await chromium.launch(); phone = await browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
   phone.on('pageerror', error => errors.push(error.message)); await phone.goto(origin); await ready(phone);
   await desktop.getByRole('button', { name: '设置', exact: true }).click();
-  await expect(desktop.locator('.native-config')).toContainText('never'); await expect(desktop.locator('.native-config')).toContainText('read-only'); await expect(desktop.locator('.native-config')).toContainText('disabled');
+  await desktop.locator('.permission-details summary').click();
+  await expect(desktop.locator('.permission-details')).toContainText('never');
+  await expect(desktop.locator('.permission-details')).toContainText('read-only');
   await desktop.getByRole('button', { name: '关闭设置', exact: true }).click();
-  await expect(desktop.getByTestId('effective-permissions')).toContainText('原生已确认');
-  await expect(desktop.getByTestId('effective-permissions')).toContainText('read-only');
-  checks.push('configured policies and actual resumed session settings displayed without fixed workspace-write/on-request labels');
+  await expect(desktop.locator('.composer').getByTestId('effective-permissions')).toHaveCount(0);
+  checks.push('actual resumed custom permissions remain available in Settings without fixed presets or composer diagnostics');
   const form = { type: 'object', required: ['name', 'count', 'allow', 'tier', 'areas'], properties: {
     name: { type: 'string', title: '姓名', minLength: 2 }, count: { type: 'integer', title: '数量', minimum: 1, maximum: 3 },
     allow: { type: 'boolean', title: '同意条款' }, tier: { type: 'string', title: '级别', oneOf: [{ const: 'read', title: '只读' }, { const: 'write', title: '读写' }] },

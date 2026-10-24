@@ -1,4 +1,5 @@
 // Opt-in real subscription E2E. Exactly three small turns; never part of pnpm test.
+import { selectModel, selectEffort } from './composer-controls';
 import { selectedThreadId } from './ui-state';
 import { _electron as electron, expect, type ElectronApplication } from '@playwright/test';
 import { createRequire } from 'node:module';
@@ -63,11 +64,13 @@ try {
   evidence.config = await service!.dispatch('bridge/config', {});
   const renderer = await page.evaluate(() => ({ require: typeof (window as any).require, process: typeof (window as any).process }));
   expect(renderer).toEqual({ require: 'undefined', process: 'undefined' }); evidence.renderer = renderer;
-  await page.getByLabel('模型', { exact: true }).selectOption(model);
-  await page.getByLabel('思考强度', { exact: true }).selectOption('low');
+  const previousThread = await selectedThreadId(page);
   await page.getByRole('button', { name: '新建会话', exact: true }).click();
   await expect(page.locator('.conversation')).not.toHaveAttribute('data-thread-id', '');
+  await expect(page.locator('.conversation')).not.toHaveAttribute('data-thread-id', previousThread);
   const threadId = await selectedThreadId(page); evidence.threadId = threadId;
+  await selectModel(page, model);
+  await selectEffort(page, 'low');
   await page.getByLabel('消息', { exact: true }).fill('Controlled Oraculum GUI E2E, work ONLY in cwd. No skills, MCP, web, subagents, other projects or global configuration. Read sum.mjs and sum.test.mjs. Fix sum.mjs to add both numbers using apply_patch (leave the test unchanged), then run `node --test sum.test.mjs`. After tests, make TWO SEPARATE approval requests sequentially using the shell tool with sandbox_permissions=require_escalated: first command exactly `printf ORACULUM_ALLOW_OK` with justification="Oraculum harmless allow test"; then command exactly `printf ORACULUM_DECLINE_OK` with justification="Oraculum harmless decline test". The second will be declined: do not retry or run it by another route. Finish with Markdown heading `## ORACULUM_PHASE1_OK` and briefly report the test and approval outcomes. Do not perform any additional work.');
   await page.getByRole('button', { name: '发送', exact: true }).click();
   for (const [marker, decision, button] of [['ORACULUM_ALLOW_OK', 'accept', '允许本次'], ['ORACULUM_DECLINE_OK', 'decline', '拒绝']] as const) {
@@ -114,10 +117,11 @@ try {
   page = await launch();
   await expect(page.locator('.conversation')).toHaveAttribute('data-thread-id', threadId);
   await expect(page.locator('.message:not(.user)').last()).toContainText('ORACULUM_REOPEN_OK');
-  await expect(page.locator('.history-warning').first()).toContainText('部分历史未能恢复');
+  await expect(page.locator('.history-warning')).toHaveCount(0);
+  await expect(page.getByText(/部分历史未能恢复/)).toHaveCount(0);
   evidence.backendRestart = 'native thread/list, resume and paginated history restored after fresh App Server + Bridge';
-  await page.getByLabel('模型', { exact: true }).selectOption(model);
-  await page.getByLabel('思考强度', { exact: true }).selectOption('low');
+  await selectModel(page, model);
+  await selectEffort(page, 'low');
   await page.getByLabel('消息', { exact: true }).fill('Controlled interruption test. Only run `sleep 30` in cwd, then say done. Do not inspect or change files.');
   await page.getByRole('button', { name: '发送', exact: true }).click();
   await expect(page.getByTestId('turn-status')).toHaveText('执行中', { timeout: 30_000 });

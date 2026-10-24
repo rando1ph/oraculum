@@ -1,5 +1,6 @@
 // Opt-in real Android WebView smoke. Prerequisites and IME checks are documented
 // in PHASE_2_REMOTE.md. CDP must be forwarded from the Oraculum debug app only.
+import { selectModel, selectEffort } from './composer-controls';
 import { selectedThreadId } from './ui-state';
 import { chromium, expect } from '@playwright/test';
 import { mkdir, writeFile } from 'node:fs/promises';
@@ -23,11 +24,13 @@ try {
   evidence.workspace = await page.locator('aside .path').innerText();
   evidence.title = await page.title();
   evidence.viewport = await page.evaluate(() => ({ width: innerWidth, overflow: document.documentElement.scrollWidth > innerWidth }));
-  await page.getByLabel('模型', { exact: true }).selectOption(process.env.ORACULUM_TEST_MODEL ?? 'gpt-6-luna');
-  await page.getByLabel('思考强度', { exact: true }).selectOption('low');
+  const previousThread = await selectedThreadId(page);
   await page.getByRole('button', { name: '新建会话', exact: true }).click();
   await expect(page.locator('.conversation')).not.toHaveAttribute('data-thread-id', '');
+  await expect(page.locator('.conversation')).not.toHaveAttribute('data-thread-id', previousThread);
   const threadId = await selectedThreadId(page);
+  await selectModel(page, process.env.ORACULUM_TEST_MODEL ?? 'gpt-6-luna');
+  await selectEffort(page, 'low');
   evidence.threadId = threadId;
   await page.getByLabel('消息', { exact: true }).fill(
     '中文真机测试。Controlled Oraculum Android smoke, work ONLY in cwd. Read hello.txt. ' +
@@ -68,7 +71,8 @@ try {
   await expect(page.getByRole('status')).toContainText('状态已查询', { timeout: 30_000 });
   await expect(page.locator('.conversation')).toHaveAttribute('data-thread-id', threadId);
   await expect(page.getByRole('heading', { name: 'ORACULUM_ANDROID_OK', exact: true })).toBeVisible();
-  await expect(page.locator('.history-warning').first()).toContainText('部分历史未能恢复');
+  await expect(page.locator('.history-warning')).toHaveCount(0);
+  await expect(page.getByText(/部分历史未能恢复/)).toHaveCount(0);
   evidence.nativeHistoryReload = true;
   expect(errors).toEqual([]);
   evidence.pageErrors = errors;

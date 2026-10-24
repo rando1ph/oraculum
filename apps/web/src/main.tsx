@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BridgeClient } from '../../../packages/shared/client';
-import type { BridgeEvent, LocalConfig, Model, PermissionMode, ProjectList, Snapshot, Thread, ThreadItem } from '../../../packages/shared/protocol';
+import type { BridgeEvent, LocalConfig, Model, ProjectList, Snapshot, Thread, ThreadItem } from '../../../packages/shared/protocol';
 import type { ThreadStartResponse } from '../../../.local/codex-protocol/v2/ThreadStartResponse';
 import type { ThreadListResponse } from '../../../.local/codex-protocol/v2/ThreadListResponse';
 import { itemKey, useSession } from './store';
@@ -17,7 +17,8 @@ import { ResizeHandle, useLayout } from './layout';
 import { SessionGate, checkSession } from './auth';
 import { ThemeSettings, useTheme } from './themes';
 import { NativeRequest } from './native-request';
-import { PermissionDetails, PermissionStatus, permissionModes } from './permissions';
+import { PermissionDetails, permissionModes } from './permissions';
+import { acknowledgedComposerDraft, actualComposerValues, composerOverrides, confirmedComposerDraft, parseComposerDraft, reconcileComposerDraft, type ComposerDraft } from './composer-settings';
 import { SessionActions, sessionActionBlock, sessionLabel, type SessionAction, type SessionTarget } from './session-actions';
 import './style.css';
 import './mobile.css';
@@ -40,10 +41,8 @@ function App() {
   const [config, setConfig] = useState<LocalConfig>();
   const [projects, setProjects] = useState<ProjectList>({ root: '', projects: [] });
   const [models, setModels] = useState<Model[]>([]);
-  const [model, setModel] = useState('');
-  const [effort, setEffort] = useState('');
-  // Explicit permission choices are scoped to this view, never saved as client defaults.
-  const [permissionMode, setPermissionMode] = useState<PermissionMode>('inherit');
+  const [composerDraft, setComposerDraft] = useState<{ key: string; draft: ComposerDraft }>({ key: '', draft: {} });
+  const [composerMenu, setComposerMenu] = useState<'project' | 'model' | 'permission' | 'more' | null>(null);
   const [threads, setThreads] = useState<Thread[]>([]);
   const [archived, setArchived] = useState(false);
   const [listing, setListing] = useState(false);
@@ -88,6 +87,9 @@ function App() {
   const scroller = useRef<HTMLDivElement>(null);
   const scrollContent = useRef<HTMLDivElement>(null);
   const composer = useRef<HTMLTextAreaElement>(null);
+  const composerForm = useRef<HTMLFormElement>(null);
+  const composerPanel = useRef<HTMLDivElement>(null);
+  const composerTrigger = useRef<HTMLButtonElement>(null);
   const follow = useRef(true);
   const scrollPositions = useRef(new Map<string, ReadingPosition>());
   const readingRestore = useRef<number | null>(null);
@@ -97,6 +99,45 @@ function App() {
   const report = (value: unknown) => setError(value instanceof Error ? value.message : String(value));
   const storageKey = () => `oraculum.thread:${workspace.current}`;
   const draftKey = (id = selected.current) => `oraculum.draft:${workspace.current}:${id}`;
+  const settingsDraftKey = (cwd = config?.cwd ?? '', id = session.thread?.id ?? '') => `oraculum.composer:${new URL('.', location.href).pathname}:${cwd}:${id}`;
+  const settingsKey = settingsDraftKey();
+  const actualSettings = actualComposerValues(models, config, session.settings, !!session.thread);
+  const storedChoices = composerDraft.key === settingsKey ? composerDraft.draft : parseComposerDraft(readSaved(settingsKey));
+  const choices = synced ? reconcileComposerDraft(storedChoices, actualSettings) : storedChoices;
+  const model = choices.model?.value ?? actualSettings.model;
+  const selectedModel = models.find(entry => entry.model === model);
+  const effort = choices.effort?.value ?? (choices.model && (session.thread ? session.settings?.effort : config?.effort) === null
+    ? selectedModel?.defaultReasoningEffort ?? '' : actualSettings.effort);
+  const permissionMode = choices.permissionMode?.value ?? actualSettings.permissionMode;
+  const modelLabel = selectedModel?.displayName || model || '未读取';
+  const permissionLabel = permissionModes.find(entry => entry.value === permissionMode)?.label ?? (permissionMode === 'custom'
+    ? !session.thread && config?.sandbox ? { 'workspace-write': 'Workspace Write', 'read-only': 'Read Only', 'danger-full-access': 'Full Access' }[config.sandbox] : '自定义'
+    : '未读取');
+  const projectLabel = projects.projects.find(project => project.cwd === config?.cwd)?.name ?? '选择项目';
+  function saveChoices(draft: ComposerDraft, key = settingsKey) {
+    save(key, JSON.stringify(draft));
+    setComposerDraft({ key, draft });
+  }
+  function chooseSetting(key: keyof ComposerDraft, value: string) {
+    const draft = { ...choices };
+    if (value === actualSettings[key]) delete draft[key];
+    else draft[key] = { value, base: key === 'permissionMode' ? actualSettings.permissionKey : actualSettings[key] };
+    if (key === 'model') {
+      const nextModel = models.find(entry => entry.model === value);
+      if (nextModel && !nextModel.supportedReasoningEfforts.some(option => option.reasoningEffort === effort)) {
+        draft.effort = { value: nextModel.defaultReasoningEffort, base: actualSettings.effort };
+      }
+    }
+    saveChoices(draft);
+  }
+  function closeComposerMenu(restoreFocus = false) {
+    setComposerMenu(null);
+    if (restoreFocus) requestAnimationFrame(() => composerTrigger.current?.focus());
+  }
+  function toggleComposerMenu(value: NonNullable<typeof composerMenu>, trigger: HTMLButtonElement) {
+    composerTrigger.current = trigger;
+    setComposerMenu(current => current === value ? null : value);
+  }
   function readDraft() {
     try {
       const stored = readingStorage().getItem(draftKey());
@@ -142,9 +183,6 @@ function App() {
       }
     } catch { /* The current snapshot remains usable if older history is unavailable. */ }
     finally { if (current()) setLoadingHistory(false); }
-    if (current() && !useSession.getState().items[key]) {
-      useSession.setState(state => ({ notices: [...state.notices, '未能找到上次阅读的原生记录，暂按保存位置显示。'] }));
-    }
   }
   const openDiff = (path: string, diff: string) => { setInspected({ kind: 'diff', path, diff }); setLayout(l => ({ ...l, inspector: true })); };
   function openItem(item: ThreadItem, turnId: string) { setInspected({ kind: 'item', id: item.id, turnId }); setLayout(l => ({ ...l, inspector: true })); }
@@ -196,7 +234,7 @@ function App() {
       selected.current = ''; save(storageKey(), '');
       useSession.getState().reset(); setText(''); ++draftRevision.current;
       setSynced(true); setLoadingHistory(false); setCreatedThreadId(''); setInspected(undefined);
-      setModel(''); setEffort(''); setPermissionMode('inherit');
+      closeComposerMenu();
     }
     if (actionTargetId.current === message.threadId) closeSessionActions();
     if (message.cwd !== workspace.current) return;
@@ -222,6 +260,8 @@ function App() {
     const state = useSession.getState();
     if (message.type === 'settingsChanged' && message.threadId === state.thread?.id) {
       useSession.setState({ settings: message.settings });
+      const key = settingsDraftKey(workspace.current, message.threadId);
+      saveChoices(confirmedComposerDraft(parseComposerDraft(readSaved(key)), message.settings), key);
     }
     if (message.type === 'approval') state.approval(message.request);
     if (message.type === 'requestAnswered') useSession.setState({ pending: state.pending.filter(request => request.id !== message.requestId || request.bridgeToken !== message.bridgeToken) });
@@ -246,7 +286,7 @@ function App() {
     selected.current = id;
     setSynced(false); setLoadingHistory(false);
     if (changed) {
-      useSession.getState().reset(); setModel(''); setEffort(''); setPermissionMode('inherit'); setError(''); setInspected(undefined);
+      useSession.getState().reset(); closeComposerMenu(); setError(''); setInspected(undefined);
       setText(readDraft()); setDrawer(false); setMenu(false);
     }
     if (!id) { readingRestore.current = null; useSession.getState().reset(); setSynced(true); buffer.current = null; return; }
@@ -260,12 +300,11 @@ function App() {
       if (!changed) { rememberScroll(); position = savedScroll(id); }
       readingRestore.current = ticket; follow.current = false;
       useSession.getState().snapshot(snapshot);
+      const key = settingsDraftKey(workspace.current, id);
+      saveChoices(confirmedComposerDraft(parseComposerDraft(readSaved(key)), snapshot.settings, snapshot.receipts), key);
       const queued = buffer.current ?? [];
       buffer.current = null;
       for (const message of queued) apply(message, true);
-      if (queued.some(e => e.type === 'event' && e.event.method.endsWith('delta'))) {
-        useSession.setState({ notices: [...useSession.getState().notices, '查询期间有流式更新；中间片段可能不全，终态或再次查询后补齐。'] });
-      }
       await restoreEarlier(position, id, ticket);
       if (ticket !== epoch.current) return;
       save(storageKey(), id);
@@ -297,7 +336,7 @@ function App() {
       ++epoch.current; readingRestore.current = null; selected.current = ''; buffer.current = null;
       workspace.current = settings.cwd; save('oraculum.project', settings.cwd);
       archivedView.current = false; setArchived(false); actionTargetId.current = ''; setActionTarget(undefined); setLifecycleNotice('');
-      setConfig(settings); setThreads([]); setNextCursor(null); setQuery(''); setModel(''); setEffort(''); setPermissionMode('inherit'); setInspected(undefined);
+      setConfig(settings); setThreads([]); setNextCursor(null); setQuery(''); closeComposerMenu(); setInspected(undefined);
       useSession.getState().reset(); setText(readDraft());
       const saved = restore ? readSaved(storageKey()) : null;
       let page = await listThreads();
@@ -373,9 +412,38 @@ function App() {
     composer.current.style.height = 'auto';
     composer.current.style.height = `${Math.min(expanded ? 360 : 180, Math.max(52, composer.current.scrollHeight))}px`;
   }, [text, expanded]);
+  useLayoutEffect(() => {
+    const form = composerForm.current;
+    if (!form) return;
+    const size = () => {
+      const header = form.closest('.conversation')?.querySelector('.conversation-header');
+      const available = form.getBoundingClientRect().top - (header?.getBoundingClientRect().bottom ?? 0) - 8;
+      form.style.setProperty('--composer-popup-height', `${Math.max(44, available)}px`);
+    };
+    const observer = new ResizeObserver(size);
+    observer.observe(form);
+    visualViewport?.addEventListener('resize', size);
+    window.addEventListener('resize', size);
+    size();
+    return () => { observer.disconnect(); visualViewport?.removeEventListener('resize', size); window.removeEventListener('resize', size); };
+  }, []);
   useEffect(() => { if (settings) dialog.current?.showModal(); else dialog.current?.close(); }, [settings]);
   useEffect(() => { save('oraculum.reading-size', String(readingSize)); }, [readingSize]);
-  const overlay = mobile && (drawer || settings || browsing || menu || !!actionTarget || layout.inspector);
+  const choicesJson = JSON.stringify(choices);
+  useEffect(() => { saveChoices(choices); }, [settingsKey, choicesJson]);
+  useEffect(() => {
+    if (!composerMenu) return;
+    const panel = composerPanel.current;
+    const first = panel?.querySelector<HTMLButtonElement>('button[aria-checked="true"]:not(:disabled)')
+      ?? panel?.querySelector<HTMLButtonElement>('button:not(:disabled)');
+    (first ?? panel)?.focus({ preventScroll: true });
+    const outside = (event: PointerEvent) => {
+      if (!panel?.contains(event.target as Node) && !composerTrigger.current?.contains(event.target as Node)) closeComposerMenu();
+    };
+    document.addEventListener('pointerdown', outside);
+    return () => document.removeEventListener('pointerdown', outside);
+  }, [composerMenu]);
+  const overlay = mobile && (drawer || settings || browsing || menu || !!composerMenu || !!actionTarget || layout.inspector);
   useLayoutEffect(() => {
     if (overlay && !overlayPosition.current && scroller.current) {
       overlayPosition.current = { id: selected.current, top: scroller.current.scrollTop };
@@ -400,6 +468,7 @@ function App() {
     // Android invokes this single UI-only callback after the IME has handled Back.
     // It grants no native, filesystem, network or credential capability to JS.
     const back = () => {
+      if (composerMenu) { closeComposerMenu(true); return true; }
       if (actionTarget) { if (!lifecycleBusy) closeSessionActions(); return true; }
       if (menu) { setMenu(false); return true; }
       if (browsing) { setBrowsing(false); return true; }
@@ -415,16 +484,25 @@ function App() {
     };
     window.addEventListener('keydown', close);
     return () => { delete window.oraculumAndroidBack; window.removeEventListener('keydown', close); };
-  }, [settings, browsing, menu, drawer, expanded, layout.inspector, actionTarget, lifecycleBusy]);
+  }, [settings, browsing, menu, composerMenu, drawer, expanded, layout.inspector, actionTarget, lifecycleBusy]);
   async function createThread() {
     setSending(true); setError('');
     try {
-      const result = await client.current!.request<ThreadStartResponse>('thread/start', { model, cwd: workspace.current, permissionMode });
+      // A new thread starts from project configuration, never another thread's draft.
+      const initialChoices = session.thread ? {} : choices;
+      const result = await client.current!.request<ThreadStartResponse>('thread/start', {
+        model: initialChoices.model?.value, permissionMode: initialChoices.permissionMode?.value, cwd: workspace.current,
+      });
       rememberScroll(); ++epoch.current; readingRestore.current = null; buffer.current = null; selected.current = result.thread.id;
       setInspected(undefined); setText(readDraft()); setDrawer(false); follow.current = true;
       useSession.getState().reset(); useSession.getState().snapshot({ thread: result.thread, pending: [], settings: {
-        approvalPolicy: result.approvalPolicy, sandbox: result.sandbox, approvalsReviewer: result.approvalsReviewer,
+        approvalPolicy: result.approvalPolicy, sandbox: result.sandbox, approvalsReviewer: result.approvalsReviewer, model: result.model, effort: result.reasoningEffort,
       } });
+      if (initialChoices.effort) saveChoices({ effort: { ...initialChoices.effort,
+        base: actualComposerValues(models, config, { approvalPolicy: result.approvalPolicy, sandbox: result.sandbox, approvalsReviewer: result.approvalsReviewer, model: result.model, effort: result.reasoningEffort }, true).effort,
+      } }, settingsDraftKey(workspace.current, result.thread.id));
+      if (!session.thread) save(settingsKey, '{}');
+      closeComposerMenu();
       setCreatedThreadId(result.thread.id);
       save(storageKey(), result.thread.id);
       if (archivedView.current) changeSessionView(false);
@@ -439,9 +517,22 @@ function App() {
     if (!canSend || composing.current) return;
     setSending(true); setError(''); follow.current = true;
     const submittedRevision = draftRevision.current;
+    const submittedSettings = useSession.getState().settings;
+    const submittedKey = settingsKey;
+    const submittedThread = selected.current;
+    const operationId = crypto.randomUUID();
+    const submittedChoices: ComposerDraft = {};
+    for (const key of ['model', 'effort', 'permissionMode'] as const) {
+      if (choices[key]) submittedChoices[key] = { ...choices[key], acknowledged: false, operationId };
+    }
+    saveChoices(submittedChoices, submittedKey);
     try {
-      await client.current!.request('turn/start', { threadId: selected.current, text, model, effort, permissionMode });
-      if (draftRevision.current === submittedRevision) writeDraft('');
+      await client.current!.request('turn/start', { threadId: submittedThread, text, ...composerOverrides(submittedChoices) }, operationId);
+      const acknowledged = acknowledgedComposerDraft(parseComposerDraft(readSaved(submittedKey)), operationId);
+      const current = useSession.getState();
+      const readback = current.thread?.id === submittedThread ? current.settings : undefined;
+      saveChoices(readback !== submittedSettings ? confirmedComposerDraft(acknowledged, readback) : acknowledged, submittedKey);
+      if (draftRevision.current === submittedRevision && selected.current === submittedThread) writeDraft('');
     } catch (value) { report(value); setSynced(false); }
     finally { setSending(false); }
   }
@@ -535,14 +626,12 @@ function App() {
         <div data-theme-slot="content" className="conversation-content" ref={scrollContent}>
           {theme.notice && !settings && <p className="error" role="alert">{theme.notice}</p>}
           {session.history?.nextCursor && <button className="history-more" disabled={loadingHistory || !connected} onClick={() => void older()}>{loadingHistory ? '正在加载…' : '加载更早历史'}</button>}
-          {session.history?.warning && <p className="history-warning">{session.history.warning}</p>}
           {session.sendBlocked && <p role="alert" className="error">有发送尚未确认终态，禁止重发。请查询原生状态；结果仍未知时使用新会话。</p>}
           {config && !projectAvailable && <p className="error" role="alert">项目已移除或目录失效。请浏览主机文件夹并重新添加；仍可停止当前执行或拒绝审批。</p>}
           {error && <p className="error" role="alert">{error}</p>}
           {session.notices.map((notice, i) => <p className="history-warning" key={i}>{notice}</p>)}
           {lastTurn?.error && <p className="error" role="alert">执行失败：{lastTurn.error.message}</p>}
           {lastReceipt?.status === 'rejected' && <p className="error" role="alert">最近一次发送已被拒绝，请检查错误提示后再发送。</p>}
-          {!active && !session.history?.warning && items.some(view => view.source === 'live') && <p className="history-warning">部分内容尚未从历史记录确认，重新连接后可能无法恢复。</p>}
           <div className="timeline" aria-label="会话时间线">
             {emptyBrand && <div className="empty-state" data-brand-state={emptyBrand}>
               <OracleLogo/><div className="empty-state-copy">
@@ -569,17 +658,35 @@ function App() {
         </div>
       </div>
       <div className="jump-latest-slot">{!atBottom && <button className="jump-latest" onClick={() => { follow.current = true; scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: 'smooth' }); }}><Icon name="arrowDown" size={14}/>返回最新{session.pending.length ? ' · 待审批' : ''}</button>}</div>
-      <form data-theme-slot="composer" className={`composer ${expanded ? 'expanded' : ''}`} onSubmit={event => { event.preventDefault(); void send(); }}>
-        <div className="composer-input"><label className="sr-only" htmlFor="message">消息</label><textarea ref={composer} id="message" enterKeyHint="enter" onCompositionStart={() => { composing.current = true; }} onCompositionEnd={() => { composing.current = false; }} value={text} onChange={event => writeDraft(event.target.value)} placeholder={brandCopy.placeholder} maxLength={16000} rows={2} onKeyDown={event => { if (event.key === 'Enter' && (event.ctrlKey || event.metaKey) && !event.nativeEvent.isComposing && !composing.current && event.keyCode !== 229) { event.preventDefault(); void send(); } }}/><button className="icon-button expand-composer" type="button" aria-label={expanded ? '收起输入框' : '展开输入框'} title="展开输入框" onClick={() => setExpanded(value => !value)}><Icon name="expand" size={15}/></button></div>
-        <div className="composer-toolbar"><div className="model-controls"><label><span className="sr-only">模型</span><select aria-label="模型" title="下一轮模型" value={model} onChange={event => { setModel(event.target.value); setEffort(''); }}><option value="">继承 · {session.thread?.model ?? config?.model ?? 'Codex 默认'}</option>{models.map(m => <option key={m.id} value={m.model}>{m.displayName}</option>)}</select></label><label><span className="sr-only">思考强度</span><select aria-label="思考强度" title="下一轮思考强度" value={effort} onChange={event => setEffort(event.target.value)}><option value="">继承 · {session.thread?.reasoningEffort ?? config?.effort ?? '默认'}</option>{(models.find(m => m.model === (model || session.thread?.model || config?.model))?.supportedReasoningEfforts ?? []).map(e => <option key={e.reasoningEffort}>{e.reasoningEffort}</option>)}</select></label><label className="permission-control"><span className="sr-only">权限模式</span><select aria-label="权限模式" aria-describedby="permission-intent" title="下一次新建或发送时使用的权限" value={permissionMode} disabled={disabled || !synced || !projectAvailable || session.sendBlocked} onChange={event => setPermissionMode(event.target.value as PermissionMode)}>{permissionModes.map(mode => <option key={mode.value} value={mode.value}>{mode.label}</option>)}</select></label></div>
-          <div className="composer-actions">{active && <button type="button" className="stop-button" disabled={!connected || !session.activeTurn} onClick={() => void client.current!.request('turn/interrupt', { threadId: selected.current, turnId: session.activeTurn }).catch(report)}><Icon name="stop" size={15}/>停止</button>}<button className="primary send-button" title="发送 · Ctrl+Enter" aria-label="发送" disabled={!canSend}><Icon name="send"/></button></div>
+      <form ref={composerForm} data-theme-slot="composer" className={`composer ${expanded ? 'expanded' : ''}`} onSubmit={event => { event.preventDefault(); void send(); }}>
+        <div className="composer-context model-controls">
+          <button type="button" className="composer-control project-control" aria-label={`项目：${projectLabel}`} title={projectLabel} aria-haspopup="dialog" aria-expanded={composerMenu === 'project'} disabled={disabled} onClick={event => toggleComposerMenu('project', event.currentTarget)}><Icon name="folder"/><span className="composer-value">{projectLabel}</span><Icon name="chevron" size={12}/></button>
+          <button type="button" className="composer-control model-control" aria-label={`模型与思考强度：${modelLabel} · ${effort || '未读取'}`} title={`${modelLabel} · ${effort || '未读取'}`} aria-haspopup="dialog" aria-expanded={composerMenu === 'model'} data-state={choices.model || choices.effort ? 'pending' : 'native'} disabled={disabled || !synced || !projectAvailable || session.sendBlocked} onClick={event => toggleComposerMenu('model', event.currentTarget)}><Icon name="model"/><span className="composer-value">{modelLabel}</span>{effort && <span className="effort-badge">{effort}</span>}<Icon name="chevron" size={12}/></button>
         </div>
-        <p className="permission-intent" id="permission-intent">{permissionMode === 'inherit'
-          ? session.thread ? '下一轮继承当前会话权限（保留此前覆盖）；新会话继承项目配置。' : '新会话继承当前项目的 Codex 配置。'
-          : `下一次新建 / 发送使用 ${permissionModes.find(mode => mode.value === permissionMode)!.label}；不改变正在运行的轮次。`}</p>
-        {permissionMode === 'full-access' && <p className="permission-warning">Full Access 可读写工作区以外的文件并联网，无需命令审批。</p>}
-        <PermissionStatus settings={session.settings} synced={connected && synced} hasThread={!!session.thread}/>
-        <div className="composer-caption"><span>{model || effort ? '下一轮使用所选模型 / 思考强度' : '模型 / 思考强度继承原生会话'}</span><span>Ctrl Enter 发送 · Enter 换行</span></div>
+        <div className="composer-input"><label className="sr-only" htmlFor="message">消息</label><textarea ref={composer} id="message" enterKeyHint="enter" onCompositionStart={() => { composing.current = true; }} onCompositionEnd={() => { composing.current = false; }} value={text} onChange={event => writeDraft(event.target.value)} placeholder={brandCopy.placeholder} maxLength={16000} rows={2} onKeyDown={event => { if (event.key === 'Enter' && (event.ctrlKey || event.metaKey) && !event.nativeEvent.isComposing && !composing.current && event.keyCode !== 229) { event.preventDefault(); void send(); } }}/><button className="icon-button expand-composer" type="button" aria-label={expanded ? '收起输入框' : '展开输入框'} title="展开输入框" onClick={() => setExpanded(value => !value)}><Icon name="expand" size={15}/></button></div>
+        <div className="composer-toolbar">
+          <div className="composer-options">
+            <button type="button" className="icon-button composer-more" aria-label="更多操作" title="更多操作" aria-haspopup="dialog" aria-expanded={composerMenu === 'more'} onClick={event => toggleComposerMenu('more', event.currentTarget)}><Icon name="plus" size={21}/></button>
+            <button type="button" className={`composer-control permission-control ${permissionMode === 'full-access' ? 'full-access' : ''}`} aria-label={`权限：${permissionLabel}`} title={permissionLabel} aria-haspopup="dialog" aria-expanded={composerMenu === 'permission'} data-state={choices.permissionMode ? 'pending' : 'native'} disabled={disabled || !synced || !projectAvailable || session.sendBlocked} onClick={event => toggleComposerMenu('permission', event.currentTarget)}><Icon name="shield"/><span className="composer-value">{permissionLabel}</span><Icon name="chevron" size={12}/></button>
+          </div>
+          <div className="composer-actions">{active
+            ? <button type="button" className="stop-button" aria-label="停止" title="停止" disabled={!connected || !session.activeTurn} onClick={() => void client.current!.request('turn/interrupt', { threadId: selected.current, turnId: session.activeTurn }).catch(report)}><Icon name="stop" size={18}/></button>
+            : <button className="primary send-button" title="发送 · Ctrl+Enter" aria-label="发送" disabled={!canSend}><Icon name="arrowUp" size={21}/></button>}
+          </div>
+        </div>
+        {composerMenu && <div ref={composerPanel} className={`composer-popover composer-popover-${composerMenu}`} role="dialog" aria-label={{ project: '项目', model: '模型与思考强度', permission: '权限', more: '更多操作' }[composerMenu]} tabIndex={-1}>
+          {composerMenu === 'project' && <>
+            <div role="radiogroup" aria-label="项目" className="composer-choice-list">{projects.projects.map(project => <button type="button" role="radio" aria-checked={project.cwd === config?.cwd} data-value={project.cwd} key={project.cwd} disabled={disabled || project.available === false} onClick={() => { closeComposerMenu(true); void selectProject(project.cwd).catch(report); }}><Icon name="folder" size={17}/><span>{project.name}{projects.projects.filter(entry => entry.name === project.name).length > 1 && <small>{project.cwd}</small>}</span>{project.cwd === config?.cwd && <Icon name="check" size={16}/>}</button>)}</div>
+            <button type="button" className="composer-add-project" onClick={() => { closeComposerMenu(); setBrowsing(true); }}><Icon name="plus" size={17}/>添加项目</button>
+          </>}
+          {composerMenu === 'model' && <>
+            <div className="composer-menu-label">模型</div>
+            <div role="radiogroup" aria-label="模型" className="composer-choice-list">{model && !models.some(entry => entry.model === model) && <div className="composer-custom-value">{model}</div>}{models.filter(entry => !entry.hidden || entry.model === model).map(entry => <button type="button" role="radio" aria-checked={entry.model === model} data-value={entry.model} key={entry.id} onClick={() => chooseSetting('model', entry.model)}><span>{entry.displayName}</span>{entry.model === model && <Icon name="check" size={16}/>}</button>)}</div>
+            <div className="composer-menu-label effort-label">思考强度</div>
+            <div role="radiogroup" aria-label="思考强度" className="composer-effort-options">{effort && !selectedModel?.supportedReasoningEfforts.some(option => option.reasoningEffort === effort) && <div className="composer-custom-value">{effort}</div>}{(selectedModel?.supportedReasoningEfforts ?? []).map(option => <button type="button" role="radio" aria-checked={option.reasoningEffort === effort} data-value={option.reasoningEffort} key={option.reasoningEffort} onClick={() => chooseSetting('effort', option.reasoningEffort)}>{option.reasoningEffort}</button>)}</div>
+          </>}
+          {composerMenu === 'permission' && <div role="radiogroup" aria-label="权限" className="composer-choice-list">{permissionMode === 'custom' && <div className="composer-custom-value">{permissionLabel}<Icon name="check" size={16}/></div>}{permissionModes.map(mode => <button type="button" role="radio" aria-checked={permissionMode === mode.value} data-value={mode.value} key={mode.value} onClick={() => { chooseSetting('permissionMode', mode.value); closeComposerMenu(true); }}><Icon name="shield" size={17}/><span>{mode.label}</span>{permissionMode === mode.value && <Icon name="check" size={16}/>}</button>)}</div>}
+        </div>}
       </form>
     </section>
     {layout.inspector && <section data-theme-slot="inspector" className="inspector" inert={browsing || settings || (mobile && drawer)} aria-label={inspected?.kind === 'item' ? '工具详情面板' : '文件 Diff 面板'}>
@@ -596,13 +703,6 @@ function App() {
     {actionTarget && targetThread && <SessionActions key={targetThread.id} target={{ ...actionTarget, thread: targetThread }} projectName={projects.projects.find(project => project.cwd === targetThread.cwd)?.name ?? '当前项目'} blocked={actionBlocked} busy={lifecycleBusy} onAction={changeSession} onClose={closeSessionActions}/>}
     <dialog data-theme-slot="settings" ref={dialog} className="settings-dialog app-settings" aria-label="设置" onCancel={() => setSettings(false)} onClick={event => { if (event.target === event.currentTarget) setSettings(false); }}><div className="settings-content">
       <header><div><OracleEye/><h2>设置</h2></div><button className="icon-button" aria-label="关闭设置" onClick={() => setSettings(false)}><Icon name="close"/></button></header>
-      <h3>模型与推理</h3><p>选项来自 Codex 实时目录，仅用于新会话或下一轮，不修改全局配置。</p>
-      <div className="settings-model-options" role="group" aria-label="下一轮模型">
-        <button aria-pressed={!model} onClick={() => { setModel(''); setEffort(''); }}>继承 Codex 默认<small>{session.thread?.model ?? config?.model ?? '官方默认'}</small></button>
-        {models.map(m => <button key={m.id} aria-pressed={model === m.model} onClick={() => { setModel(m.model); setEffort(''); }}>{m.displayName}</button>)}
-      </div>
-      <h3>思考强度</h3><div className="settings-effort-options" role="group" aria-label="下一轮思考强度"><button aria-pressed={!effort} onClick={() => setEffort('')}>继承</button>{(models.find(m => m.model === (model || session.thread?.model || config?.model))?.supportedReasoningEfforts ?? []).map(e => <button key={e.reasoningEffort} aria-pressed={effort === e.reasoningEffort} onClick={() => setEffort(e.reasoningEffort)}>{e.reasoningEffort}</button>)}</div>
-      <h3>原生权限配置</h3><p>以下为项目默认配置。权限模式可在发送区选择；实际会话权限以发送区的原生确认结果为准。「继承原生」保留现有会话之前的权限覆盖。</p><dl className="native-config"><dt>审批策略</dt><dd>{typeof config?.approvalPolicy === 'object' && config.approvalPolicy !== null ? JSON.stringify(config.approvalPolicy) : config?.approvalPolicy ?? '原生默认'}</dd><dt>沙盒</dt><dd>{config?.sandbox ?? '原生默认'}</dd><dt>审批方</dt><dd>{config?.approvalsReviewer ?? '原生默认'}</dd><dt>Web Search</dt><dd>{config?.webSearch ?? '原生默认'}</dd></dl>
       <PermissionDetails settings={session.settings} synced={connected && synced} hasThread={!!session.thread}/>
       <ThemeSettings theme={theme} open={settings}/>
       <h3>界面与阅读</h3><label className="reading-size">正文大小 <span>{readingSize}%</span><input aria-label="正文大小" type="range" min="100" max="150" step="10" value={readingSize} onChange={event => setReadingSize(Number(event.target.value))}/></label>

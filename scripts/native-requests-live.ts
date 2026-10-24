@@ -1,5 +1,6 @@
 // Opt-in: one harmless official Codex turn, actual Electron and HONOR WebView.
 // Additional new request shapes are explicitly simulated, after that real turn.
+import { selectModel, selectEffort } from './composer-controls';
 import { sessionSnapshot } from './ui-state';
 import { _electron as electron, chromium, expect, type Browser, type Cookie, type ElectronApplication, type Page } from '@playwright/test';
 import { createRequire } from 'node:module';
@@ -102,7 +103,7 @@ try {
   for (const page of [desktop, phone]) await expect(page.locator('.conversation')).toHaveAttribute('data-thread-id', threadId);
   evidence.android = { manufacturer: adb('shell', 'getprop', 'ro.product.manufacturer'), model: adb('shell', 'getprop', 'ro.product.model'), release: adb('shell', 'getprop', 'ro.build.version.release') };
   expect(evidence.android.manufacturer.toUpperCase()).toBe('HONOR');
-  if (inexpensive) { await desktop.getByLabel('模型', { exact: true }).selectOption(inexpensive.model); await desktop.getByLabel('思考强度', { exact: true }).selectOption('low'); }
+  if (inexpensive) { await selectModel(desktop, inexpensive.model); await selectEffort(desktop, 'low'); }
   await desktop.getByLabel('消息', { exact: true }).fill(prompt); await desktop.getByRole('button', { name: '发送', exact: true }).click();
   for (const [marker, button, decision] of [['ORACULUM_NATIVE_ALLOW', '允许本次', 'accept'], ['ORACULUM_NATIVE_DECLINE', '拒绝', 'decline']] as const) {
     await expect.poll(() => pending?.method === 'item/commandExecution/requestApproval' ? pending.params.command : '', { timeout: 180_000 }).toContain(marker);

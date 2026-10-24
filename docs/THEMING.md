@@ -69,7 +69,12 @@ main.app-shell[data-theme-root][data-theme-id]
         article.approval[data-theme-slot="approval"]
           .approval-actions
     form.composer[data-theme-slot="composer"]
-      textarea / .composer-toolbar / .model-controls
+      .composer-context.model-controls
+        .project-control / .model-control / .effort-badge
+      .composer-input textarea
+      .composer-toolbar
+        .composer-more / .permission-control / .composer-actions
+      .composer-popover（项目、模型与思考强度、权限或空托盘）
       .send-button / .stop-button
   section.inspector[data-theme-slot="inspector"]      桌面详情 / 手机全屏
     .diff-editor / .cm-editor / .cm-gutters
@@ -81,6 +86,8 @@ main.app-shell[data-theme-root][data-theme-id]
 原八个 Slot 保留，3C.1 新增 composer/approval/settings，4D.3 新增 assistant-message。双方消息共享 `.message` 卡片、`.message-heading` 头像与名称标题行、`.message-body` 正文；现有 `.message.user`、`.agent-message`、`.user-label` 继续兼容。默认用户为「你」与人物轮廓头像，AI 为 Codex 与 Oracle Eye；本阶段不提供自定义身份设置。正文不再为头像预留左侧列，桌面内容容器上限 980px（含边距），移动端卡片近全宽。卡片使用现有表面、文字、边线和圆角 tokens；主题可通过 `.message` 同时覆盖双方材质，或用两个 Slot 分别覆盖。
 
 上述语义 class 是推荐覆盖接口；其他 DOM 也可使用，但不能保证所有内部节点跨未来版本永久兼容。业务状态类 `.nav-collapsed`、`.drawer-open`、`.inspector-open`、`.expanded` 控制展开/收起，主题应分别检查这些状态。品牌 PNG 是既有 Oracle Eye 资产，可通过 CSS 调整尺寸/滤镜；CSS 主题不替换业务组件。
+
+4D.3-Patch 将项目与模型/思考强度入口合并在 Composer 上排，`+`、权限和发送/停止位于下排；`.model-controls` 兼容 class 保留，但原 `select` 改为 `.composer-control` 按钮和 `.composer-popover` 选择面板。菜单采用现有表面、文字、强调和边线 tokens；空 `+` 托盘没有内容。窄屏隐藏权限文字、保留可访问名称；极小横屏键盘视口临时收起上排，保留输入与发送/停止。不要覆盖菜单依据可见空间计算的最大高度。
 
 ```css
 :root {

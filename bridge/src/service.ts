@@ -1,7 +1,7 @@
 import { EventEmitter } from 'node:events';
 import { randomUUID } from 'node:crypto';
 import { NativeRpcError, type Codex } from './codex';
-import type { Approval, RpcId, Snapshot, WireMessage, BridgeEvent, LocalConfig, Thread, NativeSessionSettings, ThreadLifecycleState, ThreadLifecycleResult } from '../../packages/shared/protocol';
+import type { Approval, RpcId, Snapshot, WireMessage, BridgeEvent, LocalConfig, Thread, NativeSessionSettings, ThreadLifecycleState, ThreadLifecycleResult, PermissionMode } from '../../packages/shared/protocol';
 import type { ThreadStartParams } from '../../.local/codex-protocol/v2/ThreadStartParams';
 import type { ThreadStartResponse } from '../../.local/codex-protocol/v2/ThreadStartResponse';
 import type { TurnStartParams } from '../../.local/codex-protocol/v2/TurnStartParams';
@@ -17,6 +17,7 @@ import type { ProjectDirectories } from './projects';
 import { basename, dirname } from 'node:path';
 import { nativeResponse, responseNeedsDirectory, supportedRequest } from './native-requests';
 import { permissionMode, threadPermissions, turnPermissions } from './permissions';
+import type { ThreadPermissionStore } from './thread-permissions';
 
 export class BridgeService extends EventEmitter {
   readonly threads = new Set<string>();
@@ -31,6 +32,7 @@ export class BridgeService extends EventEmitter {
   private fresh = new Map<string, Thread>();
   private settings = new Map<string, NativeSessionSettings>();
   private settingsQueries = new Map<string, number>();
+  private acceptedPermissionChoices = new Map<string, PermissionMode>();
   private resuming = new Map<string, Promise<void>>();
   private archived = new Set<string>();
   private lifecycleRevision = 0;
@@ -40,7 +42,7 @@ export class BridgeService extends EventEmitter {
   private inFlight = new Map<string, number>();
   private uncertainLifecycle = new Map<string, 'active' | 'archived' | 'deleted'>();
   constructor(readonly codex: Pick<Codex, 'request' | 'send'> & { on(event: string, listener: (...args: any[]) => void): unknown }, readonly cwd: string,
-    private receipts?: ReceiptStore, private projects?: ProjectDirectories) {
+    private receipts?: ReceiptStore, private projects?: ProjectDirectories, private permissionChoices?: ThreadPermissionStore) {
     super();
     codex.on('message', (message: WireMessage) => this.receive(message));
     codex.on('unavailable', (message: string) => {
@@ -104,10 +106,14 @@ export class BridgeService extends EventEmitter {
     this.revisions.set(threadId, (this.revisions.get(threadId) ?? 0) + 1);
     if (message.method === 'thread/settings/updated') {
       const settings = params.threadSettings as { cwd?: string; approvalPolicy: NativeSessionSettings['approvalPolicy'];
-        sandboxPolicy: NativeSessionSettings['sandbox']; approvalsReviewer: NativeSessionSettings['approvalsReviewer'] } | undefined;
+        sandboxPolicy: NativeSessionSettings['sandbox']; approvalsReviewer: NativeSessionSettings['approvalsReviewer'];
+        model?: string; effort?: string | null } | undefined;
       if (settings?.cwd === this.threadCwd(threadId) && settings.approvalPolicy && settings.sandboxPolicy?.type && settings.approvalsReviewer) {
-        this.publishSettings(threadId, { approvalPolicy: settings.approvalPolicy, sandbox: settings.sandboxPolicy,
-          approvalsReviewer: settings.approvalsReviewer });
+        this.publishSettings(threadId, { ...this.settings.get(threadId),
+          approvalPolicy: settings.approvalPolicy, sandbox: settings.sandboxPolicy,
+          approvalsReviewer: settings.approvalsReviewer,
+          ...(typeof settings.model === 'string' && settings.model ? { model: settings.model } : {}),
+          ...(settings.effort === null || typeof settings.effort === 'string' ? { effort: settings.effort } : {}) });
       } else {
         this.publishSettings(threadId);
         this.emit('event', { type: 'notice', threadId, message: '原生权限更新无法核实；请重新查询会话状态。' } satisfies BridgeEvent);
@@ -214,6 +220,7 @@ export class BridgeService extends EventEmitter {
       this.loaded.add(response.thread.id);
       this.fresh.set(response.thread.id, response.thread);
       this.rememberSettings(response);
+      this.permissionChoices?.confirm(cwd, response.thread.id, permissionMode(params.permissionMode), this.settings.get(response.thread.id)!);
       return response;
     }
     const threadId = params.threadId;
@@ -272,7 +279,8 @@ export class BridgeService extends EventEmitter {
       }
       this.busy.add(threadId);
       this.unknownSends.add(threadId);
-      if (params.permissionMode !== undefined && params.permissionMode !== 'inherit') this.publishSettings(threadId);
+      if (params.permissionMode !== undefined && params.permissionMode !== 'inherit') this.acceptedPermissionChoices.delete(threadId);
+      if (request.model !== undefined || request.effort !== undefined || (params.permissionMode !== undefined && params.permissionMode !== 'inherit')) this.publishSettings(threadId);
       const fresh = this.fresh.get(threadId);
       this.fresh.delete(threadId);
       // Deliberately keep unknown sends blocked. A timeout is not a safe retry.
@@ -284,6 +292,8 @@ export class BridgeService extends EventEmitter {
         if (this.busy.has(threadId) && result.turn.status === 'inProgress') this.activeTurns.set(threadId, result.turn.id);
         // A confirmed turn ACK remains accepted even if the settings read fails.
         // Never derive effective permissions from the requested preset alone.
+        const choice = permissionMode(params.permissionMode);
+        if (choice !== 'inherit') this.acceptedPermissionChoices.set(threadId, choice);
         void this.readSettings(threadId);
         return result;
       } catch (error) {
@@ -433,7 +443,11 @@ export class BridgeService extends EventEmitter {
     this.settingsQueries.set(threadId, (this.settingsQueries.get(threadId) ?? 0) + 1);
     if (state === 'archived') this.archived.add(threadId);
     if (state === 'active') this.archived.delete(threadId);
-    if (state === 'deleted') { this.deleted.add(threadId); this.archived.delete(threadId); }
+    if (state === 'deleted') {
+      this.deleted.add(threadId); this.archived.delete(threadId);
+      this.permissionChoices?.remove(this.threadCwd(threadId), threadId);
+      this.acceptedPermissionChoices.delete(threadId);
+    }
     if (state !== 'unknown') this.uncertainLifecycle.delete(threadId);
     this.emit('event', { type: 'threadLifecycleChanged', threadId, cwd: this.threadCwd(threadId), state } satisfies BridgeEvent);
   }
@@ -467,12 +481,21 @@ export class BridgeService extends EventEmitter {
     this.threadProjects.set(threadId, cwd);
   }
   private rememberSettings(response: ThreadStartResponse | ThreadResumeResponse) {
-    const { approvalPolicy, sandbox, approvalsReviewer } = response;
-    this.publishSettings(response.thread.id, { approvalPolicy, sandbox, approvalsReviewer });
+    const { approvalPolicy, sandbox, approvalsReviewer, model, reasoningEffort } = response;
+    this.publishSettings(response.thread.id, { approvalPolicy, sandbox, approvalsReviewer,
+      ...(typeof model === 'string' && model ? { model } : {}),
+      ...(reasoningEffort === null || typeof reasoningEffort === 'string' ? { effort: reasoningEffort } : {}) });
   }
   private publishSettings(threadId: string, settings?: NativeSessionSettings) {
     this.settingsQueries.set(threadId, (this.settingsQueries.get(threadId) ?? 0) + 1);
-    if (settings) this.settings.set(threadId, settings); else this.settings.delete(threadId);
+    if (settings) {
+      this.settings.set(threadId, settings);
+      const acceptedChoice = this.acceptedPermissionChoices.get(threadId);
+      if (acceptedChoice) {
+        this.permissionChoices?.confirm(this.threadCwd(threadId), threadId, acceptedChoice, settings);
+        this.acceptedPermissionChoices.delete(threadId);
+      }
+    } else this.settings.delete(threadId);
     this.emit('event', { type: 'settingsChanged', threadId, settings } satisfies BridgeEvent);
   }
   private async readSettings(threadId: string) {
@@ -481,14 +504,16 @@ export class BridgeService extends EventEmitter {
     try {
       const response = await this.nativeResume(threadId);
       if (response.thread.id !== threadId || response.thread.cwd !== this.threadCwd(threadId)) throw new Error('Native thread settings belong to another thread or project');
-      if (ticket === this.settingsQueries.get(threadId)) this.rememberSettings(response);
+      if (ticket === this.settingsQueries.get(threadId)) {
+        this.rememberSettings(response);
+      }
     } catch {
       if (ticket !== this.settingsQueries.get(threadId)) return;
       this.publishSettings(threadId);
-      // Permission readback is ancillary: don't lose history, pending approvals,
+      // Settings readback is ancillary: don't lose history, pending approvals,
       // or accepted receipts when it fails, and never retry a turn automatically.
       this.emit('event', { type: 'notice', threadId,
-        message: '实际权限尚未确认，请查询状态；发送回执以原生结果为准，不要重复发送。' } satisfies BridgeEvent);
+        message: '实际会话设置尚未确认，请查询状态；发送回执以原生结果为准，不要重复发送。' } satisfies BridgeEvent);
     }
   }
   private async nativeResume(threadId: string, cwd?: string) {
@@ -497,7 +522,10 @@ export class BridgeService extends EventEmitter {
     try { return await this.requestNativeResume(threadId, cwd); } finally { this.endFlight(threadId); }
   }
   private async requestNativeResume(threadId: string, cwd?: string) {
-    const params = { threadId, ...(cwd ? { cwd } : {}) };
+    // Only a first load restores an explicitly selected preset. Rejoining an
+    // already loaded thread is a read and never reapplies client preferences.
+    const choice = cwd ? this.permissionChoices?.get(cwd, threadId) : undefined;
+    const params = { threadId, ...(cwd ? { cwd } : {}), ...(choice ? threadPermissions(choice) : {}) };
     try { return await this.codex.request<ThreadResumeResponse>('thread/resume', { ...params, excludeTurns: true }); }
     catch (error) {
       // Legacy JSONL threads can reject the metadata-only resume because their

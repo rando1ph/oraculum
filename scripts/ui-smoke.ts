@@ -1,3 +1,4 @@
+import { selectModel, selectEffort } from './composer-controls';
 import { selectedThreadId } from './ui-state';
 import { _electron as electron, expect, type ElectronApplication } from '@playwright/test';
 import { createRequire } from 'node:module';
@@ -28,11 +29,13 @@ try {
   const renderer = await page.evaluate(() => ({ node: typeof (window as any).require, process: typeof (window as any).process }));
   expect(renderer).toEqual({ node: 'undefined', process: 'undefined' });
   evidence.renderer = renderer;
-  await page.getByLabel('模型', { exact: true }).selectOption('gpt-6-luna');
-  await page.getByLabel('思考强度', { exact: true }).selectOption('low');
+  const previousThread = await selectedThreadId(page);
   await page.getByRole('button', { name: '新建会话', exact: true }).click();
   await expect(page.locator('.conversation')).not.toHaveAttribute('data-thread-id', '');
+  await expect(page.locator('.conversation')).not.toHaveAttribute('data-thread-id', previousThread);
   const threadId = await selectedThreadId(page);
+  await selectModel(page, 'gpt-6-luna');
+  await selectEffort(page, 'low');
   evidence.threadId = threadId;
   await page.getByLabel('消息', { exact: true }).fill('Controlled UI test. Do not inspect files or use skills, MCP, web, or subagents. Request approval to execute only `printf ORACULUM_UI_APPROVAL_OK` with sandbox_permissions=require_escalated and justification="Oraculum UI approval test". If declined, do not retry. Finish with the exact text ORACULUM_UI_OK.');
   await page.getByRole('button', { name: '发送', exact: true }).click();
@@ -57,8 +60,8 @@ try {
   await page.screenshot({ path: '.local/evidence/mobile-layout.png', fullPage: true });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   evidence.mobileViewport = '393px layout only; not Android WebView device evidence';
-  await page.getByLabel('模型', { exact: true }).selectOption('gpt-6-luna');
-  await page.getByLabel('思考强度', { exact: true }).selectOption('low');
+  await selectModel(page, 'gpt-6-luna');
+  await selectEffort(page, 'low');
   await page.getByLabel('消息', { exact: true }).fill('Only run `sleep 15` in cwd and then say finished. Do not read or change files.');
   await page.getByRole('button', { name: '发送', exact: true }).click();
   await expect(page.getByTestId('turn-status')).toHaveText('执行中', { timeout: 15_000 });

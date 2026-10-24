@@ -1,5 +1,6 @@
 // Real Electron + emulated mobile Chromium; native Codex events are SIMULATED.
 import { _electron as electron, chromium, expect, type ElectronApplication, type Browser, type Page } from '@playwright/test';
+import { modelTrigger } from './composer-controls';
 import { EventEmitter } from 'node:events';
 import { createRequire } from 'node:module';
 import { mkdir, mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
@@ -22,10 +23,10 @@ const codex = {
   request: async <T>(method: string, params: any): Promise<T> => {
     calls.push(method); let value: unknown;
     if (method === 'config/read') value = { config: { model: 'fixture', model_provider: 'fixture' } };
-    else if (method === 'model/list') value = { data: [], nextCursor: null };
+    else if (method === 'model/list') value = { data: [{ id: 'fixture', model: 'fixture', displayName: 'Theme fixture', defaultReasoningEffort: 'low', supportedReasoningEfforts: [{ reasoningEffort: 'low' }] }], nextCursor: null };
     else if (method === 'thread/list') value = { data: [thread], nextCursor: null };
     else if (method === 'thread/read') value = { thread };
-    else if (method === 'thread/resume') value = { thread, approvalPolicy: 'on-request', sandbox: { type: 'readOnly', networkAccess: false }, approvalsReviewer: 'user' };
+    else if (method === 'thread/resume') value = { thread, model: 'fixture', reasoningEffort: 'low', approvalPolicy: 'on-request', sandbox: { type: 'readOnly', networkAccess: false }, approvalsReviewer: 'user' };
     else if (method === 'thread/turns/list') value = { data: [...thread.turns].reverse(), nextCursor: null };
     else if (method === 'thread/items/list') value = { data: thread.turns.find(turn => turn.id === params.turnId)!.items.map((item: any) => ({ turnId: params.turnId, item })), nextCursor: null };
     else if (method === 'turn/interrupt') { const turn = thread.turns.at(-1)!; turn.status = 'interrupted'; bus.emit('message', { method: 'turn/completed', params: { threadId: id, turn } }); value = {}; }
@@ -106,12 +107,14 @@ try {
       if (page === phone) await page.evaluate(() => (window as any).oraculumAndroidBack());
       else await page.getByRole('button', { name: '关闭面板', exact: true }).click();
       if (themeId === 'minimal-light') {
-        for (const selector of ['.composer', '.conversation-header', '.tool', '.model-controls select']) {
+        await modelTrigger(page).click();
+        for (const selector of ['.composer', '.conversation-header', '.tool', '.composer [role="dialog"]']) {
           const colors = await page.locator(selector).first().evaluate(e => ({ color: getComputedStyle(e).color, background: getComputedStyle(e).backgroundColor }));
           const luminance = (color: string) => color.match(/\d+/g)!.slice(0, 3).map(v => +v / 255).map(v => v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4).reduce((sum, v, i) => sum + v * [.2126, .7152, .0722][i], 0);
           expect((luminance(colors.background) + .05) / (luminance(colors.color) + .05), selector + ' light contrast').toBeGreaterThanOrEqual(4.5);
           expect(colors.background).not.toBe('rgb(0, 0, 0)');
         }
+        await page.keyboard.press('Escape');
         expect(await page.locator('.app-shell').evaluate(e => getComputedStyle(e).colorScheme)).toBe('light');
       } else {
         expect(await page.locator('.app-shell').evaluate(e => getComputedStyle(e).backgroundImage)).toContain('/themes/hong-kong-rain/assets/rain-night.webp');

@@ -1,6 +1,7 @@
 // Opt-in actual HONOR USB WebView + Ubuntu Electron + official Codex.
 // Isolated authenticated Bridge; two bounded turns (fixture Diff, harmless approvals + stop).
 // No production server, user project, remote deployment or global Codex edits.
+import { selectModel, selectEffort } from './composer-controls';
 import { selectedThreadId } from './ui-state';
 import { _electron as electron, chromium, expect, type Browser, type ElectronApplication, type Page, type Cookie } from '@playwright/test';
 import { createRequire } from 'node:module';
@@ -204,7 +205,7 @@ try {
   const model = catalog.data.find(m => m.model === (process.env.ORACULUM_TEST_MODEL ?? 'gpt-6-luna')) ?? catalog.data[0];
   if (!model) throw new Error('No official model available'); const effort = model.supportedReasoningEfforts.find(e => e.reasoningEffort === 'low')?.reasoningEffort ?? model.supportedReasoningEfforts[0].reasoningEffort;
   evidence.model = { model: model.model, effort, source: 'official model/list' };
-  await phone.getByLabel('模型', { exact: true }).selectOption(model.model); await phone.getByLabel('思考强度', { exact: true }).selectOption(effort);
+  await selectModel(phone, model.model); await selectEffort(phone, effort);
   await phone.getByLabel('消息', { exact: true }).fill(prompt); await hideIme(); await phone.getByRole('button', { name: '发送', exact: true }).click();
   for (const [marker, decision, label] of [['ORACULUM_3C_ALLOW', 'accept', '允许本次'], ['ORACULUM_3C_DECLINE', 'decline', '拒绝']] as const) {
     await expect.poll(() => pending?.method === 'item/commandExecution/requestApproval' ? pending.params.command : '', { timeout: 180_000 }).toContain(marker);

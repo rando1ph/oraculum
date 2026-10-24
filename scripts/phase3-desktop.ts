@@ -1,3 +1,4 @@
+import { selectModel, selectEffort } from './composer-controls';
 import { selectedThreadId as readSelectedThreadId } from './ui-state';
 import { DatabaseSync } from 'node:sqlite';
 // Opt-in acceptance using the real Ubuntu Electron window and official Codex.
@@ -155,8 +156,6 @@ try {
   const effort = efforts.includes('low') ? 'low' : efforts[0];
   expect(effort).toBeTruthy();
   evidence.model = { model, effort, source: 'official model/list', availableCount: catalog.length };
-  await page.getByLabel('模型', { exact: true }).selectOption(model!);
-  await page.getByLabel('思考强度', { exact: true }).selectOption(effort);
   console.log(`Connected real Electron ${evidence.electron.version}; native model ${model}, effort ${effort}.`);
   await page.getByRole('button', { name: '新建会话', exact: true }).click();
   await expect(page.locator('.conversation')).not.toHaveAttribute('data-thread-id', '');
@@ -166,8 +165,8 @@ try {
   await expect(page.locator('.conversation')).not.toHaveAttribute('data-thread-id', '');
   const secondId = await selectedThreadId(page); evidence.secondThreadId = secondId;
   await selectThread(page, threadId);
-  await page.getByLabel('模型', { exact: true }).selectOption(model!);
-  await page.getByLabel('思考强度', { exact: true }).selectOption(effort);
+  await selectModel(page, model!);
+  await selectEffort(page, effort);
   await screenshot(page, '01-connected-workspace');
   await page.getByLabel('消息', { exact: true }).fill([
     '这是 Oraculum 桌面真实验收。只在当前工作目录执行以下有限任务；不使用 Skills、MCP、web、子代理，不读取其他目录或全局配置。',
@@ -305,8 +304,8 @@ try {
   await screenshot(page, '07-session-draft-restored');
   evidence.checks.push('two native sessions switch with isolated drafts', 'long composer and 980px real Electron window');
 
-  await page.getByLabel('模型', { exact: true }).selectOption(model!);
-  await page.getByLabel('思考强度', { exact: true }).selectOption(effort);
+  await selectModel(page, model!);
+  await selectEffort(page, effort);
   await page.getByLabel('消息', { exact: true }).fill('Controlled stop test. Only run `sleep 30` in cwd, then say done. Do not read or change files, request approvals, use skills, MCP, web or subagents.');
   await page.getByRole('button', { name: '发送', exact: true }).click();
   await expect(page.getByTestId('turn-status')).toHaveText('执行中', { timeout: 30_000 });

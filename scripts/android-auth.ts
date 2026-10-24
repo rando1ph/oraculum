@@ -22,7 +22,7 @@ let step = 'unpaired';
 try {
   await page.reload();
   await expect(page.getByRole('heading', { name: '信任此设备', exact: true })).toBeVisible();
-  expect(await page.getByLabel('模型', { exact: true }).count()).toBe(0);
+  expect(await page.getByRole('button', { name: /^模型与思考强度：/ }).count()).toBe(0);
   expect(await page.evaluate(async () => (await fetch('/auth/session')).status)).toBe(401);
   const pair = async () => {
     const { code } = trust.createPairing();
@@ -61,7 +61,7 @@ try {
   step = 'revoke';
   trust.revoke(ids[0]);
   await expect(page.getByRole('heading', { name: '信任此设备', exact: true })).toBeVisible({ timeout: 10_000 });
-  expect(await page.getByLabel('模型', { exact: true }).count()).toBe(0);
+  expect(await page.getByRole('button', { name: /^模型与思考强度：/ }).count()).toBe(0);
   expect(await page.evaluate(async () => (await fetch('/auth/session')).status)).toBe(401);
   evidence.revocation = 'open socket closed; private GUI removed; HTTP denied';
   await page.screenshot({ path: '.local/evidence/phase2/auth-android-revoked.png' });

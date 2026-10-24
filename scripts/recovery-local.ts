@@ -1,5 +1,6 @@
 // Real Electron + Android + native Harness. One controlled model turn.
 // Requires an app-specific CDP forward, ADB reverse, and FREE port 17860.
+import { selectModel, selectEffort } from './composer-controls';
 import { selectedThreadId, sessionSnapshot } from './ui-state';
 import { _electron as electron, chromium, expect, type Page } from '@playwright/test';
 import { spawn, type ChildProcess } from 'node:child_process';
@@ -65,13 +66,13 @@ try {
   await pair(phone, 'Android local recovery E2E');
   await pair(computer, 'Electron local recovery E2E');
   step = 'native turn';
-  await phone.getByLabel('模型', { exact: true }).selectOption(process.env.ORACULUM_TEST_MODEL ?? 'gpt-6-luna');
-  await phone.getByLabel('思考强度', { exact: true }).selectOption('low');
   const previousThread = await selectedThreadId(phone);
   await phone.getByRole('button', { name: '新建会话', exact: true }).click();
   await expect(phone.locator('.conversation')).not.toHaveAttribute('data-thread-id', '');
   await expect(phone.locator('.conversation')).not.toHaveAttribute('data-thread-id', previousThread);
   const threadId = await selectedThreadId(phone);
+  await selectModel(phone, process.env.ORACULUM_TEST_MODEL ?? 'gpt-6-luna');
+  await selectEffort(phone, 'low');
   evidence.threadId = threadId;
   await computer.getByRole('button', { name: '刷新列表', exact: true }).click();
   await computer.locator(`.session-link[data-thread-id="${threadId}"]`).click();
@@ -102,7 +103,8 @@ try {
     await expect.poll(async () => (await sessionSnapshot(page)).receipts?.length).toBe(1);
     await expect.poll(async () => (await sessionSnapshot(page)).receipts?.[0]?.operationId).toBe(evidence.operationId as string);
     await expect.poll(async () => (await sessionSnapshot(page)).receipts?.[0]?.status).toBe('completed');
-    await expect(page.locator('.history-warning').first()).toContainText('部分历史未能恢复');
+    await expect(page.locator('.history-warning')).toHaveCount(0);
+    await expect(page.getByText(/部分历史未能恢复/)).toHaveCount(0);
   }
   evidence.restartRestored = true;
   await mkdir('.local/evidence/phase2', { recursive: true });

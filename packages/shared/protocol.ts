@@ -23,7 +23,12 @@ export type WireMessage = {
   error?: { code: number; message: string };
 };
 export type Approval = Extract<ServerRequest, { method: 'item/commandExecution/requestApproval' | 'item/fileChange/requestApproval' | 'item/tool/requestUserInput' | 'mcpServer/elicitation/request' | 'item/permissions/requestApproval' }> & { bridgeToken?: string; displayThreadIds?: string[] };
-export type NativeSessionSettings = { approvalPolicy: AskForApproval; sandbox: SandboxPolicy; approvalsReviewer: ApprovalsReviewer };
+export type NativeSessionSettings = {
+  approvalPolicy: AskForApproval; sandbox: SandboxPolicy; approvalsReviewer: ApprovalsReviewer;
+  // Actual native thread settings, never the renderer's requested overrides.
+  // Optional for older servers; null effort uses the native model's effort.
+  model?: string; effort?: string | null;
+};
 // Inherit means no override: native turn overrides persist on the thread.
 export type PermissionMode = 'inherit' | 'read-only' | 'auto' | 'full-access';
 export type BridgeEvent =

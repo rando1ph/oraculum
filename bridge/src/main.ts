@@ -6,6 +6,7 @@ import { BridgeService } from './service';
 import { createServer } from './server';
 import { TrustStore } from './trust-store';
 import { ReceiptStore } from './receipts';
+import { ThreadPermissionStore } from './thread-permissions';
 import { ProjectDirectories } from './projects';
 import { Themes } from './themes';
 import { startupPaths } from './paths';
@@ -39,7 +40,7 @@ try {
   trust = new TrustStore(paths.state);
   const projects = new ProjectDirectories(paths.workspaceRoot, paths.cwd, trust.db, paths.projectRoots);
   await projects.register(paths.cwd); // Only the explicit host-selected default is authorized at startup.
-  const service = new BridgeService(codex, paths.cwd, new ReceiptStore(trust.db), projects);
+  const service = new BridgeService(codex, paths.cwd, new ReceiptStore(trust.db), projects, new ThreadPermissionStore(trust.db));
   app = await createServer(service, paths.port, paths.web, {
     trust, themes: new Themes({ installed: paths.themeInstalled, source: paths.themeSource }),
     remoteOrigin: paths.remoteOrigin, remoteBasePath: paths.remoteBasePath,
