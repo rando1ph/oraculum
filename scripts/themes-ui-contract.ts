@@ -18,6 +18,7 @@ const history: any = { id: 'history', status: 'completed', error: null, itemsVie
 ] };
 const thread = { id, name: '主题合约 · 模拟', cwd, preview: '', status: { type: 'idle' }, turns: [history] };
 const bus = new EventEmitter(); const calls: string[] = [], replies: WireMessage[] = [];
+let starts = 0;
 const codex = {
   on: bus.on.bind(bus), send: (reply: WireMessage) => { replies.push(reply); bus.emit('message', { method: 'serverRequest/resolved', params: { threadId: id, requestId: reply.id } }); },
   request: async <T>(method: string, params: any): Promise<T> => {
@@ -29,7 +30,15 @@ const codex = {
     else if (method === 'thread/resume') value = { thread, model: 'fixture', reasoningEffort: 'low', approvalPolicy: 'on-request', sandbox: { type: 'readOnly', networkAccess: false }, approvalsReviewer: 'user' };
     else if (method === 'thread/turns/list') value = { data: [...thread.turns].reverse(), nextCursor: null };
     else if (method === 'thread/items/list') value = { data: thread.turns.find(turn => turn.id === params.turnId)!.items.map((item: any) => ({ turnId: params.turnId, item })), nextCursor: null };
-    else if (method === 'turn/interrupt') { const turn = thread.turns.at(-1)!; turn.status = 'interrupted'; bus.emit('message', { method: 'turn/completed', params: { threadId: id, turn } }); value = {}; }
+    else if (method === 'turn/start') {
+      const turn = { ...history, id: `theme-active-${++starts}`, status: 'inProgress', items: [{ id: `theme-user-${starts}`, type: 'userMessage', content: params.input }] };
+      thread.turns.push(turn); thread.status = { type: 'active' }; value = { turn };
+      setTimeout(() => {
+        bus.emit('message', { method: 'turn/started', params: { threadId: id, turn } });
+        bus.emit('message', { method: 'thread/status/changed', params: { threadId: id, status: thread.status } });
+      }, 30);
+    }
+    else if (method === 'turn/interrupt') { const turn = thread.turns.at(-1)!; turn.status = 'interrupted'; thread.status = { type: 'idle' }; bus.emit('message', { method: 'turn/completed', params: { threadId: id, turn } }); bus.emit('message', { method: 'thread/status/changed', params: { threadId: id, status: thread.status } }); value = {}; }
     else throw new Error(`Unexpected fixture request: ${method}`);
     return structuredClone(value) as T;
   },
@@ -159,19 +168,26 @@ try {
     await phone.unroute(`**/themes/hong-kong-rain/assets/${name}`);
   }
   await record('image/font decode errors restore default; simple button selector overrides host specificity');
-  await select(phone, 'test-violet');
-  const active = { ...history, id: 'active', status: 'inProgress', items: [] }; thread.turns.push(active);
-  bus.emit('message', { method: 'turn/started', params: { threadId: id, turn: active } });
-  for (const [requestId, label] of [[80, '允许本次'], [81, '拒绝']] as const) {
-    bus.emit('message', { id: requestId, method: 'item/commandExecution/requestApproval', params: { threadId: id, turnId: 'active', itemId: String(requestId), command: 'printf simulated', cwd } });
-    const button = phone.getByRole('button', { name: label, exact: true }); await expect(button).toBeVisible(); await button.scrollIntoViewIfNeeded();
-    await expect(button).toBeEnabled(); expect((await button.boundingBox())!.height).toBeGreaterThanOrEqual(48);
-    expect(await phone.locator('.approval').evaluate(e => getComputedStyle(e).getPropertyValue('--accent').trim())).toBe('#dbb3ff');
-    await button.click(); await expect(desktop.locator('.approval')).toHaveCount(0); await expect(phone.locator('.approval')).toHaveCount(0);
+  expect(calls).not.toContain('turn/start');
+  for (const themeId of ['oracle-eye', 'test-violet', 'hong-kong-rain', 'minimal-light']) for (const page of [desktop, phone]) {
+    await select(page, themeId);
+    await page.getByLabel('消息', { exact: true }).fill(`主题操作合约 ${themeId}`);
+    await page.getByRole('button', { name: '发送', exact: true }).click();
+    await expect(page.getByRole('button', { name: '停止', exact: true })).toBeEnabled();
+    const active = thread.turns.at(-1)!;
+    for (const label of ['允许本次', '拒绝']) {
+      const requestId = 80 + replies.length;
+      bus.emit('message', { id: requestId, method: 'item/commandExecution/requestApproval', params: { threadId: id, turnId: active.id, itemId: String(requestId), command: 'printf simulated', cwd } });
+      const button = page.getByRole('button', { name: label, exact: true }); await expect(button).toBeVisible(); await button.scrollIntoViewIfNeeded();
+      await expect(button).toBeEnabled(); expect((await button.boundingBox())!.height).toBeGreaterThanOrEqual(page === phone ? 48 : 43);
+      await button.click(); await expect(desktop.locator('.approval')).toHaveCount(0); await expect(phone.locator('.approval')).toHaveCount(0);
+    }
+    await page.getByRole('button', { name: '停止', exact: true }).click();
+    for (const client of [desktop, phone]) await expect(client.locator('.conversation')).toHaveAttribute('data-last-turn-status', 'interrupted');
   }
-  await phone.getByRole('button', { name: '停止', exact: true }).click(); expect(replies).toHaveLength(2);
-  await expect(phone.locator('.conversation')).toHaveAttribute('data-last-turn-status', 'interrupted');
-  await record('themed allow/decline/stop remain reachable and inherit the selected theme palette');
+  expect(starts).toBe(8); expect(replies.map(reply => reply.result)).toEqual(Array.from({ length: 8 }, () => [{ decision: 'accept' }, { decision: 'decline' }]).flat());
+  await record('all four themes: desktop/mobile input, send, allow/decline and stop remain actionable and synchronize without replay');
+  await select(phone, 'test-violet');
   const installed = join(themes.paths.installed, 'test-violet');
   const originalCss = await readFile(join(installed, 'theme.css'), 'utf8'), originalManifest = await readFile(join(installed, 'manifest.json'), 'utf8');
   for (const [name, file, broken] of [
@@ -208,7 +224,7 @@ try {
   await desktop.getByRole('button', { name: '重新检查连接', exact: true }).click(); await ready(desktop);
   await expect(desktop.locator('.app-shell')).toHaveAttribute('data-theme-id', 'test-violet');
   await record('new selection after native recovery survives auth remount; pairing stays unthemed');
-  expect(calls).not.toContain('turn/start'); expect(errors).toEqual([]);
+  expect(calls.filter(method => method === 'turn/start')).toHaveLength(8); expect(errors).toEqual([]);
 } catch (error) { console.error(error); process.exitCode = 1; for (const [name, page] of [['desktop', desktop], ['phone', phone]] as const) { try { await page.screenshot({path: join(output, name + '-failure.png')}); } catch {} } }
 finally {
   await app?.close(); await browser?.close(); await server.close();

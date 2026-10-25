@@ -11,7 +11,7 @@ import { BridgeService } from '../bridge/src/service';
 import { ProjectDirectories } from '../bridge/src/projects';
 import { createServer } from '../bridge/src/server';
 import { Themes } from '../bridge/src/themes';
-import { modelTrigger, permissionTrigger, selectEffort, selectModel } from './composer-controls';
+import { modelTrigger, permissionTrigger, selectEffort, selectModel, selectPermission } from './composer-controls';
 
 await mkdir('.local/evidence/phase4d3-patch-menu/composer-contract', { recursive: true });
 const output = await mkdtemp(resolve('.local/evidence/phase4d3-patch-menu/composer-contract/run-'));
@@ -61,6 +61,10 @@ const projectTrigger = (page: Page) => page.locator('.composer').getByRole('butt
 const moreTrigger = (page: Page) => page.getByRole('button', { name: '更多操作', exact: true });
 const dialog = (page: Page, label: string) => page.getByRole('dialog', { name: label, exact: true });
 const record = (check: string) => { checks.push(check); console.log('PASS ' + check); };
+async function themeColor(page: Page, token: string) {
+  const hex = await page.locator('.app-shell').evaluate((element, token) => getComputedStyle(element).getPropertyValue(token).trim(), token);
+  return `rgb(${[1, 3, 5].map(start => parseInt(hex.slice(start, start + 2), 16)).join(', ')})`;
+}
 async function noNoise(page: Page) {
   await expect(page.locator('.history-warning, .permission-intent, .permission-warning, .composer-caption')).toHaveCount(0);
   await expect(page.getByText(/部分历史未能恢复/)).toHaveCount(0);
@@ -268,15 +272,39 @@ try {
   record('Enter newline, simulated composition guard, expanded input/Back and reload preserve draft without sending');
   for (const id of ['oracle-eye', 'test-violet', 'hong-kong-rain', 'minimal-light']) for (const page of [desktop, phone]) {
     await setTheme(page, id); await noNoise(page);
+    await page.mouse.move(1, 1);
+    if (id === 'hong-kong-rain') for (const control of [projectTrigger(page), modelTrigger(page), permissionTrigger(page)]) {
+      await expect(control).toHaveCSS('background-color', 'rgb(5, 24, 36)');
+      await expect(control).toHaveCSS('border-top-color', await themeColor(page, '--line'));
+    }
     await modelTrigger(page).click(); await rootMenu(page);
+    if (id === 'hong-kong-rain') {
+      await expect(modelTrigger(page)).toHaveCSS('background-color', await themeColor(page, '--surface-hover'));
+      await expect(dialog(page, '模型与思考强度')).toHaveCSS('background-color', 'rgb(5, 24, 36)');
+    }
     await page.screenshot({ path: join(output, `${id}-${page === phone ? 'mobile' : 'electron'}-root-menu.png`) });
     for (const label of ['模型', '思考强度'] as const) {
       await dialog(page, '模型与思考强度').getByRole('button', { name: label, exact: true }).click();
       await choiceMenu(page, label, label === '模型' ? modelValues : page === phone ? ['low', 'high'] : ['medium', 'high']);
+      await page.mouse.move(1, 1);
+      const selected = dialog(page, '模型与思考强度').locator('[aria-checked="true"]');
+      await expect(selected).toHaveCSS('color', await themeColor(page, '--accent'));
+      await expect(selected).toHaveCSS('background-color', await themeColor(page, '--accent-soft'));
+      if (id === 'hong-kong-rain') await expect(dialog(page, '模型与思考强度').locator('header')).toHaveCSS('background-color', 'rgb(5, 24, 36)');
       await page.screenshot({ path: join(output, `${id}-${page === phone ? 'mobile' : 'electron'}-${label === '模型' ? 'model' : 'effort'}-menu.png`) });
       await page.keyboard.press('Escape'); await rootMenu(page);
     }
-    await page.keyboard.press('Escape'); await moreTrigger(page).click(); await expect(dialog(page, '更多操作')).toHaveText(''); await page.keyboard.press('Escape');
+    await page.keyboard.press('Escape'); await permissionTrigger(page).click(); await insideViewport(page, dialog(page, '权限'));
+    await page.mouse.move(1, 1);
+    const selectedPermission = dialog(page, '权限').locator('[aria-checked="true"]');
+    await expect(selectedPermission).toHaveCSS('color', await themeColor(page, '--accent'));
+    await expect(selectedPermission).toHaveCSS('background-color', await themeColor(page, '--accent-soft'));
+    await page.screenshot({ path: join(output, `${id}-${page === phone ? 'mobile' : 'electron'}-permission-menu.png`) });
+    await page.keyboard.press('Escape');
+    await selectPermission(page, 'full-access');
+    await expect(permissionTrigger(page)).toHaveCSS('color', await themeColor(page, '--warning'));
+    await selectPermission(page, 'read-only');
+    await moreTrigger(page).click(); await expect(dialog(page, '更多操作')).toHaveText(''); await page.keyboard.press('Escape');
   }
   await phone.addStyleTag({ content: '[data-theme-slot="composer"] { border-radius: 20px; } [data-theme-slot="user-message"], [data-theme-slot="assistant-message"] { border-radius: 18px; }' });
   await geometry(phone, 375, 812); await expect(phone.locator('.composer')).toHaveCSS('border-radius', '20px');

@@ -199,16 +199,7 @@
   .settings-content button { min-height: 44px; font-size: 13px; }
   .settings-content .icon-button { width: 48px; min-width: 48px; height: 48px; min-height: 48px; }
   .settings-content input, .settings-content select { min-height: 48px; font-size: 14px; }
-  .settings-content .model-controls { margin: 14px 0; }
-  .settings-content .model-controls select { font-size: 13px; min-height: 48px; }
   .settings-content .path { word-break: break-word; }
-  .settings-model-options { display: grid; gap: 7px; padding: 10px; border: 1px solid var(--line-bright); border-radius: 12px; background: #05111a; }
-  .settings-model-options button { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; width: 100%; min-height: 54px; justify-content: flex-start; text-align: left; padding: 10px 12px; border-color: transparent; background: transparent; font-size: 14px; overflow-wrap: anywhere; }
-  .settings-model-options button small { display: block; font-size: 12px; line-height: 1.6; }
-  .settings-model-options button:is(.active, .selected, [aria-pressed="true"], [aria-checked="true"]),
-  .settings-effort-options button:is(.active, .selected, [aria-pressed="true"], [aria-checked="true"]) { border-color: #24b5e8; background: #103248; color: #b8eaff; }
-  .settings-effort-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; padding: 12px; border: 1px solid var(--line-bright); border-radius: 12px; background: #05111a; }
-  .settings-effort-options button { min-height: 48px; text-transform: capitalize; background: #071721; font-size: 13px; }
   .reading-size { display: grid; grid-template-columns: 1fr auto; gap: 10px; padding: 14px; border: 1px solid var(--line-bright); border-radius: 12px; font-size: 14px; background: #05111a; }
   .reading-size input { grid-column: 1 / -1; width: 100%; padding: 0; accent-color: var(--accent-strong); }
   .server-settings-link { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 48px; margin-top: 12px; padding: 10px 12px; border: 1px solid var(--line-bright); border-radius: 8px; background: #071721; color: var(--accent); font-size: 14px; text-decoration: none; }

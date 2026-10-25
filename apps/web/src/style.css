@@ -228,11 +228,6 @@ nav[aria-label="原生会话"] { margin-top: 11px; flex: 1; overflow-y: auto; mi
 .settings-content h2 { margin: 0; font-size: 18px; }
 .settings-content h3 { color: var(--accent); margin: 23px 0 9px; }
 .settings-content p { color: var(--muted); font-size: 12px; line-height: 1.9; }
-.settings-model-options { display: grid; gap: 6px; }
-.settings-model-options button { justify-content: flex-start; flex-wrap: wrap; }
-.settings-model-options button small { width: 100%; text-align: left; }
-.settings-effort-options { display: flex; flex-wrap: wrap; gap: 6px; }
-.settings-model-options [aria-pressed="true"], .settings-effort-options [aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
 .reading-size { display: grid; grid-template-columns: 1fr auto; gap: 10px; color: var(--muted); font-size: 12px; margin-bottom: 16px; }
 .reading-size input { width: 100%; grid-column: 1 / -1; accent-color: var(--accent-strong); }
 .server-settings-link { display: flex; align-items: center; gap: 8px; padding: 12px; margin-top: 12px; border: 1px solid var(--line-bright); border-radius: 8px; color: var(--accent); text-decoration: none; }
@@ -335,7 +330,7 @@ nav[aria-label="原生会话"] { margin-top: 11px; flex: 1; overflow-y: auto; mi
     & :is(.navigation, .conversation, .inspector, .settings-dialog) { background: var(--background); }
     & :is(.conversation-header, .inspector-header, .mobile-detail-footer, .composer,
       .mobile-session-menu, .tool, .message, .project-picker, .new-session,
-      .settings-model-options, .settings-effort-options, .reading-size, .server-settings-link) {
+      .reading-size, .server-settings-link) {
       background: var(--surface); border-color: var(--line);
     }
     & :is(.brand-row h1, .brand-row span, .nav-section-label, .session-title > span,
@@ -344,7 +339,7 @@ nav[aria-label="原生会话"] { margin-top: 11px; flex: 1; overflow-y: auto; mi
       .file-change-path, .item-glyph, select) { color: var(--foreground); }
     & :is(input, textarea)::placeholder { color: var(--muted); }
     & :is(.code-block, .command-text, .tool-output, .detail-output, .approval pre,
-      .inspector-list, .model-controls select, .inspector-tabs button, .settings-effort-options button) {
+      .inspector-list, .inspector-tabs button) {
       background: var(--surface-raised); color: var(--foreground); border-color: var(--line);
     }
     & :is(.tool-body, .navigation-footer, .project-group + .project-group) { border-color: var(--line); }

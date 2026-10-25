@@ -236,9 +236,18 @@ try {
   for (const page of [desktop, phone]) for (const theme of ['test-violet', 'minimal-light', 'hong-kong-rain', 'oracle-eye']) {
     await settings(page); await expect(page.getByLabel('当前主题')).toBeEnabled(); await page.getByLabel('当前主题').selectOption(theme); await expect(page.locator('.app-shell')).toHaveAttribute('data-theme-id', theme);
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)); await expect(card(page, 'user').getByRole('button', { name: '保存用户身份' })).toBeVisible();
+    await expect(card(page, 'user').locator('.identity-preview canvas')).toHaveCSS('width', '64px');
+    await choose(page, 'user', join(output, 'avatar.png'));
+    const crop = card(page, 'user').locator('.avatar-crop'), preview = await crop.locator('canvas').boundingBox();
+    assert.ok(preview && preview.width > 0 && Math.abs(preview.width - preview.height) < 1, 'Themed crop stays square');
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
+    await crop.screenshot({ path: join(output, `${theme}-${page === desktop ? 'electron' : realAndroid ? 'android' : 'mobile-simulated'}-crop.png`), animations: 'disabled' });
+    await crop.getByRole('button', { name: '取消裁切', exact: true }).click();
     await closeSettings(page); await verifyCards(page, page === desktop ? '星河' : '月光', page === desktop ? '神谕' : '星语');
+    await page.locator('.conversation-scroll').evaluate(el => { el.scrollTop = 0; });
+    await capture(page, `${theme}-${page === desktop ? 'electron' : realAndroid ? 'android' : 'mobile-simulated'}-cards`);
   }
-  checks.push('Four themes preserve readable identity controls, both message cards, final answer and collapsed execution process; no document overflow');
+  checks.push('Four themes preserve custom avatars/nicknames, square crop preview and cancel, both message cards, final answer and collapsed execution process; no document overflow');
   stage = 'reset/replacement';
   for (const page of [desktop, phone]) {
     await settings(page);

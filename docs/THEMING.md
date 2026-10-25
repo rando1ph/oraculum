@@ -60,15 +60,16 @@ main.app-shell[data-theme-root][data-theme-id]
     .conversation-scroll
       div.conversation-content[data-theme-slot="content"]
         section.turn-process[data-turn-id][data-status]  原生 Turn 分组
+          .turn-records
+            article.message.user[data-theme-slot="user-message"][data-message-role="user"]
+            article.message.agent-message[data-theme-slot="assistant-message"][data-message-role="assistant"]
+              header.message-heading
+                .message-avatar / .message-name / .message-actions
+              .message-body / .markdown（AI 正文）
+            .process-records[hidden]                   可折叠过程，最终回答在其外
+              .tool[data-theme-slot="tool"]（article 或 details）
+                .tool-body（部分工具）
           .process-status / .process-toggle[aria-expanded] / .process-counts
-          .turn-records / .process-records[hidden]       执行过程（最终回答不在 process-records）
-        article.message.user[data-theme-slot="user-message"][data-message-role="user"]
-        article.message.agent-message[data-theme-slot="assistant-message"][data-message-role="assistant"]
-          header.message-heading
-            .message-avatar / .message-name / .message-actions
-          .message-body / .markdown（AI 正文）
-        .tool[data-theme-slot="tool"]（article 或 details）
-          .tool-body（部分工具）
         article.approval[data-theme-slot="approval"]
           .approval-actions
     form.composer[data-theme-slot="composer"]
@@ -86,6 +87,11 @@ main.app-shell[data-theme-root][data-theme-id]
     .diff-added / .diff-removed / .diff-hunk
   dialog.settings-dialog.app-settings[data-theme-slot="settings"]
     .theme-settings
+    .identity-settings
+      .identity-card[data-identity-role="user"/"assistant"]
+        .identity-preview / .identity-fields / .identity-save
+        .avatar-crop
+          canvas.avatar-crop-preview / input[type="range"]
 ```
 
 原八个 Slot 保留，3C.1 新增 composer/approval/settings，4D.3 新增 assistant-message。双方消息共享 `.message` 卡片、`.message-heading` 头像与名称标题行、`.message-body` 正文；现有 `.message.user`、`.agent-message`、`.user-label` 继续兼容。默认用户为「你」与人物轮廓头像，AI 为 Codex 与 Oracle Eye。4D.5 在设置中增加双方独立昵称与头像，仍使用 `.message-avatar` / `.message-name`；自定义头像为 `canvas.custom-avatar`，默认头像保持原 SVG/PNG。正文不再为头像预留左侧列，桌面内容容器上限 980px（含边距），移动端卡片近全宽。卡片使用现有表面、文字、边线和圆角 tokens；主题可通过 `.message` 同时覆盖双方材质，或用两个 Slot 分别覆盖。
@@ -98,7 +104,18 @@ main.app-shell[data-theme-root][data-theme-id]
 
 模型/思考强度菜单使用替换式两级导航：`.composer-popover-model[data-level="summary"]` 仅有两条纵向入口，`[data-level="model"]` 或 `[data-level="effort"]` 仅显示对应的纵向选项与返回栏。选项沿用 `[aria-checked="true"]` 选中态；主题应保留返回按钮、键盘焦点和选项可滚动性，不能将两级重新平铺。模型入口的 18px 内联 SVG 是简化的 Oracle Eye，颜色继承文字 token，不替换主品牌资产。
 
+4D 改版后的选择器迁移（不改变 `themeApi: 1` 或包格式）：
+
+| 已移除的 UI 选择器 | 当前推荐 hooks | 状态与层叠注意点 |
+| --- | --- | --- |
+| `.model-controls select` | `.composer-control`（项目、模型与权限入口）、`.composer-popover`、`.composer-submenu-header` | `.model-controls` 仍是上排兼容 class，但内部没有 `select`。入口用 `[aria-expanded="true"]`，权限 `.full-access` 保留 `--warning`。 |
+| `.settings-model-options`、`.settings-effort-options` | `.composer-model-summary`、`.composer-choice-list [role="radio"]` | 设置页不再提供模型列表。模型/思考强度二级列表与权限列表都用 `[aria-checked="true"]`，配色为 `--accent` / `--accent-soft`。 |
+
+无 layer 的入口底色规则也会覆盖宿主的 hover/展开样式，因此自定义 `.composer-control` 背景时，应同时提供 hover 与 `[aria-expanded="true"]` 规则。弹出面板与 sticky 返回栏应使用协调的表面色；不要将所有菜单按钮统一涂色而丢失选中态。实际迁移示例见 Hong Kong Rain；仅使用旧 tokens 的 Violet 无需更新。
+
 4D.4 按原生 Turn 包装时间线。运行时 `.process-status` 位于过程下方，显示已确认状态与原生时间；正常完成后 `.process-toggle` 可展开/收起过程，`.process-counts` 来自实际 Item。双方消息卡片及原有工具 Slot 保留；已确认的最终回答与未知 phase 消息不放入 `.process-records`，审批仍在独立区域。主题不要覆盖 `[hidden]` 的收起语义，也不要隐藏失败/中断/审批行。按钮保持可见键盘焦点和至少 44px（移动端 48px）触摸高度；计数可换行，移动端不增加多层缩进。手动展开是设备当前页面会话的阅读偏好，刷新保持；运行结束的首次显示默认收起。
+
+过程状态使用 `.turn-process[data-status="inProgress"/"completed"/"failed"/"interrupted"]`；失败与中断的 `.process-label` 分别继承 `--danger`、`--warning`。头像覆盖应直接作用于 `.message-avatar`（SVG/PNG/canvas 共用），不要假设它内部还有 `img`；卡片标题、昵称和正文分别用 `.message-heading`、`.message-name`、`.message-body`。设置预览为 `.identity-preview .message-avatar`，裁切画布为 `.avatar-crop-preview`；检查双方身份与长昵称，不要让装饰遮住保存/取消或缩放滑块。
 
 ```css
 :root {
@@ -151,6 +168,8 @@ button.primary { border-radius: 999px; background: #235daf; color: white; }
 ## 验收
 
 `pnpm check && pnpm test && pnpm build` 后运行 `pnpm test:themes:ui`（真实 Electron + 模拟手机/协议合约）。检查 Violet、新主题、375/390px、横屏/小高度、完整浅色组件、长消息/Diff、资源解码失败、失效回退和原生恢复；模拟结果不等于官方 Codex 或真机验收。
+
+涉及 4D 组件时再运行 `pnpm test:composer:ui`、`pnpm test:process:ui`、`pnpm test:identity:ui`：四套主题分别覆盖两级菜单/权限选中态、过程折叠与失败/中断可见性，以及双方昵称/自定义头像/裁切预览。主题合约还逐套验证桌面与模拟手机的输入、发送/停止和允许/拒绝；这些脚本使用临时 Electron profile、隔离 Bridge 与模拟协议，不启动正式 Bridge、不访问真实 Codex 会话，也不操作 Android WebView 数据。
 
 `pnpm test:themes:live` 使用真实 Ubuntu Electron、HONOR Android 15 USB/ADB reverse、隔离认证 Bridge 与官方 Codex 的两轮受控测试。运行前拒绝覆盖已有 17860 服务，备份并恢复手机原 Cookie/local/session storage；不迁移用户数据或改生产设施。接受已有 `.local/evidence/phase3/themes-live/.../acceptance.json` 可复查同一真实会话，禁止新建会话或模型轮次。失败证据保留；清理失败必须核验并恢复原备份后再报告。IME 使用真实系统键盘事件单独记录，CDP fill 不得冒充拼音输入。真实截图、测试范围/限制和 SHA 记录在原 Phase 3 Task；Task 等独立审阅，不由实施方标 Done。
 

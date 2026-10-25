@@ -284,6 +284,19 @@ try {
   }
   record('per-turn plans and aggregate Diffs do not leak into another turn; pending approvals stay outside folding and allow/decline synchronize; interrupted/failed turns remain open and failed/declined tool rows remain visible after successful completion');
 
+  for (const value of ['oracle-eye', 'test-violet', 'hong-kong-rain', 'minimal-light']) for (const page of pages) {
+    await theme(page, value);
+    for (const turnId of [second.id, failed.id]) {
+      await expect(group(page, turnId).locator('.process-label')).toBeVisible();
+      await expect(group(page, turnId).locator('.process-toggle')).toHaveCount(0);
+    }
+    await expect(group(page, failed.id).getByRole('alert')).toBeVisible();
+    await expect(item(page, recovered.id, 'error-command')).toBeVisible();
+    await expect(item(page, recovered.id, 'recovered-final')).toBeVisible();
+  }
+  record('all four themes keep interrupted/failed status, actionable tool errors and final answers visible on desktop/mobile');
+  for (const page of pages) await theme(page, 'oracle-eye');
+
   historyEnabled = true;
   await phone.reload(); await ready(phone); await completed(phone);
   await phone.getByRole('button', { name: '加载更早历史', exact: true }).click(); await expect.poll(() => !!releaseHistory).toBe(true);

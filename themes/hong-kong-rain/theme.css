@@ -112,7 +112,9 @@ button.primary:hover:enabled { background: linear-gradient(120deg, #a7ffef, #81e
 .composer { border: 1px solid #53e9e899; border-radius: 4px 18px 4px 18px; background: linear-gradient(110deg, #0a2938e8, #171529e8); box-shadow: 0 0 24px #36ede014, 4px 4px 0 #ff439528; }
 .composer:focus-within { border-color: #8affed; box-shadow: 0 0 25px #4ff5dd33; }
 .composer textarea { font-size: 14px; line-height: 1.85; }
-.model-controls select { background: #051824; border-color: #386171; }
+.composer-control { background: #051824; border-color: var(--line); }
+.composer-control:hover:enabled, .composer-control[aria-expanded="true"] { background: var(--surface-hover); border-color: var(--line-bright); }
+.composer-popover, .composer-submenu-header { background: #051824; }
 .message { background: linear-gradient(110deg, #164756c9, #17243cdd); border: 1px solid #479faa88; border-left: 3px solid #62f9dd; border-radius: 2px 16px 2px 16px; }
 .markdown { line-height: 1.95; }
 .message-heading { color: #ffadd0; }
