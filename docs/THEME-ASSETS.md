@@ -1,6 +1,25 @@
 # Theme acceptance assets
 
-These are capability proofs, not replacement official Oracle Eye artwork.
+The older acceptance themes are capability proofs. Hong Kong Neon is an optional built-in flagship theme; all themes preserve the official Oracle Eye brand assets.
+
+## Hong Kong Neon · 2026-10-25
+
+Original, fictional future Hong Kong environment paintings created with the built-in `imagegen` tool, from the two text prompts below. No earlier AI concept images (including D1/A1), Drive references, or third-party images were supplied, searched, or used. These are production background assets, not screenshots, real photographs, or depictions of an identified street. The actual UI remains rendered by Oraculum.
+
+- `themes/hong-kong-neon/assets/harbour-eclipse.webp`: independently composed desktop panorama, 1672 × 941; 472,094 bytes.
+- `themes/hong-kong-neon/assets/vertical-city.webp`: independently composed mobile city canyon, 842 × 1869; 576,640 bytes.
+
+Both PNG originals were encoded as WebP at quality 92 without cropping, compositing, or retouching. No additional font assets or dependencies. CSS rain, tidal light, glass blur, spectral highlights and brand-edge masks are original theme code. Environment artwork is shipped in the package; it needs no remote image/font service. The theme only paints materials, light, and atmosphere; the host owns all control geometry and interactions.
+
+Desktop prompt (built-in tool, opaque background):
+
+> Use case: stylized-concept. Asset type: production background environment art for a real desktop application, NOT a UI mockup. Create a stunning cinematic wide 16:9 landscape of an imagined future Hong Kong at midnight in torrential monsoon rain. View from an elevated dark obsidian temple balcony across Victoria Harbour into a vertiginous dense city canyon. Hyper-detailed weathered Hong Kong towers, projecting vertical neon signs with abstract unreadable glyphs, suspended cables, stacked balconies, humid volumetric light, wet black basalt and mercury-like reflections. Uncanny monumental eclipse ring, extremely thin pale cyan and magenta arc, partly occluded by fog and skyscrapers slightly right of center. Composition: strong dense architecture along left and right edges, darkest open atmospheric void in central upper two thirds so actual application conversation cards can overlay it, a richly luminous horizon in lower third; foreground rain-glazed horizontal ledge near bottom. Low viewpoint, enormous scale, asymmetrical architectural framing, long cyan and carmine reflections, restrained molten amber windows, deep petrol shadows. Sophisticated photographic digital matte painting, fine 35mm grain, luminous but deep blacks, luminous mist, extraordinary realism and surreal optical atmosphere. No people, NO UI, no panels, no buttons, no frames, no logos, no readable text, no typography. This is newly invented standalone environmental artwork, use no reference images.
+
+Mobile prompt (built-in tool, opaque background):
+
+> Use case: stylized-concept. Asset type: vertical 9:20 environmental background artwork for a real mobile application, not a UI mockup. Independently create a breathtaking future Hong Kong midnight rain canyon. Ultra-tall decaying buildings close along both edges climbing out of frame, thousands of small amber windows, delicate cables and projecting neon light bars, wet dark glass and weathered concrete. Camera beneath an elevated pedestrian bridge looking toward a distant harbour of cyan mist. Surreal huge razor-thin eclipse arc suspended between the towers in upper half, electric cyan on left and hot carmine on right, swallowed in midnight purple clouds. Foreground wet black street like liquid obsidian reflecting narrow intense magenta and aquamarine ribbons into the bottom edge. Extraordinary atmosphere, claustrophobic vertical scale, dense layered high-rises, fine slanted monsoon rain, smoky gradients of light, an almost spiritual city. Center should be atmospheric and deep blue-black with subtle detail, most powerful luminous architecture at right and left edges, lavish cyan and magenta highlights at bottom third. Sophisticated cinematic digital matte painting, realistic photographic material quality, fine film grain, sharp small lights bleeding in humid air, rich contrast, no flat vector art. No UI, panels, controls, buttons, borders, no people, no logos or readable text. Use no reference images; this is an original production environment asset.
+
+## Earlier acceptance assets
 
 - `themes/hong-kong-rain/assets/rain-night.webp`: original fictional Hong Kong inspired illustration generated for this project with the built-in imagegen tool on 2026-10-22; converted from PNG to WebP for package size. It is not a photograph or a representation of an identified real street. No third-party reference image was supplied.
 - `themes/hong-kong-rain/assets/DejaVuSansMono.ttf`: unmodified DejaVu Sans Mono from Ubuntu's `fonts-dejavu-core`. Copyright © 2003 Bitstream, Inc.; DejaVu changes are public domain. The full Bitstream Vera font license is included in the theme.css comment and travels with the installed package. Used for Latin typography; Chinese characters use the device's fallback font. Project: https://dejavu-fonts.github.io/.

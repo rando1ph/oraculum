@@ -8,10 +8,12 @@ import { DEFAULT_THEME, THEME_API, themeId, type ThemeBundle, type ThemeCatalog,
 
 function invalid(reason: string): never { throw new Error(`主题不可用：${reason}`); }
 const safePart = /^[a-zA-Z0-9_-]+$/;
+const builtinThemes = ['hong-kong-neon'] as const;
+interface ThemeDirectories { installed: string; source: string; builtin?: string }
 export function themeDirectories() {
   const paths = hostPaths();
   if (!process.env.ORACULUM_THEME_DIR) selectStateDirectory(paths);
-  return { installed: paths.themeInstalled, source: paths.themeSource };
+  return { installed: paths.themeInstalled, source: paths.themeSource, builtin: join(paths.resources, 'themes') };
 }
 async function directory(path: string) {
   const info = await lstat(path);
@@ -42,7 +44,9 @@ function assetType(name: string, bytes: Buffer): string {
 // Local trust is explicit: this is not a sandbox for hostile OS users.
 export class Themes {
   private installing = false;
-  constructor(readonly paths = themeDirectories()) {}
+  constructor(readonly paths: ThemeDirectories = themeDirectories()) {}
+  private isBuiltin(id: string) { return !!this.paths.builtin && builtinThemes.some(builtin => builtin === id); }
+  private root(id: string) { return this.isBuiltin(id) ? this.paths.builtin! : this.paths.installed; }
   private async read(root: string, id: string, installed: boolean, base: string) {
     if (!themeId.test(id) || id === DEFAULT_THEME) invalid('目录标识无效');
     await directory(root);
@@ -113,12 +117,22 @@ export class Themes {
       ? error.message : '主题不可用：目录、文件或权限已变化';
   }
   async catalog(): Promise<ThemeCatalog> {
-    return { installed: await this.entries(this.paths.installed, true), sources: await this.entries(this.paths.source, false) };
+    const builtins: ThemeEntry[] = [];
+    if (this.paths.builtin) {
+      for (const id of builtinThemes) {
+        try { builtins.push({ directory: id, builtin: true, manifest: (await this.read(this.paths.builtin, id, true, '/')).bundle.manifest }); }
+        catch (error) { builtins.push({ directory: id, builtin: true, error: this.message(error) }); }
+      }
+    }
+    return {
+      installed: [...builtins, ...(await this.entries(this.paths.installed, true)).filter(entry => !this.isBuiltin(entry.directory))],
+      sources: (await this.entries(this.paths.source, false)).filter(entry => !this.isBuiltin(entry.manifest?.id ?? entry.directory)),
+    };
   }
-  async bundle(id: string, base: string) { return (await this.read(this.paths.installed, id, true, base)).bundle; }
+  async bundle(id: string, base: string) { return (await this.read(this.root(id), id, true, base)).bundle; }
   async asset(id: string, name: string) {
     if (!name.startsWith('assets/') && name !== 'preview.webp') invalid('资源路径无效');
-    const { files } = await this.read(this.paths.installed, id, true, '/');
+    const { files } = await this.read(this.root(id), id, true, '/');
     const bytes = files.get(name);
     if (!bytes) invalid('资源不存在');
     return { bytes, type: assetType(name, bytes) };
@@ -130,6 +144,7 @@ export class Themes {
     let created: string | undefined;
     try {
       const { files, bundle } = await this.read(this.paths.source, id, false, '/');
+      if (this.isBuiltin(bundle.manifest.id)) invalid('同 id 主题已内置，请使用不同 id');
       await mkdir(this.paths.installed, { recursive: true, mode: 0o700 });
       await directory(this.paths.installed);
       const target = join(this.paths.installed, bundle.manifest.id);

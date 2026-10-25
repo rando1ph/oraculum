@@ -118,7 +118,7 @@ export function ThemeSettings({ theme, open }: { theme: ReturnType<typeof useThe
     <h3>主题</h3><p>仅更改此设备。安装不会自动切换；其他设备可独立选择。</p>
     <label className="theme-choice">当前主题<select aria-label="当前主题" value={theme.id} disabled={disabled} onChange={e => void theme.select(e.target.value)}>
       <option value={DEFAULT_THEME}>{defaultTheme.name}</option>
-      {catalog.installed.filter(entry => entry.manifest).map(entry => <option key={entry.directory} value={entry.manifest!.id}>{entry.manifest!.name} · {entry.manifest!.version}</option>)}
+      {catalog.installed.filter(entry => entry.manifest).map(entry => <option key={entry.directory} value={entry.manifest!.id}>{entry.manifest!.name} · {entry.builtin ? '内置' : entry.manifest!.version}</option>)}
       {theme.id !== DEFAULT_THEME && !catalog.installed.some(entry => entry.manifest?.id === theme.id) && <option value={theme.id}>{theme.id}</option>}
     </select></label>
     <div className="theme-actions"><button onClick={() => theme.reset()}>恢复默认主题</button><button disabled={disabled} onClick={() => void refresh()}>刷新主题列表</button></div>

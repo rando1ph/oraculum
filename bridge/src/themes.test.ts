@@ -1,16 +1,16 @@
-import { afterEach, describe, expect, it } from 'vitest';
-import { mkdtemp, mkdir, readFile, writeFile, symlink, link, rm } from 'node:fs/promises';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { lstat, mkdtemp, mkdir, readFile, writeFile, symlink, link, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { EventEmitter } from 'node:events';
-import { Themes } from './themes';
+import { Themes, themeDirectories } from './themes';
 import { compileThemeCss } from './theme-css';
 import { TrustStore } from './trust-store';
 import { createServer } from './server';
 import type { BridgeService } from './service';
 
 const cleanup: (() => Promise<unknown> | unknown)[] = [];
-afterEach(async () => { for (const close of cleanup.reverse()) await close(); cleanup.length = 0; });
+afterEach(async () => { for (const close of cleanup.reverse()) await close(); cleanup.length = 0; vi.unstubAllEnvs(); });
 const meta = { id: 'test-theme', name: '测试主题', version: '1.0.0', themeApi: 1 };
 const css = ':root { --accent: #bbccff; } [data-theme-slot="content"] { padding-inline: 16px; }';
 const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=', 'base64');
@@ -23,6 +23,16 @@ async function fixture() {
   await writeFile(join(path, 'manifest.json'), JSON.stringify(meta));
   await writeFile(join(path, 'theme.css'), css);
   return { root, path, source, installed, themes: new Themes({ source, installed }) };
+}
+async function builtinFixture() {
+  const f = await fixture();
+  const builtin = join(f.root, 'resources', 'themes'), id = 'hong-kong-neon';
+  const path = join(builtin, id), manifest = { ...meta, id, name: 'Hong Kong Neon · 香港霓虹' };
+  await mkdir(join(path, 'assets'), { recursive: true });
+  await writeFile(join(path, 'manifest.json'), JSON.stringify(manifest));
+  await writeFile(join(path, 'theme.css'), '.app-shell{background-image:url("assets/night.png")}');
+  await writeFile(join(path, 'assets/night.png'), png);
+  return { ...f, builtin, builtinPath: path, id, manifest, themes: new Themes({ source: f.source, installed: f.installed, builtin }) };
 }
 
 describe('Trusted Theme API v1 CSS', () => {
@@ -122,6 +132,77 @@ describe('explicit, bounded local directory installation', () => {
     const catalog = await themes.catalog();
     expect(catalog.sources.map(entry => entry.directory)).toEqual(expect.arrayContaining(['template', 'test-violet']));
     expect(catalog.sources.every(entry => entry.manifest && !entry.error)).toBe(true);
+  });
+});
+
+describe('read-only built-in themes', () => {
+  it('resolves built-ins from program resources independently of source and state overrides', async () => {
+    const { root, installed, source } = await fixture();
+    vi.stubEnv('ORACULUM_RESOURCE_DIR', join(root, 'program'));
+    vi.stubEnv('ORACULUM_THEME_SOURCE_DIR', source);
+    vi.stubEnv('ORACULUM_THEME_DIR', installed);
+    expect(themeDirectories()).toEqual({ installed, source, builtin: join(root, 'program', 'themes') });
+  });
+  it('is selectable without installation even with a separate source directory and has base-aware assets', async () => {
+    const { themes, installed, manifest, id } = await builtinFixture();
+    const catalog = await themes.catalog();
+    expect(catalog.installed).toEqual([{ directory: id, builtin: true, manifest }]);
+    expect(catalog.sources.map(entry => entry.manifest?.id)).toEqual([meta.id]);
+    expect((await themes.bundle(id, '/')).css).toContain(`/themes/${id}/assets/night.png`);
+    expect((await themes.bundle(id, '/console/')).css).toContain(`/console/themes/${id}/assets/night.png`);
+    expect(await themes.asset(id, 'assets/night.png')).toEqual({ bytes: png, type: 'image/png' });
+    await expect(lstat(installed)).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+  it('reserves built-in ids and never serves an installed shadow or exposes its source alias for installation', async () => {
+    const { themes, installed, source, path, builtin, manifest, id } = await builtinFixture();
+    await writeFile(join(path, 'manifest.json'), JSON.stringify(manifest));
+    await mkdir(join(installed, id), { recursive: true });
+    await writeFile(join(installed, id, 'manifest.json'), JSON.stringify({ ...manifest, name: 'Shadow' }));
+    await writeFile(join(installed, id, 'theme.css'), ':root{--accent:red}');
+    expect((await themes.catalog()).sources).toEqual([]);
+    expect((await themes.catalog()).installed).toEqual([{ directory: id, builtin: true, manifest }]);
+    expect((await themes.bundle(id, '/')).manifest.name).toBe(manifest.name);
+    await expect(themes.install('candidate')).rejects.toThrow('已内置');
+    expect(await readFile(join(installed, id, 'theme.css'), 'utf8')).toBe(':root{--accent:red}');
+    // The default source root is the same resource directory. It still has no install button.
+    expect((await new Themes({ source: builtin, installed, builtin }).catalog()).sources).toEqual([]);
+    expect(source).not.toBe(builtin);
+  });
+  it('revalidates built-in files and reports damage without falling through to a same-id installed copy', async () => {
+    const { themes, installed, builtinPath, manifest, id } = await builtinFixture();
+    await mkdir(join(installed, id), { recursive: true });
+    await writeFile(join(installed, id, 'manifest.json'), JSON.stringify(manifest));
+    await writeFile(join(installed, id, 'theme.css'), css);
+    await rm(join(builtinPath, 'assets/night.png'));
+    await expect(themes.bundle(id, '/')).rejects.toThrow('Theme CSS:');
+    expect((await themes.catalog()).installed).toEqual([{ directory: id, builtin: true, error: expect.stringContaining('Theme CSS:') }]);
+    await rm(builtinPath, { recursive: true });
+    await expect(themes.bundle(id, '/')).rejects.toThrow();
+    expect((await themes.catalog()).installed[0].error).toBeTruthy();
+  });
+  it('uses the existing authenticated root and subpath routes with unchanged asset headers', async () => {
+    const { themes, root, id } = await builtinFixture();
+    const trust = new TrustStore(join(root, 'trust')); cleanup.push(() => trust.close());
+    const service = new EventEmitter() as BridgeService;
+    const server = await createServer(service, 17864, '/missing', { themes, trust, remoteOrigin: 'https://theme.example', remoteBasePath: '/console/' });
+    cleanup.push(() => server.close());
+    for (const remote of [false, true]) {
+      const origin = remote ? 'https://theme.example' : 'http://127.0.0.1:17864', base = remote ? '/console/' : '/';
+      const headers = { host: new URL(origin).host, origin, ...(remote ? { 'x-forwarded-proto': 'https' } : {}) };
+      expect((await server.inject({ url: `${base}themes/${id}/bundle`, headers })).statusCode).toBe(401);
+      expect((await server.inject({ url: `${base}themes/${id}/assets/night.png`, headers })).statusCode).toBe(401);
+      const paired = trust.pair(trust.createPairing().code, 'Test', remote ? origin + base : origin);
+      const auth = { ...headers, cookie: `${remote ? '__Secure-oraculum_session' : 'oraculum_local'}=${paired.token}` };
+      const bundle = await server.inject({ url: `${base}themes/${id}/bundle`, headers: auth });
+      expect(bundle.statusCode).toBe(200);
+      expect(bundle.json().css).toContain(`${base}themes/${id}/assets/night.png`);
+      const asset = await server.inject({ url: `${base}themes/${id}/assets/night.png`, headers: auth });
+      expect(asset.statusCode).toBe(200); expect(asset.headers['content-type']).toContain('image/png');
+      expect(asset.headers['x-content-type-options']).toBe('nosniff'); expect(asset.headers['cache-control']).toBe('no-store');
+      trust.revoke(paired.device.id);
+      expect((await server.inject({ url: `${base}themes/${id}/bundle`, headers: auth })).statusCode).toBe(401);
+      expect((await server.inject({ url: `${base}themes/${id}/assets/night.png`, headers: auth })).statusCode).toBe(401);
+    }
   });
 });
 

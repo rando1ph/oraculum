@@ -5,9 +5,11 @@ export const themeId = /^[a-z][a-z0-9-]{0,47}$/;
 export interface ThemeManifest { id: string; name: string; version: string; themeApi: 1 }
 export interface ThemeEntry {
   directory: string;
+  builtin?: boolean;
   manifest?: ThemeManifest;
   error?: string;
 }
+// Keep the v1 selection list compatible: built-ins are available alongside installed packages.
 export interface ThemeCatalog { installed: ThemeEntry[]; sources: ThemeEntry[] }
 export interface ThemeBundle { manifest: ThemeManifest; css: string; revision: string; assets: string[] }
 export const defaultTheme: ThemeManifest = { id: DEFAULT_THEME, name: 'Oracle Eye · 默认', version: '1.0.0', themeApi: 1 };

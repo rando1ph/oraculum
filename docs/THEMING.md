@@ -4,6 +4,10 @@
 
 ## 包与安装
 
+**内置 Hong Kong Neon · 香港霓虹**：设置的「当前主题」中开箱可选，标为「内置」，无需从来源目录安装。它与默认 Oracle Eye 并存，选择仍按设备/入口保存。内置包从程序资源根的 `themes/hong-kong-neon/` 只读加载，复用相同的 Theme API v1 校验、认证资源路由与失败回退；不复制到用户状态目录，`ORACULUM_THEME_SOURCE_DIR` 的覆盖不影响内置主题。启用内置目录时 `hong-kong-neon` 为保留 ID，来源/已装目录中的同 ID 包不能覆盖它；创作变体请换 ID 后按下述流程安装。损坏或缺失的内置包同样恢复 Oracle Eye。
+
+Hong Kong Neon 的桌面与移动端使用独立城市素材和玻璃/雨幕光效，不改变控件的位置、尺寸、排列或字体度量。仅 `prefers-reduced-motion` 停止环境动画；极短 IME 视口遵循宿主的菜单定位规则。艺术素材来源与完整生成提示词见 [THEME-ASSETS.md](THEME-ASSETS.md)。
+
 ```text
 my-theme/
   manifest.json       # 必需
@@ -168,6 +172,8 @@ button.primary { border-radius: 999px; background: #235daf; color: white; }
 ## 验收
 
 `pnpm check && pnpm test && pnpm build` 后运行 `pnpm test:themes:ui`（真实 Electron + 模拟手机/协议合约）。检查 Violet、新主题、375/390px、横屏/小高度、完整浅色组件、长消息/Diff、资源解码失败、失效回退和原生恢复；模拟结果不等于官方 Codex 或真机验收。
+
+`pnpm test:neon:ui` 专门验证 Hong Kong Neon 的开箱选择、刷新保持、双端操作与默认恢复。它在隔离 Bridge、临时 Electron profile 和模拟协议上运行，保存 Desktop 与 Chromium Android 比例截图，以及默认/Neon 同状态的控件顺序和坐标对照。覆盖消息、两级菜单、权限、过程、Inspector、空会话、Drawer、身份编辑、发送/停止/审批和短 IME 菜单；输出在忽略的 `.local/evidence/phase4e2a/neon-contract/`。这不是 Android 真机、原生 IME 或真实 Codex 验收，也不替代用户审美验收。
 
 涉及 4D 组件时再运行 `pnpm test:composer:ui`、`pnpm test:process:ui`、`pnpm test:identity:ui`：四套主题分别覆盖两级菜单/权限选中态、过程折叠与失败/中断可见性，以及双方昵称/自定义头像/裁切预览。主题合约还逐套验证桌面与模拟手机的输入、发送/停止和允许/拒绝；这些脚本使用临时 Electron profile、隔离 Bridge 与模拟协议，不启动正式 Bridge、不访问真实 Codex 会话，也不操作 Android WebView 数据。
 

@@ -1,0 +1,28 @@
+/* A separate painting and optical treatment for the vertical city.
+ * Host drawer, full-screen detail, safe-area and IME geometry stay intact. */
+.app-shell { background-image: url("assets/vertical-city.webp"); background-position: center; }
+.conversation { border-radius: 0; box-shadow: none; background: linear-gradient(180deg, #050b161a, #090d1812 55%, #110b211f); }
+.conversation-header { background: linear-gradient(100deg, #0b2c42de, #14162cbd 55%, #49203fc9); }
+.theme-decoration::before { background: radial-gradient(ellipse at 8% 60%, #23d8ff21, transparent 50%), radial-gradient(ellipse at 100% 22%, #f253ae21, transparent 50%); }
+.theme-decoration::after { opacity: .32; }
+.message { background: linear-gradient(112deg, #143044ad, #0c162880 48%, #2f193b80); backdrop-filter: blur(10px) saturate(1.4); }
+.message.user { background: linear-gradient(112deg, #183a4f99, #1b1b2f91 55%, #55254285); }
+.composer { background: radial-gradient(ellipse at 0% 100%, #3eabc94d, transparent 60%), linear-gradient(115deg, #102b3bd6, #171a31d6 55%, #45223ace); backdrop-filter: blur(18px) saturate(1.5); }
+.navigation {
+  border-radius: 0;
+  background: linear-gradient(110deg, #071425db, #131a2fd9 58%, #36162dc9), url("assets/vertical-city.webp") center / cover;
+  box-shadow: 1px 0 #b8f7ff80, 12px 0 50px #03101dcc;
+  backdrop-filter: blur(20px);
+}
+.drawer-backdrop { background: #03091b66; backdrop-filter: blur(4px) saturate(.7); }
+.inspector {
+  border-radius: 0;
+  background: linear-gradient(145deg, #0a1b2be8, #17132ae6), url("assets/vertical-city.webp") center / cover;
+}
+.settings-dialog { background: linear-gradient(145deg, #0b2134f0, #101626eb 55%, #351a35e8), url("assets/vertical-city.webp") center / cover; }
+
+/* The host anchors very short IME menus to the viewport. A backdrop filter
+ * creates a fixed-position containing block, so keep only the painted glass. */
+@media (max-height: 160px) {
+  .composer { backdrop-filter: none; }
+}

@@ -1,0 +1,298 @@
+/* HONG KONG NEON — the city is the instrument.
+ * Original environment paintings generated from text for Oraculum, 2026-10-25.
+ * Provenance and prompts: docs/THEME-ASSETS.md. No external resources.
+ * Geometry belongs to the host: no control sizing, spacing, font metrics,
+ * ordering, or layout overrides. All moving layers are non-interactive.
+ */
+:root {
+  color-scheme: dark;
+  --background: #030712;
+  --surface: #0b1225;
+  --surface-raised: #121a30;
+  --surface-hover: #1d2b43;
+  --foreground: #e5f4ff;
+  --muted: #a8c7da;
+  --subtle: #779eb7;
+  --line: #45647a80;
+  --line-bright: #78dff0a1;
+  --accent: #8ef5ff;
+  --accent-strong: #42d9f2;
+  --accent-soft: #163446;
+  --success: #8cf4d4;
+  --warning: #ffd395;
+  --danger: #ff8cb6;
+  --on-accent: #03111e;
+  --primary-background: linear-gradient(135deg, #d6fcff, #6be9f4 48%, #a1afff);
+  --neon-pink: #ff62bb;
+  --neon-glass: linear-gradient(118deg, #14374d88, #080e228c 39%, #24142f88);
+}
+
+.app-shell {
+  isolation: isolate;
+  position: relative;
+  background: #030712 url("assets/harbour-eclipse.webp") center / cover;
+}
+.app-shell::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: radial-gradient(ellipse at 24% 0%, #3deaff15, transparent 42%),
+    radial-gradient(ellipse at 98% 85%, #ff228c24, transparent 45%),
+    linear-gradient(90deg, #02061038, transparent 45%, #10071f18);
+}
+.navigation, .conversation, .inspector {
+  border-color: #9ad8f34d;
+  border-radius: 13px;
+  box-shadow: inset 0 1px 0 #e2fcff38, inset 0 -1px 0 #8a3d8340,
+    0 0 0 1px #03071166, 0 12px 48px #01030a55;
+}
+.navigation {
+  background: linear-gradient(155deg, #080f20ba, #08142170 48%, #1811299c);
+  backdrop-filter: blur(9px) saturate(1.3);
+}
+.conversation { background: linear-gradient(110deg, #06101b1a, #08081916); }
+.inspector {
+  background: linear-gradient(160deg, #0b1e30e8, #070c1ac9 50%, #261327d9);
+  backdrop-filter: blur(14px) saturate(1.3);
+}
+
+/* Rain belongs to the air between the city and the glass. */
+.theme-decoration { opacity: 1; overflow: hidden; background: none; }
+.theme-decoration::before, .theme-decoration::after {
+  content: "";
+  position: absolute;
+  pointer-events: none;
+}
+.theme-decoration::before {
+  inset: -20%;
+  background: radial-gradient(ellipse at 20% 70%, #59e5ff15, transparent 42%),
+    radial-gradient(ellipse at 90% 36%, #ed4cff1c, transparent 38%),
+    conic-gradient(from 190deg at 70% 12%, transparent 0 22deg, #83d5ff0c 30deg, transparent 42deg 360deg);
+  filter: blur(24px);
+  animation: neon-tidal-light 19s ease-in-out infinite alternate;
+}
+.theme-decoration::after {
+  inset: -160px -100px;
+  opacity: .42;
+  background-image: repeating-linear-gradient(103deg, transparent 0 109px, #c9f5ff40 110px, transparent 111px 229px),
+    repeating-linear-gradient(103deg, transparent 0 171px, #b6bdff28 172px, transparent 173px 311px);
+  background-size: 311px 151px, 467px 263px;
+  mask-image: repeating-linear-gradient(180deg, transparent 0, #000 3px 31px, transparent 65px 151px);
+  animation: neon-rainfall 1.35s linear infinite;
+}
+@keyframes neon-rainfall { to { transform: translate(-35px, 151px); } }
+@keyframes neon-tidal-light {
+  from { transform: translate(-2%, -1%); opacity: .55; }
+  to { transform: translate(2%, 3%); opacity: 1; }
+}
+
+/* Light travels across the existing panel boundaries; no extra controls. */
+.conversation-header, .inspector-header {
+  background: linear-gradient(105deg, #0a253be6, #0b1020c9 47%, #351731bb);
+  border-color: #7bd9ee5e;
+  box-shadow: 0 1px 0 #06101c, 0 4px 28px #45c5ff12, inset 0 1px 0 #ddfaff18;
+  backdrop-filter: blur(18px) saturate(1.4);
+}
+.session-title > span, .brand-row h1 { color: #e6faff; text-shadow: 0 0 19px #87ecff66; }
+.brand-row span { color: #c6b6da; text-shadow: 0 0 15px #fb68b04d; }
+.brand-row > .oracle-eye, .mobile-brand .oracle-eye, .oracle-logo-eye, .inspector-empty .oracle-eye {
+  mix-blend-mode: screen;
+  filter: drop-shadow(0 0 10px #4cdeff77) drop-shadow(5px 1px 15px #e74bcb5c);
+  mask-image: radial-gradient(ellipse, #000 29%, #000d 43%, transparent 70%);
+}
+.navigation-footer {
+  border-color: #9ce4f438;
+  background: linear-gradient(0deg, #0710208c, transparent);
+}
+.project-picker, .search-box, .session-view-tabs {
+  background: linear-gradient(105deg, #091b2da8, #18172d99);
+  border-color: #76b9d64d;
+  box-shadow: inset 0 1px 0 #c4f4ff12;
+}
+.search-box input, .project-picker select { background: transparent; }
+.new-session {
+  background: linear-gradient(110deg, #1c526a80, #19243e80 65%, #45214480);
+  border-color: #78d9eb88;
+  color: #d4faff;
+  box-shadow: inset 0 1px 0 #e5fdff2e, 0 0 18px #39dcff0a;
+}
+.session-link { color: #c4dce9; background: transparent; }
+.session-link.selected, .project-group-heading[aria-expanded="true"], .session-view-tabs button[aria-pressed="true"] {
+  background: linear-gradient(100deg, #1b607b9c, #20304c88 64%, #6c295b61);
+  color: #d5fbff;
+  border-color: #80f2fa70;
+  box-shadow: inset 2px 0 #b5fbff, inset 0 1px #d5faff24, 0 0 18px #53d9ff13;
+}
+
+/* Laminated obsidian. Highlights are paint, so borders keep their host widths. */
+.message {
+  position: relative;
+  border-color: #91dceb58;
+  border-radius: 14px;
+  background: var(--neon-glass);
+  box-shadow: inset 0 1px 0 #e4fcff36, inset 1px 0 0 #8eefff26,
+    inset 0 -1px 0 #ff74c82b, 0 12px 32px #01061366, 0 0 28px #43c5ff09;
+  backdrop-filter: blur(15px) saturate(1.35);
+}
+.message::before {
+  content: "";
+  position: absolute;
+  inset: -1px 12% auto 12%;
+  height: 1px;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent, #c8fbffb0 28%, #87dfff78 50%, #ff9bd8b0 75%, transparent);
+  box-shadow: 0 0 12px #83e9ff66;
+}
+.message::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(116deg, transparent 12%, #8bdfff0a 12.3%, transparent 13%, transparent 62%, #f6d9ff0a 62.3%, transparent 76%),
+    linear-gradient(178deg, #b4f5ff09, transparent 24% 80%, #fa77bd08);
+}
+.message.user {
+  background: linear-gradient(112deg, #142c429c, #11182a99 50%, #46213f8c);
+  border-color: #ca96c361;
+  box-shadow: inset 0 1px 0 #ffd7f43b, inset -1px 0 0 #ff86c533, 0 8px 30px #05061755;
+}
+.message-heading { color: #c0f7ff; }
+.message.user .message-name { color: #ffcbeb; text-shadow: 0 0 16px #ff60b25e; }
+.agent-message .message-name { color: #a3f6ff; text-shadow: 0 0 15px #64dcff66; }
+.message-avatar { filter: drop-shadow(0 0 7px #71ddff55); }
+.message.user .message-avatar { filter: drop-shadow(0 0 7px #f36dbd55); }
+.markdown h1, .markdown h2, .markdown h3 { color: #d2faff; text-shadow: 0 0 22px #43dbff3d; }
+.markdown strong { color: #c4f8ff; }
+.markdown a { color: #9befff; text-decoration-color: #6cd7ed77; }
+.markdown blockquote { border-color: #a596df; color: #c2bddc; background: linear-gradient(90deg, #9c6bca12, transparent); }
+.markdown :not(pre) > code { background: #080c1aab; color: #f7b9dc; border-color: #df8eb64d; }
+.code-block, .command-text, .tool-output, .detail-output, .approval pre {
+  background: #030b18c7;
+  border-color: #77bcd44d;
+  box-shadow: inset 0 1px 12px #03061780;
+}
+.code-block-actions, .diff-toolbar { background: linear-gradient(100deg, #15374b85, #2e1d3b66); border-color: #7bbbd33d; }
+.tool, .approval {
+  background: linear-gradient(115deg, #0b263bd9, #101729c9 55%, #28172ec4);
+  backdrop-filter: blur(13px);
+  box-shadow: inset 0 1px 0 #d5f8ff23, 0 8px 30px #0206124d;
+}
+.tool { border-color: #78bfd35c; }
+.tool-body { border-color: #7dcde72e; }
+.item-status { background: #153036a8; }
+.process-toggle { background: transparent; color: #b7dbe8; text-shadow: 0 0 15px #6bdbff66; }
+.process-counts { color: #a4bfd0; text-shadow: 0 1px 7px #000; }
+.process-label { text-shadow: 0 0 13px currentColor; }
+.approval { border-color: #e5bc80a8; box-shadow: inset 0 1px #ffe1af40, 0 0 26px #f3a65014; }
+.approval-heading { text-shadow: 0 0 18px #ffc48040; }
+.error { background: #271024e6; border-color: #ff8cbb88; }
+.history-warning, .disconnect-banner { background: #211a22e6; border-color: #ffd39588; }
+
+/* The composer is a pool of reflected city light, with the original two rows. */
+.composer {
+  background: radial-gradient(ellipse at 0% 100%, #338da43d, transparent 55%),
+    radial-gradient(ellipse at 100% 0%, #b7438a38, transparent 60%),
+    linear-gradient(115deg, #0c2437dc, #11182bd9 55%, #241b35db);
+  border-color: #96e8f2a3;
+  box-shadow: inset 0 1px 0 #f1fcff70, inset 1px 0 0 #a2f6ff3b,
+    inset -1px -1px 0 #ff8ed442, 0 -4px 30px #5ad8ff0c, 0 12px 48px #0009,
+    -8px 0 32px #42d8ff10, 9px 0 32px #ff50b918;
+  backdrop-filter: blur(24px) saturate(1.55);
+}
+.composer:focus-within { border-color: #c9fbff; box-shadow: inset 0 1px #fff9, 0 0 22px #4fe7ff26, 8px 0 32px #e946c329; }
+.composer::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  padding: 1px;
+  pointer-events: none;
+  background: linear-gradient(110deg, #dcfdffcc, #6ae8ff55 18%, transparent 37%, #f6b2eac9 70%, #cd7efc50 90%, #baf6ffc9);
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+}
+.composer textarea { text-shadow: 0 0 18px #95e9ff30; caret-color: #fda6dc; }
+.composer-control { background: transparent; color: #c1d9e7; border-color: transparent; }
+.composer-control:hover:enabled, .composer-control[aria-expanded="true"] {
+  background: linear-gradient(110deg, #36728a66, #66335b4d); color: #e5fbff; border-color: #a1edff42;
+}
+.effort-badge { background: #719cba22; color: #bbdbe9; }
+.permission-control.full-access { color: var(--warning); }
+.permission-control.full-access:hover:enabled, .permission-control.full-access[aria-expanded="true"] { color: var(--warning); }
+.composer-more { background: linear-gradient(135deg, #315168a6, #171d33ad); border-color: #98cce552; box-shadow: inset 0 1px #daeeff26; }
+button.primary {
+  background: var(--primary-background); color: var(--on-accent); border-color: #d3fbff;
+  box-shadow: inset 0 1px 0 #fff9, 0 0 16px #60deff61, 4px 1px 23px #fa55bd33;
+}
+button.primary:hover:enabled { background: linear-gradient(135deg, #fff, #9af7ff 60%, #d5baff); color: #051827; }
+.stop-button { background: linear-gradient(145deg, #4a3442, #25233a); border-color: #ffcba2aa; box-shadow: 0 0 18px #ff9a692b; }
+button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, summary:focus-visible {
+  outline-color: #c8f8ff;
+}
+.icon-button, .copy, .item-detail-button { color: #acd5e4; }
+.icon-button:hover:enabled, .copy:hover:enabled, .item-detail-button:hover:enabled { color: #f3fdff; background: #5083a33b; }
+.composer-popover, .mobile-session-menu {
+  background: linear-gradient(135deg, #153047ed, #11172af2 56%, #351c3de8);
+  border-color: #a4eff2a8;
+  box-shadow: inset 0 1px #ecfcff52, inset 0 -1px #f78ccc3d, 0 16px 50px #0009, 0 0 30px #56cfff21;
+  backdrop-filter: blur(22px) saturate(1.4);
+}
+.composer-submenu-header { background: linear-gradient(100deg, #19364c, #25223c); border-color: #99d9ef4a; }
+.composer-choice-list button[aria-checked="true"] {
+  background: linear-gradient(100deg, #265d769c, #56345291); color: #d9fcff; border-color: #87eafba8;
+  box-shadow: inset 2px 0 #bdfaff, 0 0 14px #47eaff12;
+}
+.composer-choice-list button:hover:enabled, .composer-model-summary button:hover:enabled { background: #48728d40; }
+
+.settings-dialog, .session-actions-dialog {
+  background: linear-gradient(125deg, #101e30f2, #101425ed 55%, #29172fed);
+  border-color: #a2eaf394;
+  box-shadow: inset 0 1px #d9faff52, 0 25px 120px #000a, 0 0 65px #42c5ff21;
+  backdrop-filter: blur(26px) saturate(1.35);
+}
+.settings-dialog::backdrop, .session-actions-dialog::backdrop { background: #02061688; backdrop-filter: blur(7px) saturate(.8); }
+.identity-card, .reading-size, .server-settings-link {
+  background: linear-gradient(115deg, #17334980, #251d3580); border-color: #93d2e34d;
+  box-shadow: inset 0 1px #ceefff21;
+}
+input, select { background-color: #0a1526; border-color: #7ba8c263; }
+select option { background: #101b2e; color: #e5f4ff; }
+.avatar-crop { background: #101b2e; border-color: #8ee1f075; }
+.inspector-list { background: #0817299c; border-color: #73bfd34d; }
+.inspector-tabs button { background: #11283f85; }
+.inspector-tabs button.active { background: #26516c9c; border-color: #a1e9ed88; }
+.diff-editor {
+  --diff-background: #081524d9;
+  --diff-gutter-background: #14243bdd;
+  --diff-line: #51809866;
+  --diff-added-background: #18534966;
+  --diff-removed-background: #642c4e66;
+  --diff-hunk-background: #254c6a99;
+}
+.mobile-detail-footer { background: #14283ae8; border-color: #a3e0ed66; }
+.connection i.online, .connection-status i.online { background: #99f9de; box-shadow: 0 0 9px #79ffe3aa, 0 0 20px #63cfff66; }
+.resize-handle:hover, .resize-handle:focus-visible { background: #a7eeff70; box-shadow: 0 0 15px #73ddff66; }
+
+/* The empty state keeps its original brand, copy, and button coordinates. */
+.empty-state { position: relative; }
+.empty-state::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: -1;
+  background: radial-gradient(ellipse at 50% 35%, #50b9ec20, transparent 48%);
+}
+.oracle-logo-name { color: #e0faff; text-shadow: 0 0 22px #84dfffaa, 1px 0 0 #fa8ccc66; }
+.oracle-logo-cn { color: #e5c3df; text-shadow: 0 0 17px #f675c477; }
+.brand-rule { background: linear-gradient(90deg, transparent, #96f3ff, #e994d2, transparent); box-shadow: 0 0 16px #8ae9ff88; }
+.empty-state h2 { color: #e7f8ff; text-shadow: 0 2px 12px #010713, 0 0 30px #5cd9ff66; }
+.empty-state p { text-shadow: 0 1px 8px #000; }
+.empty-state button { background: linear-gradient(110deg, #255b738c, #352641ab); border-color: #b9faff88; box-shadow: inset 0 1px #e7fcff30, 0 0 25px #6de8ff26; }
+
+@media (prefers-reduced-motion: reduce) {
+  .theme-decoration::before, .theme-decoration::after { animation: none; }
+}
