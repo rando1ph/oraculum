@@ -1,0 +1,28 @@
+/* A pocket instrument: the field is smaller and higher, with a darker screen.
+ * These are surface-only overrides. Drawer/IME/safe-area geometry stays native.
+ */
+.conversation { border-radius: 0; background: #050704; box-shadow: inset 0 0 25px #0008; }
+.theme-decoration {
+  background:
+    radial-gradient(ellipse at 70% 25%, #aa78201c, transparent 65%),
+    repeating-linear-gradient(0deg, #ebc87b06 0 1px, transparent 1px 4px),
+    linear-gradient(90deg, #0005, transparent 15% 85%, #0005);
+}
+.theme-decoration::before {
+  width: 620px;
+  height: 620px;
+  right: -260px;
+  bottom: -125px;
+  opacity: .7;
+}
+.theme-decoration::after { box-shadow: inset 0 0 30px #0008, inset 0 0 3px #d4a54b40; }
+.conversation-header { background: var(--terminal-grain), linear-gradient(170deg, #303021, #161d10 60%, #202516); }
+.navigation { border-radius: 0 4px 4px 0; }
+.composer { border-radius: 4px; background: var(--terminal-grain), linear-gradient(155deg, #30301f, #1a2213 65%, #232918); }
+.composer-actions .send-button, .composer-actions .stop-button { border-radius: 5px; }
+.composer-popover { border-radius: 4px; }
+.inspector { border-radius: 0; }
+.message { box-shadow: inset 0 0 12px #0008, inset 1px 0 0 #e4ba6820, 0 2px 5px #0008; }
+@media (max-height: 280px) {
+  .theme-decoration::before { opacity: .3; }
+}
