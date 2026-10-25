@@ -1,5 +1,5 @@
 import { mkdir, rmdir } from 'node:fs/promises';
-import { dirname } from 'node:path';
+import { dirname, join } from 'node:path';
 import { existsSync } from 'node:fs';
 import { Codex } from './codex';
 import { BridgeService } from './service';
@@ -42,7 +42,7 @@ try {
   await projects.register(paths.cwd); // Only the explicit host-selected default is authorized at startup.
   const service = new BridgeService(codex, paths.cwd, new ReceiptStore(trust.db), projects, new ThreadPermissionStore(trust.db));
   app = await createServer(service, paths.port, paths.web, {
-    trust, themes: new Themes({ installed: paths.themeInstalled, source: paths.themeSource }),
+    trust, themes: new Themes({ installed: paths.themeInstalled, source: paths.themeSource, builtin: join(paths.resources, 'themes') }),
     remoteOrigin: paths.remoteOrigin, remoteBasePath: paths.remoteBasePath,
   });
   codex.once('unavailable', () => {

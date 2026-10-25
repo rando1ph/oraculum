@@ -7,6 +7,7 @@ import { execFileSync, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { once } from 'node:events';
 import { createServer } from 'node:net';
+import { request as httpRequest } from 'node:http';
 import { tmpdir } from 'node:os';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -199,8 +200,9 @@ try {
   for (const binary of [join(installation, 'oraculum'), privateNode]) {
     const libraries = run('ldd', [binary]); assert.ok(!libraries.includes('not found'), 'Host library dependency unresolved');
   }
-  const fixtureHome = join(scratch, 'home'), unrelated = join(scratch, 'unrelated');
+  const fixtureHome = join(scratch, 'home'), unrelated = join(scratch, 'unrelated'), themeSource = join(scratch, 'theme-sources');
   await mkdir(join(fixtureHome, '.local/bin'), { recursive: true }); await mkdir(unrelated);
+  await mkdir(themeSource);
   const fixture = join(fixtureHome, '.local/bin/codex'), calls = join(scratch, 'native-calls');
   await writeFile(fixture, `#!${privateNode}\nif(process.argv[2]==='--version'){console.log('codex-cli 9.9.9-deb-fixture');process.exit(0)}
 require('node:readline').createInterface({input:process.stdin}).on('line',line=>{const m=JSON.parse(line);if(m.id===undefined)return;
@@ -211,7 +213,9 @@ console.log(JSON.stringify({id:m.id,result}));});`, { mode: 0o700 });
   const port = probe.address().port; await new Promise(accept => probe.close(accept));
   const env = { HOME: fixtureHome, PATH: '/usr/bin:/bin', XDG_CONFIG_HOME: join(fixtureHome, 'config'),
     XDG_STATE_HOME: join(fixtureHome, 'state'), XDG_DATA_HOME: join(fixtureHome, 'data'),
-    ORACULUM_INIT_STATE: '1', ORACULUM_PORT: String(port), FIXTURE_CALLS: calls };
+    ORACULUM_INIT_STATE: '1', ORACULUM_PORT: String(port), FIXTURE_CALLS: calls,
+    ORACULUM_THEME_SOURCE_DIR: themeSource, ORACULUM_REMOTE_ORIGIN: 'https://release.oraculum.invalid',
+    ORACULUM_REMOTE_BASE_PATH: '/release-check/' };
   child = spawn(join(runtime, 'bin/oraculum-bridge'), { cwd: unrelated, env, stdio: ['ignore', 'pipe', 'pipe'] });
   let output = ''; child.stdout.on('data', data => { output += data; }); child.stderr.on('data', data => { output += data; });
   const exited = once(child, 'exit');
@@ -221,6 +225,57 @@ console.log(JSON.stringify({id:m.id,result}));});`, { mode: 0o700 });
   const health = await fetch(`http://127.0.0.1:${port}/health`); assert.equal(health.status, 200);
   assert.deepEqual(await health.json(), { protocol: 1, mode: 'authenticated' });
   assert.match(await (await fetch(`http://127.0.0.1:${port}/`)).text(), /Oraculum · 神谕/);
+  // Exercise the packaged production launcher, not a separately constructed Themes.
+  // Pairing and state belong exclusively to this disposable HOME; no real CLI turns.
+  const request = (path, headers, body) => new Promise((accept, reject) => {
+    const req = httpRequest({ hostname: '127.0.0.1', port, path,
+      method: body ? 'POST' : 'GET', headers: { ...headers, ...(body ? { 'Content-Type': 'application/json' } : {}) } }, async response => {
+      try {
+        const chunks = []; for await (const chunk of response) chunks.push(chunk);
+        accept({ status: response.statusCode, headers: response.headers, bytes: Buffer.concat(chunks) });
+      } catch (error) { reject(error); }
+    });
+    req.on('error', reject); req.setTimeout(5_000, () => req.destroy(new Error('Package fixture request timed out')));
+    req.end(body ? JSON.stringify(body) : undefined);
+  });
+  const builtinIds = ['hong-kong-neon', 'old-terminal', 'minimal-light'];
+  report.themeEntries = [];
+  for (const [base, headers] of [
+    ['/', { Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}` }],
+    ['/release-check/', { Host: 'release.oraculum.invalid', Origin: 'https://release.oraculum.invalid', 'X-Forwarded-Proto': 'https' }],
+  ]) {
+    assert.equal((await request(base + 'themes', headers)).status, 401, 'Themes must require device trust');
+    execFileSync(join(runtime, 'bin/oraculum-bridge'), ['trust', 'pair'], { cwd: unrelated, env, stdio: 'pipe', timeout: 10_000 });
+    const code = (await readFile(join(fixtureHome, 'state/oraculum/pairing.txt'), 'utf8')).trim();
+    const paired = await request(base + 'auth/pair', headers, { code, label: 'Disposable package fixture' });
+    assert.equal(paired.status, 200);
+    const authenticated = { ...headers, Cookie: paired.headers['set-cookie'][0].split(';')[0] };
+    const response = await request(base + 'themes', authenticated);
+    assert.equal(response.status, 200);
+    const catalog = JSON.parse(response.bytes);
+    assert.deepEqual(catalog.installed.map(entry => entry.directory).sort(), [...builtinIds].sort(), 'Production launcher must expose all three built-in themes');
+    assert.ok(catalog.installed.every(entry => entry.builtin && entry.manifest && !entry.error));
+    assert.deepEqual(catalog.sources, [], 'Built-ins must work independently of the empty user theme source');
+    const entry = { base, bundles: [] }; report.themeEntries.push(entry);
+    for (const id of builtinIds) {
+      const response = await request(`${base}themes/${id}/bundle`, authenticated);
+      assert.equal(response.status, 200, `Packaged theme bundle unavailable: ${base}${id}`);
+      const bundle = JSON.parse(response.bytes);
+      assert.equal(bundle.manifest.id, id); assert.ok(bundle.css.length); assert.match(bundle.revision, /^[a-f0-9]{64}$/);
+      const assets = [];
+      for (const path of bundle.assets) {
+        const prefix = `${base}themes/${id}/`;
+        assert.ok(path.startsWith(prefix + 'assets/'), 'Theme assets must use the configured Base Path');
+        const asset = await request(path, authenticated); assert.equal(asset.status, 200, `Packaged theme asset unavailable: ${path}`);
+        const source = await readFile(join(runtime, 'themes', id, path.slice(prefix.length)));
+        const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
+        assert.equal(sha256(asset.bytes), sha256(source));
+        assets.push({ path, sha256: sha256(asset.bytes) });
+      }
+      entry.bundles.push({ id, version: bundle.manifest.version, revision: bundle.revision, assets });
+    }
+  }
+  pass('Production Bridge launcher exposes three built-in themes, bundles and byte-exact assets at root and remote subpath with device trust');
   child.kill('SIGTERM'); assert.equal((await exited)[0], 0); child = undefined;
   assert.deepEqual((await readFile(calls, 'utf8')).trim().split('\n'), ['initialize', 'config/read', 'model/list', 'thread/list']);
   pass('Actual extracted private Node/SQLite/libraries and standalone Bridge from unrelated cwd/HOME/XDG; simulated CLI, zero turns');
