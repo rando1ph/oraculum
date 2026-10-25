@@ -1,4 +1,4 @@
-/* Acceptance fixture: a complete light palette with quiet, flat components. */
+/* Built-in Minimal Light: a complete light palette with quiet, flat components. */
 :root {
   color-scheme: light;
   --background: #f6f7f9;

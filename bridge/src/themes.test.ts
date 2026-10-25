@@ -15,6 +15,7 @@ const meta = { id: 'test-theme', name: '测试主题', version: '1.0.0', themeAp
 const builtinManifests = [
   { ...meta, id: 'hong-kong-neon', name: 'Hong Kong Neon · 香港霓虹' },
   { ...meta, id: 'old-terminal', name: 'Old Terminal · 老式终端', version: '2.0.0' },
+  { ...meta, id: 'minimal-light', name: 'Minimal Light · 极简浅色' },
 ];
 const builtinEntries = builtinManifests.map(manifest => ({ directory: manifest.id, builtin: true, manifest }));
 const css = ':root { --accent: #bbccff; } [data-theme-slot="content"] { padding-inline: 16px; }';
@@ -151,7 +152,7 @@ describe('read-only built-in themes', () => {
     vi.stubEnv('ORACULUM_THEME_DIR', installed);
     expect(themeDirectories()).toEqual({ installed, source, builtin: join(root, 'program', 'themes') });
   });
-  it('validates both checked-in built-in packages independently of source overrides', async () => {
+  it('validates all checked-in built-in packages independently of source overrides', async () => {
     const { installed, source } = await fixture();
     const themes = new Themes({ source, installed, builtin: resolve('themes') });
     expect((await themes.catalog()).installed).toEqual(builtinEntries);

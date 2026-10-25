@@ -8,7 +8,7 @@ import { DEFAULT_THEME, THEME_API, themeId, type ThemeBundle, type ThemeCatalog,
 
 function invalid(reason: string): never { throw new Error(`主题不可用：${reason}`); }
 const safePart = /^[a-zA-Z0-9_-]+$/;
-const builtinThemes = ['hong-kong-neon', 'old-terminal'] as const;
+const builtinThemes = ['hong-kong-neon', 'old-terminal', 'minimal-light'] as const;
 interface ThemeDirectories { installed: string; source: string; builtin?: string }
 export function themeDirectories() {
   const paths = hostPaths();

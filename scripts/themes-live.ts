@@ -178,7 +178,7 @@ try {
   evidence.electron = await app!.evaluate(() => ({ electron: process.versions.electron, chromium: process.versions.chrome }));
   step = 'install and independent preferences';
   await settings(phone); await phone.getByText('从主机主题目录安装', { exact: true }).click();
-  for (const name of ['Violet · 验收测试', '香港雨夜 · CSS 验收', 'Minimal Light · CSS 验收']) {
+  for (const name of ['Violet · 验收测试', '香港雨夜 · CSS 验收', 'Minimal Light · 极简浅色']) {
     const install = phone.getByRole('button', { name: `安装 ${name}`, exact: true });
     if (await install.isEnabled()) await install.click();
     await expect(phone.getByLabel('当前主题')).toBeEnabled();
