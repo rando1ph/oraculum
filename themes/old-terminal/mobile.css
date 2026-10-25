@@ -1,0 +1,14 @@
+/* The same display on a hand-held screen. No layout or type overrides. */
+.navigation, .nav-collapsed .navigation {
+  background: #000;
+  border-color: var(--line-bright);
+  border-radius: 0;
+  box-shadow: 12px 0 40px #000c;
+}
+.conversation, .inspector { border-radius: 0; background: #000; }
+.conversation-header { background: linear-gradient(180deg, #06140b, #000); }
+.drawer-backdrop { background: #0009; backdrop-filter: blur(3px); }
+.composer { border-radius: 2px; box-shadow: 0 0 9px #69ff9c18; }
+.composer-popover { border-radius: 2px; }
+.mobile-detail-footer { background: #020704; border-color: var(--line); }
+.mobile-project-tree .project-group + .project-group { border-color: var(--line); }

@@ -30,6 +30,7 @@
     "test:phase3:android": "tsx scripts/phase3-android.ts",
     "test:themes:ui": "tsx scripts/themes-ui-contract.ts",
     "test:neon:ui": "tsx scripts/neon-ui-contract.ts",
+    "test:terminal:ui": "tsx scripts/old-terminal-ui-contract.ts",
     "test:themes:live": "tsx scripts/themes-live.ts",
     "test:native:config": "tsx scripts/native-config.ts",
     "test:permissions:native": "tsx scripts/permissions-native.ts",

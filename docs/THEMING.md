@@ -4,6 +4,10 @@
 
 ## 包与安装
 
+**内置 Old Terminal · 老式终端（2.0.0 重做）**：设置的「当前主题」中开箱可选，ID `old-terminal`，只读包位于 `themes/old-terminal/`；与 Oracle Eye / Hong Kong Neon 共存，沿用内置目录、保留 ID、认证、设备独立偏好与损坏回退机制。无需安装或发起模型轮次。
+
+新版从空目录独立创作，参考用户在 [4E.2B Task](https://app.notion.com/p/4045421e690b8124842bd444f9dab587) 指定的三张真实 DSH 截图的显示质感：纯黑画布、清冷绿色荧光、细线轮廓、文字余辉与静态扫描纹。只借鉴美术，不复制其布局、品牌或功能；原 Oraculum 控件、文字度量、双方卡片、头像昵称与菜单排列由宿主保留。扫描层是无文字且不接收点击的空伪元素，不显示虚构状态；无环境动画、外部图片/字体、额外依赖或权限。仅既有品牌位图着色，自定义头像保留原色。高对比偏好关闭扫描层并提高文字亮度。Desktop/移动端共享艺术语言，移动 CSS 仅调整表面；不覆盖视口、IME、安全区或菜单高度。
+
 **内置 Hong Kong Neon · 香港霓虹**：设置的「当前主题」中开箱可选，标为「内置」，无需从来源目录安装。它与默认 Oracle Eye 并存，选择仍按设备/入口保存。内置包从程序资源根的 `themes/hong-kong-neon/` 只读加载，复用相同的 Theme API v1 校验、认证资源路由与失败回退；不复制到用户状态目录，`ORACULUM_THEME_SOURCE_DIR` 的覆盖不影响内置主题。启用内置目录时 `hong-kong-neon` 为保留 ID，来源/已装目录中的同 ID 包不能覆盖它；创作变体请换 ID 后按下述流程安装。损坏或缺失的内置包同样恢复 Oracle Eye。
 
 Hong Kong Neon 的桌面与移动端使用独立城市素材和玻璃/雨幕光效，不改变控件的位置、尺寸、排列或字体度量。仅 `prefers-reduced-motion` 停止环境动画；极短 IME 视口遵循宿主的菜单定位规则。艺术素材来源与完整生成提示词见 [THEME-ASSETS.md](THEME-ASSETS.md)。
@@ -170,6 +174,8 @@ button.primary { border-radius: 999px; background: #235daf; color: white; }
 原生恢复重载可信入口并保存默认选择，不依赖任何网页按钮或当前 CSS。不清 Cookie、服务器 profile、草稿、项目、会话或收据，不重发模型操作/审批。认证页不加载自定义主题。
 
 ## 验收
+
+`pnpm test:terminal:ui` 使用真实 Electron 与 Android 比例 Chromium、隔离 Bridge/临时 profile/明确标注的模拟协议，验证 Old Terminal 开箱选择、刷新、设备独立性、双端菜单与过程/Diff、身份、发送/停止/审批、默认恢复、reduced motion，以及同状态默认主题与新主题的真实控件数量、顺序、坐标/尺寸（容差 0.5 CSS px）、DOM 文字与非空伪元素内容不变。包含 375/390px、横屏和短 IME 视口；缩放后等待宿主的实际可视高度同步。新运行截图与几何报告写入忽略目录 `.local/evidence/phase4e2b-redesign/terminal-contract/`，不复用被否决版本的证据。结果不代表 Android 真机/原生 IME、官方 Codex、耗电测试或用户审美验收；4E.2B 不构建或安装 DEB/APK。
 
 `pnpm check && pnpm test && pnpm build` 后运行 `pnpm test:themes:ui`（真实 Electron + 模拟手机/协议合约）。检查 Violet、新主题、375/390px、横屏/小高度、完整浅色组件、长消息/Diff、资源解码失败、失效回退和原生恢复；模拟结果不等于官方 Codex 或真机验收。
 

@@ -12,6 +12,11 @@ import type { BridgeService } from './service';
 const cleanup: (() => Promise<unknown> | unknown)[] = [];
 afterEach(async () => { for (const close of cleanup.reverse()) await close(); cleanup.length = 0; vi.unstubAllEnvs(); });
 const meta = { id: 'test-theme', name: '测试主题', version: '1.0.0', themeApi: 1 };
+const builtinManifests = [
+  { ...meta, id: 'hong-kong-neon', name: 'Hong Kong Neon · 香港霓虹' },
+  { ...meta, id: 'old-terminal', name: 'Old Terminal · 老式终端', version: '2.0.0' },
+];
+const builtinEntries = builtinManifests.map(manifest => ({ directory: manifest.id, builtin: true, manifest }));
 const css = ':root { --accent: #bbccff; } [data-theme-slot="content"] { padding-inline: 16px; }';
 const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=', 'base64');
 async function fixture() {
@@ -24,15 +29,18 @@ async function fixture() {
   await writeFile(join(path, 'theme.css'), css);
   return { root, path, source, installed, themes: new Themes({ source, installed }) };
 }
-async function builtinFixture() {
+async function builtinFixture(id: string) {
   const f = await fixture();
-  const builtin = join(f.root, 'resources', 'themes'), id = 'hong-kong-neon';
-  const path = join(builtin, id), manifest = { ...meta, id, name: 'Hong Kong Neon · 香港霓虹' };
-  await mkdir(join(path, 'assets'), { recursive: true });
-  await writeFile(join(path, 'manifest.json'), JSON.stringify(manifest));
-  await writeFile(join(path, 'theme.css'), '.app-shell{background-image:url("assets/night.png")}');
-  await writeFile(join(path, 'assets/night.png'), png);
-  return { ...f, builtin, builtinPath: path, id, manifest, themes: new Themes({ source: f.source, installed: f.installed, builtin }) };
+  const builtin = join(f.root, 'resources', 'themes');
+  for (const manifest of builtinManifests) {
+    const path = join(builtin, manifest.id);
+    await mkdir(join(path, 'assets'), { recursive: true });
+    await writeFile(join(path, 'manifest.json'), JSON.stringify(manifest));
+    await writeFile(join(path, 'theme.css'), '.app-shell{background-image:url("assets/night.png")}');
+    await writeFile(join(path, 'assets/night.png'), png);
+  }
+  const manifest = builtinManifests.find(manifest => manifest.id === id)!;
+  return { ...f, builtin, builtinPath: join(builtin, id), id, manifest, themes: new Themes({ source: f.source, installed: f.installed, builtin }) };
 }
 
 describe('Trusted Theme API v1 CSS', () => {
@@ -143,24 +151,37 @@ describe('read-only built-in themes', () => {
     vi.stubEnv('ORACULUM_THEME_DIR', installed);
     expect(themeDirectories()).toEqual({ installed, source, builtin: join(root, 'program', 'themes') });
   });
-  it('is selectable without installation even with a separate source directory and has base-aware assets', async () => {
-    const { themes, installed, manifest, id } = await builtinFixture();
+  it('validates both checked-in built-in packages independently of source overrides', async () => {
+    const { installed, source } = await fixture();
+    const themes = new Themes({ source, installed, builtin: resolve('themes') });
+    expect((await themes.catalog()).installed).toEqual(builtinEntries);
+    for (const manifest of builtinManifests) {
+      for (const base of ['/', '/console/']) {
+        const bundle = await themes.bundle(manifest.id, base);
+        expect(bundle.manifest).toEqual(manifest);
+        expect(bundle.css).toBeTruthy();
+        expect(bundle.assets.every(asset => asset.startsWith(`${base}themes/${manifest.id}/assets/`))).toBe(true);
+      }
+    }
+  });
+  it.each(builtinManifests)('$id is selectable without installation with a separate source directory and base-aware assets', async ({ id }) => {
+    const { themes, installed } = await builtinFixture(id);
     const catalog = await themes.catalog();
-    expect(catalog.installed).toEqual([{ directory: id, builtin: true, manifest }]);
+    expect(catalog.installed).toEqual(builtinEntries);
     expect(catalog.sources.map(entry => entry.manifest?.id)).toEqual([meta.id]);
     expect((await themes.bundle(id, '/')).css).toContain(`/themes/${id}/assets/night.png`);
     expect((await themes.bundle(id, '/console/')).css).toContain(`/console/themes/${id}/assets/night.png`);
     expect(await themes.asset(id, 'assets/night.png')).toEqual({ bytes: png, type: 'image/png' });
     await expect(lstat(installed)).rejects.toMatchObject({ code: 'ENOENT' });
   });
-  it('reserves built-in ids and never serves an installed shadow or exposes its source alias for installation', async () => {
-    const { themes, installed, source, path, builtin, manifest, id } = await builtinFixture();
+  it.each(builtinManifests)('reserves $id and never serves an installed shadow or exposes its source alias for installation', async ({ id }) => {
+    const { themes, installed, source, path, builtin, manifest } = await builtinFixture(id);
     await writeFile(join(path, 'manifest.json'), JSON.stringify(manifest));
     await mkdir(join(installed, id), { recursive: true });
     await writeFile(join(installed, id, 'manifest.json'), JSON.stringify({ ...manifest, name: 'Shadow' }));
     await writeFile(join(installed, id, 'theme.css'), ':root{--accent:red}');
     expect((await themes.catalog()).sources).toEqual([]);
-    expect((await themes.catalog()).installed).toEqual([{ directory: id, builtin: true, manifest }]);
+    expect((await themes.catalog()).installed).toEqual(builtinEntries);
     expect((await themes.bundle(id, '/')).manifest.name).toBe(manifest.name);
     await expect(themes.install('candidate')).rejects.toThrow('已内置');
     expect(await readFile(join(installed, id, 'theme.css'), 'utf8')).toBe(':root{--accent:red}');
@@ -168,20 +189,21 @@ describe('read-only built-in themes', () => {
     expect((await new Themes({ source: builtin, installed, builtin }).catalog()).sources).toEqual([]);
     expect(source).not.toBe(builtin);
   });
-  it('revalidates built-in files and reports damage without falling through to a same-id installed copy', async () => {
-    const { themes, installed, builtinPath, manifest, id } = await builtinFixture();
+  it.each(builtinManifests)('revalidates $id and reports damage without falling through to a same-id installed copy', async ({ id }) => {
+    const { themes, installed, builtinPath, manifest } = await builtinFixture(id);
     await mkdir(join(installed, id), { recursive: true });
     await writeFile(join(installed, id, 'manifest.json'), JSON.stringify(manifest));
     await writeFile(join(installed, id, 'theme.css'), css);
     await rm(join(builtinPath, 'assets/night.png'));
     await expect(themes.bundle(id, '/')).rejects.toThrow('Theme CSS:');
-    expect((await themes.catalog()).installed).toEqual([{ directory: id, builtin: true, error: expect.stringContaining('Theme CSS:') }]);
+    expect((await themes.catalog()).installed).toEqual(builtinEntries.map(entry => entry.directory === id
+      ? { directory: id, builtin: true, error: expect.stringContaining('Theme CSS:') } : entry));
     await rm(builtinPath, { recursive: true });
     await expect(themes.bundle(id, '/')).rejects.toThrow();
-    expect((await themes.catalog()).installed[0].error).toBeTruthy();
+    expect((await themes.catalog()).installed.find(entry => entry.directory === id)?.error).toBeTruthy();
   });
-  it('uses the existing authenticated root and subpath routes with unchanged asset headers', async () => {
-    const { themes, root, id } = await builtinFixture();
+  it.each(builtinManifests)('$id uses the existing authenticated root and subpath routes with unchanged asset headers', async ({ id }) => {
+    const { themes, root } = await builtinFixture(id);
     const trust = new TrustStore(join(root, 'trust')); cleanup.push(() => trust.close());
     const service = new EventEmitter() as BridgeService;
     const server = await createServer(service, 17864, '/missing', { themes, trust, remoteOrigin: 'https://theme.example', remoteBasePath: '/console/' });
