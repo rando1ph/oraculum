@@ -1,7 +1,7 @@
 import { EventEmitter } from 'node:events';
 import { randomUUID } from 'node:crypto';
 import { NativeRpcError, type Codex } from './codex';
-import type { Approval, RpcId, Snapshot, WireMessage, BridgeEvent, LocalConfig, Thread, NativeSessionSettings, ThreadLifecycleState, ThreadLifecycleResult, PermissionMode } from '../../packages/shared/protocol';
+import type { Approval, RpcId, Snapshot, WireMessage, BridgeEvent, LocalConfig, Thread, NativeSessionSettings, ThreadLifecycleState, ThreadLifecycleResult, PermissionMode, NativeOperation, NativeOperationMethod, NativeCapabilities } from '../../packages/shared/protocol';
 import type { ThreadStartParams } from '../../.local/codex-protocol/v2/ThreadStartParams';
 import type { ThreadStartResponse } from '../../.local/codex-protocol/v2/ThreadStartResponse';
 import type { TurnStartParams } from '../../.local/codex-protocol/v2/TurnStartParams';
@@ -11,6 +11,12 @@ import type { ModelListResponse } from '../../.local/codex-protocol/v2/ModelList
 import type { ThreadListResponse } from '../../.local/codex-protocol/v2/ThreadListResponse';
 import type { ThreadResumeResponse } from '../../.local/codex-protocol/v2/ThreadResumeResponse';
 import type { ConfigReadResponse } from '../../.local/codex-protocol/v2/ConfigReadResponse';
+import type { ThreadForkResponse } from '../../.local/codex-protocol/v2/ThreadForkResponse';
+import type { ThreadRevertResponse } from '../../.local/codex-protocol/v2/ThreadRevertResponse';
+import type { TurnSteerResponse } from '../../.local/codex-protocol/v2/TurnSteerResponse';
+import type { ReviewStartResponse } from '../../.local/codex-protocol/v2/ReviewStartResponse';
+import type { ReviewTarget } from '../../.local/codex-protocol/v2/ReviewTarget';
+import type { ThreadTurnsListResponse } from '../../.local/codex-protocol/v2/ThreadTurnsListResponse';
 import { readHistory } from './history';
 import type { ReceiptStore } from './receipts';
 import type { ProjectDirectories } from './projects';
@@ -19,8 +25,13 @@ import { nativeResponse, responseNeedsDirectory, supportedRequest } from './nati
 import { permissionMode, threadPermissions, turnPermissions } from './permissions';
 import type { ThreadPermissionStore } from './thread-permissions';
 import { NativeUsage } from './usage';
+import { NativeOperations } from './native-operations';
+
+type RequestContext = { deviceId: string; isAuthorized?: () => boolean };
+const nativeMethods = new Set<NativeOperationMethod>(['thread/name/set', 'thread/fork', 'thread/revert', 'turn/steer', 'review/start', 'thread/compact/start']);
 
 const forwardedNotifications = new Set(['thread/status/changed', 'thread/settings/updated', 'thread/archived', 'thread/unarchived', 'thread/deleted',
+  'thread/name/updated', 'thread/reverted', 'thread/compacted',
   'turn/started', 'turn/completed', 'turn/diff/updated', 'turn/plan/updated', 'item/started', 'item/completed', 'item/agentMessage/delta',
   'item/commandExecution/outputDelta', 'item/fileChange/patchUpdated', 'item/mcpToolCall/progress', 'item/plan/delta',
   'item/reasoning/summaryPartAdded', 'item/reasoning/summaryTextDelta', 'item/reasoning/textDelta', 'serverRequest/resolved', 'error']);
@@ -48,14 +59,27 @@ export class BridgeService extends EventEmitter {
   private lifecycle = new Set<string>();
   private inFlight = new Map<string, number>();
   private uncertainLifecycle = new Map<string, 'active' | 'archived' | 'deleted'>();
+  private nativeOperations: NativeOperations;
+  private unsupportedNative = new Set<NativeOperationMethod>();
+  private historyRevisions = new Map<string, number>();
+  private terminalTurns = new Map<string, Set<string>>();
+  private terminalTurnStatuses = new Map<string, Map<string, string>>();
+  private liveNativeOperations = new Map<string, NativeOperation>();
+  private nameRevisions = new Map<string, number>();
   constructor(readonly codex: Pick<Codex, 'request' | 'send'> & { on(event: string, listener: (...args: any[]) => void): unknown }, readonly cwd: string,
     private receipts?: ReceiptStore, private projects?: ProjectDirectories, private permissionChoices?: ThreadPermissionStore) {
     super();
+    this.nativeOperations = receipts?.nativeOperations ?? new NativeOperations();
     this.usage = new NativeUsage((method, params) => codex.request(method, params), snapshot => this.emit('event', { type: 'accountLimits', snapshot } satisfies BridgeEvent));
     codex.on('message', (message: WireMessage) => this.receive(message));
     codex.on('unavailable', (message: string) => {
       this.usage.invalidate(true);
       this.pending.clear();
+      // Only operations dispatched by this live Bridge need transitioning.
+      // Persisted operations were made unknown when the ledger was opened.
+      for (const operation of this.liveNativeOperations.values()) if (['running', 'accepted'].includes(operation.state)) {
+        this.publishOperation(operation, { state: 'unknown', message: '连接中断，原生操作结果未知；请查询状态，不要重复执行。' });
+      }
       this.emit('event', { type: 'unavailable', message } satisfies BridgeEvent);
     });
   }
@@ -84,6 +108,10 @@ export class BridgeService extends EventEmitter {
     const threadId = typeof params.threadId === 'string' ? params.threadId : undefined;
     if (message.method && message.id !== undefined) {
       if (threadId && this.threads.has(threadId) && supportedRequest(message)) {
+        if (typeof params.turnId === 'string' && this.terminalTurns.get(threadId)?.has(params.turnId)) {
+          this.codex.send({ id: message.id, error: { code: -32600, message: 'Turn already terminal or removed; no permission granted' } });
+          return;
+        }
         // Retransmission must not invalidate a token that another device holds.
         if (this.pending.has(message.id)) return;
         // Raw RPC ID is preserved, with a UI-only token to reject stale replies
@@ -114,6 +142,32 @@ export class BridgeService extends EventEmitter {
       return;
     }
     if (!message.method || !forwardedNotifications.has(message.method)) return;
+    if (message.method === 'thread/name/updated') {
+      if (params.threadName === undefined || typeof params.threadName === 'string') {
+        this.lifecycleRevision++;
+        this.nameRevisions.set(threadId, (this.nameRevisions.get(threadId) ?? 0) + 1);
+        const fresh = this.fresh.get(threadId);
+        if (fresh) this.fresh.set(threadId, { ...fresh, name: typeof params.threadName === 'string' ? params.threadName : null });
+        this.completeOperations(threadId, 'thread/name/set');
+      }
+    }
+    if (message.method === 'thread/reverted') {
+      this.completeOperations(threadId, 'thread/revert');
+      this.invalidateHistory(threadId, 'revert');
+    }
+    if (message.method === 'thread/compacted' ||
+      (message.method === 'item/completed' && (params.item as { type?: string } | undefined)?.type === 'contextCompaction')) {
+      this.invalidateHistory(threadId, 'compact');
+    }
+    if (['item/started', 'item/completed'].includes(message.method) && (params.item as { type?: string } | undefined)?.type === 'contextCompaction' && typeof params.turnId === 'string') {
+      for (const operation of this.liveNativeOperations.values()) {
+        // The generic next turn may belong to another Codex client. A native
+        // compaction item is the identifying fact, and cannot settle a prior
+        // uncorrelated timeout or an operation from a previous Bridge process.
+        if (operation.threadId === threadId && operation.method === 'thread/compact/start' &&
+          ['running', 'accepted'].includes(operation.state) && !operation.turnId) this.publishOperation(operation, { turnId: params.turnId });
+      }
+    }
     if (message.method === 'thread/status/changed') {
       const status = params.status as Thread['status'] | undefined;
       if (status?.type) this.nativeStatuses.set(threadId, status.type);
@@ -143,6 +197,7 @@ export class BridgeService extends EventEmitter {
       this.resolveRequest(params.requestId as RpcId);
     }
     if (message.method === 'turn/started') {
+      if (this.terminalTurns.get(threadId)?.has((params.turn as { id: string }).id)) return;
       this.activeTurns.set(threadId, (params.turn as { id: string }).id);
       this.busy.add(threadId);
     }
@@ -158,13 +213,15 @@ export class BridgeService extends EventEmitter {
       for (const [id, request] of this.pending) {
         if (request.params.threadId === threadId && request.params.turnId === turnId) this.resolveRequest(id);
       }
+      this.observeNativeTurn(threadId, params.turn as { id: string; status: string });
     }
     // Native notifications are the facts; no agent loop or tool execution here.
     this.emit('event', { type: 'event', event: message } as BridgeEvent);
   }
-  async dispatch(method: string, params: Record<string, unknown>, context?: { deviceId: string }): Promise<unknown> {
+  async dispatch(method: string, params: Record<string, unknown>, context?: RequestContext): Promise<unknown> {
+    this.assertAuthorized(context);
     const threadId = typeof params.threadId === 'string' ? params.threadId : undefined;
-    const mutation = ['thread/archive', 'thread/unarchive', 'thread/delete'].includes(method);
+    const mutation = ['thread/archive', 'thread/unarchive', 'thread/delete'].includes(method) || nativeMethods.has(method as NativeOperationMethod);
     const guarded = mutation || ['bridge/subscribe', 'bridge/history', 'turn/start'].includes(method);
     if (!threadId || !guarded) return this.dispatchRequest(method, params, context);
     // Reserve before the first asynchronous directory/read check. Other devices
@@ -180,7 +237,7 @@ export class BridgeService extends EventEmitter {
     try { return await this.dispatchRequest(method, params, context); }
     finally { if (mutation) this.lifecycle.delete(threadId); else this.endFlight(threadId); }
   }
-  private async dispatchRequest(method: string, params: Record<string, unknown>, context?: { deviceId: string }): Promise<unknown> {
+  private async dispatchRequest(method: string, params: Record<string, unknown>, context?: RequestContext): Promise<unknown> {
     if (method === 'bridge/accountUsage') return this.usage.readActivity();
     if (method === 'bridge/usage') {
       const id = params.threadId;
@@ -236,6 +293,7 @@ export class BridgeService extends EventEmitter {
     }
     if (method === 'thread/start') {
       const cwd = await this.projectCwd(params.cwd);
+      this.assertAuthorized(context);
       const request: ThreadStartParams = {
         cwd,
         ...threadPermissions(permissionMode(params.permissionMode)),
@@ -256,14 +314,16 @@ export class BridgeService extends EventEmitter {
     // supplying a different cwd. Its project came from the validated native list.
     const cwd = this.threadCwd(threadId);
     if (['thread/archive', 'thread/unarchive', 'thread/delete'].includes(method)) {
-      return this.changeLifecycle(method, threadId, cwd, params);
+      return this.changeLifecycle(method, threadId, cwd, params, context);
     }
+    if (nativeMethods.has(method as NativeOperationMethod)) return this.changeNative(method as NativeOperationMethod, threadId, cwd, params, context);
     const pendingResponse = method === 'bridge/approve' ? this.pending.get(params.requestId as RpcId) : undefined;
     const needsDirectory = ['bridge/subscribe', 'bridge/history', 'turn/start'].includes(method) ||
       (pendingResponse?.params.threadId === threadId && responseNeedsDirectory(pendingResponse, params));
     // Even if a directory disappears, Stop and Decline remain available.
     if (needsDirectory && this.projects && await this.projects.resolve(cwd) !== cwd) throw new Error('Project directory changed; refresh the native thread list');
     if (method === 'bridge/subscribe' || method === 'bridge/history') {
+      const historyRevision = this.historyRevision(threadId);
       const wasLoaded = this.loaded.has(threadId);
       await this.resume(threadId);
       // Stable native notifications need not include permission changes. Rejoin
@@ -275,7 +335,11 @@ export class BridgeService extends EventEmitter {
       const thread = fresh ?? (await this.codex.request<ThreadReadResponse>('thread/read', { threadId })).thread;
       if (thread.cwd !== cwd) throw new Error('Thread is outside this workspace');
       const result = fresh ? { thread } : await readHistory(this.codex, thread, typeof params.cursor === 'string' ? params.cursor : undefined);
-      for (const turn of result.thread.turns) this.receipts?.observe(cwd, threadId, turn);
+      if (historyRevision !== this.historyRevision(threadId)) throw new Error('原生历史已变化，请重新查询会话。');
+      for (const turn of result.thread.turns) {
+        this.receipts?.observe(cwd, threadId, turn);
+        this.observeNativeTurn(threadId, turn);
+      }
       const active = result.thread.turns.find(t => t.status === 'inProgress');
       // Older history pages must not change current execution controls.
       if (!params.cursor && revision === (this.revisions.get(threadId) ?? 0)) {
@@ -286,12 +350,13 @@ export class BridgeService extends EventEmitter {
       }
       return { ...result, pending: [...this.pending.values()].filter(r => r.params.threadId === threadId || this.descendsFrom(r.params.threadId, threadId)),
         settings: this.settings.get(threadId),
-        sendBlocked: this.unknownSends.has(threadId) || !!this.receipts?.blocked(cwd, threadId),
+        sendBlocked: this.unknownSends.has(threadId) || !!this.receipts?.blocked(cwd, threadId) || this.nativeSendBlocked(threadId),
         receipts: this.receipts?.list(cwd, threadId),
+        nativeOperations: this.nativeOperations.list(cwd, threadId), nativeCapabilities: this.nativeCapabilities(), historyRevision,
       } satisfies Snapshot;
     }
     if (method === 'turn/start') {
-      if (this.busy.has(threadId) || this.receipts?.blocked(cwd, threadId)) throw new Error('Turn in progress or send result unknown; query state before continuing');
+      if (this.busy.has(threadId) || this.activeTurns.has(threadId) || this.receipts?.blocked(cwd, threadId) || this.nativeSendBlocked(threadId)) throw new Error('Turn in progress or native operation result unknown; query state before continuing');
       if (!this.loaded.has(threadId)) throw new Error('Select and resume the thread before starting a turn');
       if (typeof params.text !== 'string' || !params.text.trim() || params.text.length > 16000) throw new Error('Expected 1–16000 characters');
       const request: TurnStartParams = {
@@ -300,6 +365,7 @@ export class BridgeService extends EventEmitter {
         ...(typeof params.model === 'string' && params.model ? { model: params.model } : {}),
         ...(typeof params.effort === 'string' && params.effort ? { effort: params.effort } : {}),
       };
+      this.assertAuthorized(context);
       if (this.receipts) {
         if (!context?.deviceId) throw new Error('Authenticated device context required');
         this.receipts.reserve(params.operationId, cwd, threadId, context.deviceId);
@@ -316,7 +382,7 @@ export class BridgeService extends EventEmitter {
         this.receipts?.accepted(params.operationId as string, result.turn.id);
         this.receipts?.observe(cwd, threadId, result.turn);
         this.unknownSends.delete(threadId);
-        if (this.busy.has(threadId) && result.turn.status === 'inProgress') this.activeTurns.set(threadId, result.turn.id);
+        if (this.busy.has(threadId) && result.turn.status === 'inProgress' && (!this.activeTurns.has(threadId) || this.activeTurns.get(threadId) === result.turn.id)) this.activeTurns.set(threadId, result.turn.id);
         // A confirmed turn ACK remains accepted even if the settings read fails.
         // Never derive effective permissions from the requested preset alone.
         const choice = permissionMode(params.permissionMode);
@@ -335,6 +401,7 @@ export class BridgeService extends EventEmitter {
     }
     if (method === 'turn/interrupt') {
       if (typeof params.turnId !== 'string' || this.activeTurns.get(threadId) !== params.turnId) throw new Error('Turn is not the observed active turn; query state');
+      this.assertAuthorized(context);
       return this.codex.request('turn/interrupt', { threadId, turnId: params.turnId });
     }
     if (method === 'bridge/approve') {
@@ -342,6 +409,7 @@ export class BridgeService extends EventEmitter {
       if (!request || request.params.threadId !== threadId) throw new Error('Approval no longer pending');
       if (params.bridgeToken !== request.bridgeToken) throw new Error('Approval expired or belongs to another Bridge session');
       const result = nativeResponse(request, params);
+      this.assertAuthorized(context);
       // Remove synchronously before writing; never apply a reply twice.
       this.pending.delete(request.id);
       this.codex.send({ id: request.id, result });
@@ -353,13 +421,250 @@ export class BridgeService extends EventEmitter {
   private related(first: string, second: string) {
     return first === second || this.descendsFrom(first, second) || this.descendsFrom(second, first);
   }
+  private assertAuthorized(context?: RequestContext) {
+    if (context?.isAuthorized && !context.isAuthorized()) throw new Error('设备授权已撤销；未发送新的原生操作。');
+  }
+  private nativeCapabilities(): NativeCapabilities {
+    return { unsupportedMethods: [...this.unsupportedNative], plan: { available: false,
+      reason: '当前版本暂不支持原生 Plan 模式。此功能仍属实验能力，为保证会话稳定暂未启用。' } };
+  }
+  private publishOperation(operation: NativeOperation, change: Partial<NativeOperation>) {
+    const next = this.nativeOperations.update(operation, change);
+    this.liveNativeOperations.set(next.operationId, next);
+    this.emit('event', { type: 'nativeOperationChanged', operation: next } satisfies BridgeEvent);
+    return next;
+  }
+  private completeOperations(threadId: string, method: NativeOperationMethod) {
+    for (const operation of this.nativeOperations.unresolved(this.threadCwd(threadId), threadId)) {
+      if (operation.method === method) this.publishOperation(operation, { state: 'completed' });
+    }
+  }
+  private observeNativeTurn(threadId: string, turn: { id: string; status: string }) {
+    if (!['completed', 'failed', 'interrupted'].includes(turn.status)) return;
+    const terminal = this.terminalTurns.get(threadId) ?? new Set<string>();
+    terminal.add(turn.id); this.terminalTurns.set(threadId, terminal);
+    const statuses = this.terminalTurnStatuses.get(threadId) ?? new Map<string, string>();
+    statuses.set(turn.id, turn.status); this.terminalTurnStatuses.set(threadId, statuses);
+    for (const operation of this.nativeOperations.unresolved(this.threadCwd(threadId), threadId)) {
+      // A terminal turn only settles a review/compact with a native-observed ID.
+      // It cannot establish whether a timed-out steer was actually delivered.
+      if (operation.turnId === turn.id && ['review/start', 'thread/compact/start'].includes(operation.method)) {
+        this.publishOperation(operation, { state: turn.status === 'completed' ? 'completed' : 'rejected',
+          ...(turn.status === 'completed' ? {} : { message: turn.status === 'interrupted' ? '原生操作已停止。' : '原生操作执行失败，请查看会话结果。' }) });
+      }
+    }
+  }
+  private nativeSendBlocked(threadId: string) {
+    return this.nativeOperations.unresolved(this.threadCwd(threadId), threadId)
+      .some(operation => ['thread/revert', 'review/start', 'thread/compact/start'].includes(operation.method));
+  }
+  private historyRevision(threadId: string) {
+    let revision = this.historyRevisions.get(threadId);
+    if (revision === undefined) {
+      revision = Math.max(Date.now(), this.nativeOperations.revision(this.threadCwd(threadId), threadId) + 1);
+      this.historyRevisions.set(threadId, revision);
+      this.nativeOperations.setRevision(this.threadCwd(threadId), threadId, revision);
+    }
+    return revision;
+  }
+  private invalidateHistory(threadId: string, reason: 'revert' | 'compact') {
+    const historyRevision = Math.max(Date.now(), this.historyRevision(threadId) + 1);
+    this.historyRevisions.set(threadId, historyRevision);
+    this.nativeOperations.setRevision(this.threadCwd(threadId), threadId, historyRevision);
+    this.fresh.delete(threadId);
+    if (reason === 'revert') {
+      this.unknownSends.delete(threadId);
+      for (const [id, request] of this.pending) if (request.params.threadId === threadId) this.resolveRequest(id);
+    }
+    this.emit('event', { type: 'threadHistoryChanged', threadId, cwd: this.threadCwd(threadId), reason, historyRevision } satisfies BridgeEvent);
+  }
+  private assertNativeIdle(threadId: string, cwd: string) {
+    if ([...this.threads].some(id => this.related(id, threadId) && (
+      ['active', 'systemError'].includes(this.nativeStatuses.get(id) ?? '') || this.busy.has(id) ||
+      this.activeTurns.has(id) || this.unknownSends.has(id) || this.receipts?.blocked(this.threadCwd(id), id) || this.nativeSendBlocked(id)))) {
+      throw new Error('会话运行中或原生操作结果未知，请先停止并查询状态。');
+    }
+    if ([...this.pending.values()].some(request => this.related(request.params.threadId, threadId))) {
+      throw new Error('会话仍有待处理审批或输入，请先处理并查询状态。');
+    }
+  }
+  private async checkedNativeThread(threadId: string, cwd: string, idle: boolean) {
+    const { thread } = await this.codex.request<ThreadReadResponse>('thread/read', { threadId });
+    if (thread.id !== threadId || thread.cwd !== cwd) throw new Error('Thread is outside the selected project');
+    if (this.nativeParent(thread)) throw new Error('子会话须由原生父会话管理，不能单独执行此操作。');
+    if (idle && (!['idle', 'notLoaded'].includes(thread.status.type) || thread.turns.some(turn => turn.status === 'inProgress'))) {
+      throw new Error('原生会话运行中或状态异常，请先停止并查询状态。');
+    }
+    return thread;
+  }
+  private async completedNativeTurn(threadId: string, turnId: unknown) {
+    if (typeof turnId !== 'string' || !turnId) throw new Error('请选择一个已完成的原生轮次。');
+    let cursor: string | undefined;
+    const seen = new Set<string>();
+    for (let pageNumber = 0; pageNumber < 100; pageNumber++) {
+      const page = await this.codex.request<ThreadTurnsListResponse>('thread/turns/list', {
+        threadId, cursor, limit: 100, sortDirection: 'desc', itemsView: 'notLoaded',
+      });
+      const turn = page.data.find(turn => turn.id === turnId);
+      for (const observed of page.data) this.observeNativeTurn(threadId, observed);
+      if (turn) {
+        if (turn.status !== 'completed') throw new Error('只能选择已完成的原生轮次。');
+        return turnId;
+      }
+      if (!page.nextCursor) break;
+      if (seen.has(page.nextCursor)) throw new Error('原生历史分页重复，未执行操作。');
+      seen.add(page.nextCursor); cursor = page.nextCursor;
+    }
+    throw new Error('原生历史中未找到所选轮次，请重新查询状态。');
+  }
+  private reviewTarget(value: unknown): ReviewTarget {
+    const target = value as Record<string, unknown> | undefined;
+    if (target?.type === 'uncommittedChanges') return { type: 'uncommittedChanges' };
+    if (target?.type === 'baseBranch' && typeof target.branch === 'string' && target.branch.trim() && target.branch.length <= 256 && !/[\x00-\x1f\x7f]/.test(target.branch)) {
+      return { type: 'baseBranch', branch: target.branch.trim() };
+    }
+    if (target?.type === 'commit' && typeof target.sha === 'string' && /^[0-9a-f]{7,64}$/i.test(target.sha) &&
+      (target.title == null || (typeof target.title === 'string' && target.title.length <= 500 && !/[\x00-\x1f\x7f]/.test(target.title)))) {
+      return { type: 'commit', sha: target.sha, title: typeof target.title === 'string' ? target.title : null };
+    }
+    if (target?.type === 'custom' && typeof target.instructions === 'string' && target.instructions.trim() && target.instructions.length <= 16000 && !target.instructions.includes('\0')) {
+      return { type: 'custom', instructions: target.instructions };
+    }
+    throw new Error('原生审阅目标无效。');
+  }
+  private async changeNative(method: NativeOperationMethod, threadId: string, cwd: string, params: Record<string, unknown>, context?: RequestContext) {
+    if (params.cwd !== undefined && params.cwd !== cwd) throw new Error('Thread is outside the selected project');
+    if (this.unsupportedNative.has(method)) throw new Error('当前 Codex App Server 不支持此操作；其他功能仍可使用。');
+    if (this.nativeOperations.unresolved(cwd, threadId).some(operation => operation.method === method)) {
+      throw new Error('此原生操作仍在运行或结果未知；请查询状态，不要重复执行。');
+    }
+    const name = typeof params.name === 'string' ? params.name.trim() : '';
+    if (method === 'thread/name/set' && (!name || [...name].length > 128 || /[\x00-\x1f\x7f-\x9f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/.test(name))) {
+      throw new Error('名称须为 1–128 个字符，不能包含控制字符。');
+    }
+    if (method === 'thread/revert' && params.confirm !== true) throw new Error('回退必须经过二次确认；它不会撤销主机文件修改。');
+    if (method === 'turn/steer' && (typeof params.text !== 'string' || !params.text.trim() || params.text.length > 16000)) throw new Error('Expected 1–16000 characters');
+    const target = method === 'review/start' ? this.reviewTarget(params.target) : undefined;
+    if (params.delivery !== undefined && params.delivery !== 'inline') throw new Error('本次仅支持在当前会话内进行原生审阅。');
+    const idle = method !== 'thread/name/set' && method !== 'turn/steer';
+    if (idle) this.assertNativeIdle(threadId, cwd);
+    if (this.projects && await this.projects.resolve(cwd) !== cwd) throw new Error('Project directory changed; refresh the native thread list');
+    let thread = await this.checkedNativeThread(threadId, cwd, idle);
+    if (['thread/fork', 'thread/revert'].includes(method) && thread.ephemeral) throw new Error('临时会话尚未持久化，不能分叉或回退。');
+    if (['thread/revert', 'review/start', 'thread/compact/start', 'turn/steer'].includes(method) && !this.loaded.has(threadId)) throw new Error('请先选择并恢复此原生会话。');
+    const boundary = method === 'thread/revert' ? await this.completedNativeTurn(threadId, params.beforeTurnId)
+      : method === 'thread/fork' && params.lastTurnId !== undefined ? await this.completedNativeTurn(threadId, params.lastTurnId) : undefined;
+    // Native operations may include children omitted from the interactive list,
+    // including archived children in another cwd. Reuse the complete native
+    // dependency inventory; it grants no new ownership to the renderer.
+    if (idle) {
+      await this.lifecycleInventory(threadId, cwd);
+      thread = await this.checkedNativeThread(threadId, cwd, true);
+    }
+    if (this.projects && await this.projects.resolve(cwd) !== cwd) throw new Error('Project directory changed; refresh the native thread list');
+    if (idle) this.assertNativeIdle(threadId, cwd);
+    if (method === 'turn/steer' && (typeof params.expectedTurnId !== 'string' || this.activeTurns.get(threadId) !== params.expectedTurnId ||
+      this.unknownSends.has(threadId) || this.receipts?.uncertainForSteer(cwd, threadId, params.expectedTurnId) ||
+      thread.status.type !== 'active' || thread.turns.some(turn => turn.status === 'inProgress' && turn.id !== params.expectedTurnId))) {
+      throw new Error('补充指令对应的活动轮次已变化，请查询状态；未创建新轮次。');
+    }
+    this.assertAuthorized(context);
+    let operation = this.nativeOperations.reserve(params.operationId, cwd, threadId, method);
+    operation = this.publishOperation(operation, method === 'turn/steer' ? { turnId: params.expectedTurnId as string } : {});
+    if (method === 'review/start' || method === 'thread/compact/start') this.busy.add(threadId);
+    try {
+      if (method === 'thread/name/set') {
+        const revision = this.nameRevisions.get(threadId) ?? 0;
+        const result = await this.codex.request(method, { threadId, name });
+        // Do not overwrite a newer name notification with the requested value
+        // when another native client renamed the same thread before our ACK.
+        if (revision === (this.nameRevisions.get(threadId) ?? 0)) {
+          this.lifecycleRevision++;
+          this.nameRevisions.set(threadId, revision + 1);
+          const fresh = this.fresh.get(threadId); if (fresh) this.fresh.set(threadId, { ...fresh, name });
+          this.emit('event', { type: 'event', event: { method: 'thread/name/updated', params: { threadId, threadName: name } } } satisfies BridgeEvent);
+        }
+        this.publishOperation(operation, { state: 'completed' });
+        return result;
+      }
+      if (method === 'thread/fork') {
+        const result = await this.codex.request<ThreadForkResponse>(method, { threadId, cwd, ...(boundary ? { lastTurnId: boundary } : {}) });
+        if (!result.thread.id || result.thread.id === threadId || result.thread.cwd !== cwd || result.cwd !== cwd || result.thread.ephemeral) {
+          throw new Error('原生分叉返回的会话或项目归属无法核实。');
+        }
+        const parent = this.nativeParent(result.thread);
+        if (parent && (!this.threads.has(parent) || this.threadCwd(parent) !== cwd || parent === result.thread.id || this.descendsFrom(parent, result.thread.id))) {
+          throw new Error('原生分叉的父会话归属无法核实。');
+        }
+        this.track(result.thread.id, cwd);
+        if (parent) this.threadParents.set(result.thread.id, parent);
+        this.loaded.add(result.thread.id);
+        this.rememberSettings(result);
+        this.publishOperation(operation, { state: 'completed', resultThreadId: result.thread.id });
+        this.lifecycleRevision++;
+        this.emit('event', { type: 'projectsChanged' } satisfies BridgeEvent);
+        return result;
+      }
+      if (method === 'thread/revert') {
+        const result = await this.codex.request<ThreadRevertResponse>(method, { threadId, beforeTurnId: boundary! });
+        if (result.thread.id !== threadId || result.thread.cwd !== cwd || this.nativeParent(result.thread)) throw new Error('原生回退返回的会话归属无法核实。');
+        if (this.nativeOperations.get(operation.operationId, cwd, threadId)?.state !== 'completed') this.invalidateHistory(threadId, 'revert');
+        this.publishOperation(operation, { state: 'completed' });
+        return result;
+      }
+      if (method === 'turn/steer') {
+        const result = await this.codex.request<TurnSteerResponse>(method, { threadId, expectedTurnId: params.expectedTurnId,
+          clientUserMessageId: operation.operationId, input: [{ type: 'text', text: params.text, text_elements: [] }] });
+        if (result.turnId !== params.expectedTurnId) throw new Error('原生补充响应的轮次不匹配，结果未知。');
+        this.publishOperation(operation, { state: 'completed', turnId: result.turnId });
+        return result;
+      }
+      if (method === 'review/start') {
+        const result = await this.codex.request<ReviewStartResponse>(method, { threadId, target, delivery: 'inline' });
+        if (result.reviewThreadId !== threadId || !result.turn.id) throw new Error('原生审阅返回了不同会话，结果未知。');
+        const current = this.nativeOperations.get(operation.operationId, cwd, threadId)!;
+        if (!['completed', 'rejected'].includes(current.state)) {
+          const status = this.terminalTurnStatuses.get(threadId)?.get(result.turn.id) ?? result.turn.status;
+          this.publishOperation(current, { state: status === 'inProgress' ? 'accepted' : status === 'completed' ? 'completed' : 'rejected', turnId: result.turn.id });
+          if (status === 'inProgress') {
+            if (!this.activeTurns.has(threadId) || this.activeTurns.get(threadId) === result.turn.id) this.activeTurns.set(threadId, result.turn.id);
+            this.busy.add(threadId);
+          }
+          else if (!this.activeTurns.has(threadId) || this.activeTurns.get(threadId) === result.turn.id) {
+            this.busy.delete(threadId); this.activeTurns.delete(threadId);
+          }
+        }
+        return result;
+      }
+      const result = await this.codex.request(method, { threadId });
+      const current = this.nativeOperations.get(operation.operationId, cwd, threadId)!;
+      if (!['completed', 'rejected'].includes(current.state)) this.publishOperation(current, { state: 'accepted' });
+      return result;
+    } catch (error) {
+      const current = this.nativeOperations.get(operation.operationId, cwd, threadId)!;
+      if (error instanceof NativeRpcError && error.code !== -32603) {
+        this.publishOperation(current, { state: 'rejected', message: error.code === -32601 ? '当前 Codex App Server 不支持此操作。' : '原生操作已拒绝，请检查错误后查询状态。' });
+        if ((method === 'review/start' || method === 'thread/compact/start') && !this.activeTurns.has(threadId)) this.busy.delete(threadId);
+        if (error.code === -32601) {
+          this.unsupportedNative.add(method);
+          this.emit('event', { type: 'nativeCapabilitiesChanged', capabilities: this.nativeCapabilities() } satisfies BridgeEvent);
+          throw new Error('当前 Codex App Server 不支持此操作；其他功能仍可使用。');
+        }
+        throw error;
+      }
+      // A matching native notification may already establish a completed revert
+      // or rename even if its acknowledgement is lost. Never downgrade that fact.
+      if (current.state !== 'completed' && current.state !== 'rejected') this.publishOperation(current, { state: 'unknown', message: '原生操作结果未知；请查询状态，不要重复执行。' });
+      throw new Error('原生操作结果未知；请查询状态，不要重复执行。');
+    }
+  }
   private beginFlight(threadId: string) { this.inFlight.set(threadId, (this.inFlight.get(threadId) ?? 0) + 1); }
   private endFlight(threadId: string) {
     const count = (this.inFlight.get(threadId) ?? 1) - 1;
     if (count) this.inFlight.set(threadId, count); else this.inFlight.delete(threadId);
   }
   private assertLifecycleIdle(threadId: string, cwd: string) {
-    if (['active', 'systemError'].includes(this.nativeStatuses.get(threadId) ?? '') || this.busy.has(threadId) || this.activeTurns.has(threadId) || this.unknownSends.has(threadId) || this.receipts?.blocked(cwd, threadId)) {
+    if (['active', 'systemError'].includes(this.nativeStatuses.get(threadId) ?? '') || this.busy.has(threadId) || this.activeTurns.has(threadId) || this.unknownSends.has(threadId) || this.receipts?.blocked(cwd, threadId) || this.nativeSendBlocked(threadId)) {
       throw new Error('会话运行中或发送结果未知，请先停止并查询状态。');
     }
     if ([...this.pending.values()].some(request => this.related(request.params.threadId, threadId))) {
@@ -426,7 +731,7 @@ export class BridgeService extends EventEmitter {
     }
     return state;
   }
-  private async changeLifecycle(method: string, threadId: string, cwd: string, params: Record<string, unknown>): Promise<ThreadLifecycleResult> {
+  private async changeLifecycle(method: string, threadId: string, cwd: string, params: Record<string, unknown>, context?: RequestContext): Promise<ThreadLifecycleResult> {
     if (params.cwd !== undefined && params.cwd !== cwd) throw new Error('Thread is outside the selected project');
     if (method === 'thread/delete' && params.confirm !== true) throw new Error('永久删除必须经过明确的二次确认。');
     if (this.projects && await this.projects.resolve(cwd) !== cwd) throw new Error('Project directory changed; refresh the native thread list');
@@ -445,6 +750,7 @@ export class BridgeService extends EventEmitter {
     await this.readLifecycleThread(threadId, cwd);
     if (this.projects && await this.projects.resolve(cwd) !== cwd) throw new Error('Project directory changed; refresh the native thread list');
     this.assertLifecycleIdle(threadId, cwd);
+    this.assertAuthorized(context);
     const state = method === 'thread/archive' ? 'archived' : method === 'thread/unarchive' ? 'active' : 'deleted';
     try {
       const result = await this.codex.request<{ thread?: Thread }>(method, { threadId });

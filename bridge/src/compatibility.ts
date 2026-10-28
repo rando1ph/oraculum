@@ -45,7 +45,8 @@ export function validateNativeResponse(version: string, method: string, result: 
   };
 
   if (!['initialize', 'config/read', 'model/list', 'thread/list', 'thread/start', 'thread/resume',
-    'thread/read', 'thread/archive', 'thread/unarchive', 'thread/delete', 'turn/start', 'turn/interrupt', 'thread/turns/list', 'thread/items/list'].includes(method)) return;
+    'thread/read', 'thread/archive', 'thread/unarchive', 'thread/delete', 'turn/start', 'turn/interrupt', 'thread/turns/list', 'thread/items/list',
+    'thread/name/set', 'thread/fork', 'thread/revert', 'turn/steer', 'review/start', 'thread/compact/start'].includes(method)) return;
   const response = object(result, 'result');
   if (method === 'initialize') require(identifier(response.userAgent), 'userAgent');
   if (method === 'config/read') {
@@ -62,13 +63,20 @@ export function validateNativeResponse(version: string, method: string, result: 
     });
   });
   if (method === 'thread/list') page(response, thread);
-  if (['thread/read', 'thread/start', 'thread/resume', 'thread/unarchive'].includes(method)) thread(response.thread, 'thread');
-  if (method === 'thread/start' || method === 'thread/resume') {
+  if (['thread/read', 'thread/start', 'thread/resume', 'thread/unarchive', 'thread/fork', 'thread/revert'].includes(method)) thread(response.thread, 'thread');
+  if (method === 'thread/start' || method === 'thread/resume' || method === 'thread/fork') {
     require(text(response.approvalPolicy) || record(response.approvalPolicy), 'approvalPolicy');
     require(identifier(object(response.sandbox, 'sandbox').type), 'sandbox.type');
     require(identifier(response.approvalsReviewer), 'approvalsReviewer');
   }
-  if (method === 'turn/start') turn(response.turn, 'turn');
+  if (method === 'thread/fork') require(identifier(response.cwd), 'cwd');
+  if (method === 'thread/revert') {
+    require(response.turnsBackwardsCursor === null || text(response.turnsBackwardsCursor), 'turnsBackwardsCursor');
+    require(response.itemsBackwardsCursor === null || text(response.itemsBackwardsCursor), 'itemsBackwardsCursor');
+  }
+  if (method === 'turn/start' || method === 'review/start') turn(response.turn, 'turn');
+  if (method === 'review/start') require(identifier(response.reviewThreadId), 'reviewThreadId');
+  if (method === 'turn/steer') require(identifier(response.turnId), 'turnId');
   if (method === 'thread/turns/list') page(response, turn);
   if (method === 'thread/items/list') page(response, (value, path) => {
     const entry = object(value, path);

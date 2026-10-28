@@ -212,7 +212,7 @@ export async function createServer(service: BridgeService, port: number, webRoot
         if (seen.has(String(request.id)) || seen.size >= 500) { socket.close(1008, 'Duplicate ID or request limit'); return; }
         seen.add(String(request.id));
         let response: WireMessage;
-        try { response = { id: request.id, result: await service.dispatch(request.method!, request.params!, deviceId ? { deviceId } : undefined) }; }
+        try { response = { id: request.id, result: await service.dispatch(request.method!, request.params!, deviceId ? { deviceId, isAuthorized: authorized } : undefined) }; }
         catch (error) { response = { id: request.id, error: { code: -32000, message: error instanceof Error ? error.message : 'Request failed' } }; }
         if (authorized() && socket.readyState === 1) socket.send(JSON.stringify(response));
       });

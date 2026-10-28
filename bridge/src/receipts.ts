@@ -1,15 +1,18 @@
 import type { DatabaseSync } from 'node:sqlite';
 import type { SendReceipt, Turn } from '../../packages/shared/protocol';
+import { NativeOperations } from './native-operations';
 
 // Delivery metadata only. Native Codex remains the source of conversation and
 // execution facts; never store prompts, tool output, approvals or credentials.
 export class ReceiptStore {
+  readonly nativeOperations: NativeOperations;
   constructor(private db: DatabaseSync) {
     db.exec(`CREATE TABLE IF NOT EXISTS send_receipts (
       operation_id TEXT PRIMARY KEY, workspace TEXT NOT NULL, thread_id TEXT NOT NULL,
       device_id TEXT NOT NULL, created_at INTEGER NOT NULL,
       status TEXT NOT NULL, turn_id TEXT
     ); CREATE INDEX IF NOT EXISTS receipt_thread ON send_receipts(workspace, thread_id);`);
+    this.nativeOperations = new NativeOperations(db);
   }
   reserve(operationId: unknown, workspace: string, threadId: string, deviceId: string) {
     if (typeof operationId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(operationId)) {
@@ -42,6 +45,10 @@ export class ReceiptStore {
   blocked(workspace: string, threadId: string) {
     return !!this.db.prepare(`SELECT 1 FROM send_receipts WHERE workspace=? AND thread_id=?
       AND status IN ('unknown', 'accepted') LIMIT 1`).get(workspace, threadId);
+  }
+  uncertainForSteer(workspace: string, threadId: string, expectedTurnId: string) {
+    return !!this.db.prepare(`SELECT 1 FROM send_receipts WHERE workspace=? AND thread_id=?
+      AND (status='unknown' OR (status='accepted' AND turn_id<>?)) LIMIT 1`).get(workspace, threadId, expectedTurnId);
   }
   list(workspace: string, threadId: string): SendReceipt[] {
     return this.db.prepare(`SELECT operation_id AS operationId, status, turn_id AS turnId, created_at AS createdAt
