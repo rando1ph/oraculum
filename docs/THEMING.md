@@ -144,6 +144,8 @@ button.primary { border-radius: 999px; background: #235daf; color: white; }
 
 完整 Light 调色板见 `themes/minimal-light/`。复杂图片、玻璃、剪角按钮、伪元素雨线、字体及动画见 `themes/hong-kong-rain/`；它是虚构香港雨夜插画验收样例，不是实景照片或新正式品牌稿。Violet 原样保留。素材来源和字体许可见 [THEME-ASSETS.md](THEME-ASSETS.md)。
 
+共享消息的 GFM 表格使用 `.markdown-table-scroll > table`：外层是可聚焦、带中文标签的横向滚动区域，内部保留原生 `table/thead/tbody/th/td` 语义和列对齐。宿主样式位于 `oraculum` layer，使用 `--line`、`--surface`、`--surface-raised` 与 `--accent`，可信主题可覆盖。主题应保留容器宽度约束、焦点提示及横向滚动，不将表格改为 `display:block`，也不要让宽表撑破消息卡片与 Composer。
+
 ## 相对资源与浏览器权限
 
 ```css

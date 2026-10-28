@@ -11,12 +11,16 @@ import { createServer } from '../bridge/src/server';
 import { ReceiptStore } from '../bridge/src/receipts';
 import { Themes } from '../bridge/src/themes';
 import type { WireMessage } from '../packages/shared/protocol';
+import { alignedTable, gfmMessage, partialTable } from './fixtures/markdown';
 
 const cwd = '/message-card-fixture', id = 'internal-thread-fixture';
 const patch = '--- a/sum.ts\n+++ b/sum.ts\n@@ -1 +1 @@\n-export const sum = (a, b) => a - b;\n+export const sum = (a, b) => a + b;\n';
 const history: any = { id: 'internal-history-fixture', status: 'completed', error: null, itemsView: 'full', items: [
   { id: 'user', type: 'userMessage', content: [{ type: 'text', text: '请检查消息卡片，保留清晰的阅读体验。\n第二行用户文本。', text_elements: [] }] },
   { id: 'answer', type: 'agentMessage', text: '## 清晰的对话\n\n**Markdown** 与 `inline code` 保持可读。\n\n- 同样的卡片布局\n- 宽度跟随设备\n\n> 保留重要的执行信息。\n\n```ts\nconst longLine = "' + 'long-code-'.repeat(30) + '";\n```\n\n<script>window.BAD=true</script>\n[unsafe](javascript:alert(1))' },
+  { id: 'gfm', type: 'agentMessage', text: gfmMessage },
+  { id: 'plan', type: 'plan', text: alignedTable },
+  { id: 'reasoning', type: 'reasoning', summary: [alignedTable], content: [] },
   { id: 'command', type: 'commandExecution', command: 'node --test sum.test.ts', cwd, status: 'completed', exitCode: 0, durationMs: 25, aggregatedOutput: 'tests 3\npass 3\nfail 0' },
   { id: 'file', type: 'fileChange', status: 'completed', changes: [{ path: cwd + '/sum.ts', kind: { type: 'update', move_path: null }, diff: patch }] },
   { id: 'future', type: 'futureTool', status: 'completed', rawInternalFixturePayload: 'internal-payload-fixture' },
@@ -44,10 +48,10 @@ const codex = {
     return structuredClone(result) as T;
   },
 };
-await mkdir('.local/evidence/phase4d3/messages-contract', { recursive: true });
-const output = await mkdtemp(resolve('.local/evidence/phase4d3/messages-contract/run-'));
-const themes = new Themes({ source: resolve('themes'), installed: join(output, 'installed-themes') });
-for (const theme of ['test-violet', 'minimal-light', 'hong-kong-rain']) await themes.install(theme);
+await mkdir('.local/evidence/r1-b2/messages-contract', { recursive: true });
+const output = await mkdtemp(resolve('.local/evidence/r1-b2/messages-contract/run-'));
+const themes = new Themes({ source: resolve('themes'), builtin: resolve('themes'), installed: join(output, 'installed-themes') });
+for (const theme of ['test-violet', 'hong-kong-rain']) await themes.install(theme);
 const db = new DatabaseSync(':memory:'), receipts = new ReceiptStore(db);
 const completedReceipt = '00000000-0000-4000-8000-000000000001';
 receipts.reserve(completedReceipt, cwd, id, 'fixture-device'); receipts.accepted(completedReceipt, history.id); receipts.observe(cwd, id, history);
@@ -60,6 +64,8 @@ delete env.ELECTRON_RUN_AS_NODE;
 Object.assign(env, { ORACULUM_URL: origin, ORACULUM_USER_DATA_DIR: join(output, 'electron-profile') });
 let app: ElectronApplication | undefined, browser: Browser | undefined, desktop: Page | undefined, phone: Page | undefined;
 const checks: string[] = [], errors: string[] = [];
+const tableGeometry: object[] = [];
+const failureLayout: object[] = [];
 let failure: string | undefined;
 const ready = (page: Page) => expect(page.locator('.connection-status')).toContainText('状态已查询', { timeout: 15_000 });
 const scrollTop = (page: Page) => page.locator('.conversation-scroll').evaluate(element => element.scrollTop);
@@ -95,12 +101,61 @@ async function noNoise(page: Page) {
 }
 async function geometry(page: Page, width: number, height: number) {
   await page.setViewportSize({ width, height });
+  await expect.poll(() => page.evaluate(() => parseFloat(document.documentElement.style.getPropertyValue('--app-height')))).toBe(height);
   await expect.poll(async () => { const box = await page.locator('.composer').boundingBox(); return box ? box.y + box.height : Infinity; }).toBeLessThanOrEqual(height + 1);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   const send = (await page.getByRole('button', { name: '发送', exact: true }).boundingBox())!;
   expect(send.height).toBeGreaterThanOrEqual(48); expect(send.width).toBeGreaterThanOrEqual(48); expect(send.y).toBeGreaterThanOrEqual(0); expect(send.y + send.height).toBeLessThanOrEqual(height + 1);
   const input = (await page.getByLabel('消息', { exact: true }).boundingBox())!;
   expect(input.height).toBeGreaterThan(0); expect(input.y).toBeGreaterThanOrEqual(0); expect(input.y + input.height).toBeLessThanOrEqual(height + 1);
+}
+async function revealTable(page: Page, selector: string) {
+  // Scroll the actual reading panel. scrollIntoView on a tall fixture also
+  // scrolls overflow:hidden ancestors, which is not a user conversation scroll.
+  await page.locator(selector).evaluate(element => {
+    const panel = element.closest('.conversation-scroll')!;
+    panel.scrollTop += element.getBoundingClientRect().top - panel.getBoundingClientRect().top;
+  });
+}
+async function tables(page: Page, label: string) {
+  const message = page.locator('[data-item-id="gfm"]');
+  const table = message.getByRole('table').first();
+  await expect(message.getByRole('table')).toHaveCount(2);
+  await expect(table.locator('thead th')).toHaveText(['项目 Project', '数量', '状态', '语法']);
+  await expect(table.locator('tbody tr').first().locator('td')).toHaveText(['神谕 English', '42', '通过', '转义 a|b 与 x|y']);
+  expect(await table.locator('tbody tr').first().locator('td').evaluateAll(cells => cells.map(cell => getComputedStyle(cell).textAlign))).toEqual(['left', 'right', 'center', 'left']);
+  expect(await table.evaluate(element => getComputedStyle(element).display)).toBe('table');
+  expect(await table.locator('thead').evaluate(element => getComputedStyle(element).display)).toBe('table-header-group');
+  await expect(message.locator('input[type="checkbox"]:disabled')).toHaveCount(2);
+  await expect(message.locator('.markdown a, .markdown img, .markdown script')).toHaveCount(0);
+  await expect(message.locator('.message-link').first()).toHaveAttribute('title', 'https://example.com/gfm');
+  const scrolls = message.getByRole('region', { name: '表格（可横向滚动）', exact: true });
+  await expect(scrolls).toHaveCount(2);
+  const wide = scrolls.last();
+  await revealTable(page, '[data-item-id="gfm"] .markdown-table-scroll:last-child');
+  expect(await wide.evaluate(element => element.scrollWidth > element.clientWidth)).toBe(true);
+  await wide.evaluate(element => (element as HTMLElement).focus({ preventScroll: true }));
+  await page.keyboard.press('ArrowRight');
+  await expect.poll(() => wide.evaluate(element => element.scrollLeft)).toBeGreaterThan(0);
+  await wide.evaluate(element => { element.scrollLeft = element.scrollWidth; });
+  await expect.poll(() => wide.evaluate(element => element.scrollLeft)).toBeGreaterThan(100);
+  await wide.evaluate(element => { element.scrollLeft = 0; (element as HTMLElement).blur(); });
+  const bounds = await message.evaluate(element => {
+    const card = element.querySelector('.message')!, markdown = element.querySelector('.markdown')!;
+    return { viewport: innerWidth, page: document.documentElement.scrollWidth, card: card.getBoundingClientRect().toJSON(), cardClient: card.clientWidth, cardScroll: card.scrollWidth,
+      markdownClient: markdown.clientWidth, markdownScroll: markdown.scrollWidth,
+      scrolls: Array.from(element.querySelectorAll('.markdown-table-scroll')).map(el => ({ client: el.clientWidth, scroll: el.scrollWidth, box: el.getBoundingClientRect().toJSON() })) };
+  });
+  expect(bounds.page, label).toBeLessThanOrEqual(bounds.viewport);
+  expect(bounds.cardScroll, label).toBeLessThanOrEqual(bounds.cardClient + 1);
+  expect(bounds.markdownScroll, label).toBeLessThanOrEqual(bounds.markdownClient + 1);
+  expect(bounds.card.x, label).toBeGreaterThanOrEqual(0);
+  expect(bounds.card.right, label).toBeLessThanOrEqual(bounds.viewport + 1);
+  for (const scroll of bounds.scrolls) {
+    expect(scroll.box.x, label).toBeGreaterThanOrEqual(bounds.card.x);
+    expect(scroll.box.right, label).toBeLessThanOrEqual(bounds.card.right);
+  }
+  tableGeometry.push({ label, ...bounds });
 }
 try {
   await server.listen({ host: '127.0.0.1', port });
@@ -109,11 +164,22 @@ try {
   desktop = app.windows().find(page => page.url().startsWith(origin))!; desktop.on('pageerror', error => errors.push(error.message)); await ready(desktop);
   browser = await chromium.launch();
   phone = await browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 1, userAgent: 'Mozilla/5.0 (Linux; Android 15) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36 OraculumAndroid/1' });
-  await phone.context().grantPermissions(['clipboard-write'], { origin });
+  await phone.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin });
   phone.on('pageerror', error => errors.push(error.message)); await phone.goto(origin); await ready(phone);
   await desktop.setViewportSize({ width: 1920, height: 1080 }); await cards(desktop);
   const readingWidth = (await desktop.locator('.conversation-content').boundingBox())!.width;
   expect(readingWidth).toBeGreaterThanOrEqual(920); expect(readingWidth).toBeLessThanOrEqual(1000);
+  for (const page of [desktop, phone]) {
+    await revealTable(page, '[data-item-id="gfm"]');
+    await page.screenshot({ path: join(output, `gfm-initial-${page === phone ? 'mobile' : 'electron'}.png`) });
+  }
+  await tables(desktop, 'oracle-eye/electron');
+  await tables(phone, 'oracle-eye/390x844');
+  for (const page of [desktop, phone]) {
+    await revealTable(page, '[data-item-id="gfm"]');
+    await page.screenshot({ path: join(output, `gfm-oracle-eye-${page === phone ? 'mobile' : 'electron'}.png`) });
+  }
+  record('GFM semantic DOM, cell order/alignment, escaped pipes, tasks, safe autolinks and keyboard horizontal scrolling');
   for (const page of [desktop, phone]) {
     await cards(page, page === phone); await noNoise(page);
     await expect(page.locator('.history-warning')).toHaveCount(0);
@@ -126,6 +192,9 @@ try {
     expect(await page.locator('.code-block pre').evaluate(element => element.scrollWidth > element.clientWidth)).toBe(true);
     await page.locator('.code-block .copy').click(); await expect(page.locator('.code-block .copy')).toHaveText('已复制');
     await page.locator('.process-toggle').click();
+    await expect(page.locator('[data-item-id="plan"] table')).toHaveCount(1);
+    await page.locator('[data-item-id="reasoning"] summary').click();
+    await expect(page.locator('[data-item-id="reasoning"] table')).toBeVisible();
     await page.locator('.command summary').click(); await expect(page.getByLabel('命令输出')).toContainText('pass 3');
     await page.getByRole('button', { name: '查看 Diff', exact: true }).click();
     await expect(page.locator('.cm-content')).toContainText('a + b'); expect(await page.locator('.cm-content').getAttribute('contenteditable')).not.toBe('true');
@@ -152,8 +221,9 @@ try {
   await phone.locator('.conversation-scroll').evaluate(element => { element.scrollTop = 620; window.dispatchEvent(new PageTransitionEvent('pagehide')); });
   const savedTop = await scrollTop(phone); await phone.reload(); await ready(phone);
   await expect(message).toHaveValue('中文输入\nA'); await expect.poll(() => scrollTop(phone!)).toBeCloseTo(savedTop, 0);
+  await tables(phone, 'oracle-eye/history-reload');
   record('Enter newline, simulated composition guard, expand/collapse, unsent draft and reload reading position preserved');
-  for (const value of ['test-violet', 'minimal-light', 'hong-kong-rain']) {
+  for (const value of ['test-violet', 'minimal-light', 'hong-kong-rain', 'hong-kong-neon', 'old-terminal']) {
     for (const page of [desktop, phone]) {
       await theme(page, value); await cards(page, page === phone); await noNoise(page);
       const process = page.locator('.process-toggle').first();
@@ -162,15 +232,26 @@ try {
       await page.getByRole('button', { name: '关闭面板', exact: true }).click();
       if (value === 'test-violet') expect(await page.locator('.message').first().evaluate(element => getComputedStyle(element).getPropertyValue('--accent').trim())).toBe('#dbb3ff');
       if (value === 'minimal-light') expect(await page.locator('.app-shell').evaluate(element => getComputedStyle(element).colorScheme)).toBe('light');
+      await tables(page, `${value}/${page === phone ? '390x844' : 'electron'}`);
+      await revealTable(page, '[data-item-id="gfm"]');
+      await page.screenshot({ path: join(output, `gfm-${value}-${page === phone ? 'mobile' : 'electron'}.png`) });
     }
-    for (const [width, height] of [[375, 812], [390, 844], [844, 390], [782, 99]]) await geometry(phone, width, height);
+    for (const [width, height] of [[375, 667], [390, 844], [844, 390], [390, 430], [782, 99]]) {
+      await geometry(phone, width, height);
+      // The 99px IME layout intentionally leaves no conversation reading area.
+      if (height > 160) await tables(phone, `${value}/${width}x${height}`);
+    }
     await geometry(phone, 390, 844); await expect(message).toHaveValue('中文输入\nA');
   }
   await theme(desktop, 'oracle-eye'); await theme(phone, 'oracle-eye');
+  for (const [width, height] of [[375, 667], [844, 390], [390, 430]]) {
+    await geometry(phone, width, height); await tables(phone, `oracle-eye/${width}x${height}`);
+  }
+  await geometry(phone, 390, 844);
   await desktop.addStyleTag({ content: '[data-theme-slot="assistant-message"] { border-radius: 23px; } .message-name { letter-spacing: 1px; }' });
   expect(await desktop.locator('.agent-message').first().evaluate(element => getComputedStyle(element).borderRadius)).toBe('23px');
   expect(await desktop.locator('.message-name').first().evaluate(element => getComputedStyle(element).letterSpacing)).toBe('1px');
-  record('Violet, Minimal Light, Hong Kong Rain and unlayered custom hooks retain cards, palettes, Diff and mobile geometry without discarding drafts');
+  record('all four built-in themes plus Violet/Rain retain semantic tables, bounded horizontal scrolling, cards, Diff and portrait/landscape/short geometry');
 
   const active: any = { id: 'internal-active-fixture', status: 'inProgress', error: null, itemsView: 'full', items: [] };
   thread.turns.push(active); thread.status = { type: 'active', activeFlags: [] }; emit('turn/started', { turn: active });
@@ -181,6 +262,20 @@ try {
   emit('item/agentMessage/delta', { turnId: active.id, itemId: live.id, delta: '\n\n新增进度文字。' });
   await expect(phone.locator('[data-item-id="streaming"]')).toContainText('新增进度文字');
   await expect.poll(() => scrollTop(phone!)).toBeCloseTo(540, 0); await expect(phone.getByRole('button', { name: '返回最新', exact: true })).toBeVisible();
+  const streamingTable = { id: 'streaming-table', type: 'agentMessage', text: partialTable };
+  active.items.push(streamingTable); emit('item/started', { turnId: active.id, item: streamingTable });
+  for (const page of [desktop, phone]) await expect(page.locator('[data-item-id="streaming-table"] table')).toHaveCount(1);
+  const delta = '` | 7 |'; streamingTable.text += delta;
+  emit('item/agentMessage/delta', { turnId: active.id, itemId: streamingTable.id, delta });
+  for (const page of [desktop, phone]) await expect(page.locator('[data-item-id="streaming-table"] td')).toHaveText(['未闭合', '7']);
+  await expect.poll(() => scrollTop(phone!)).toBeCloseTo(540, 0);
+  await phone.reload(); await ready(phone);
+  await expect(phone.locator('[data-item-id="streaming-table"] td')).toHaveText(['未闭合', '7']);
+  await expect(phone.locator('[data-item-id="gfm"] .message-actions .copy')).toHaveCount(1);
+  await phone.locator('[data-item-id="gfm"] .message-actions .copy').click();
+  await expect(phone.locator('[data-item-id="gfm"] .message-actions .copy')).toHaveText('已复制');
+  expect(await phone.evaluate(() => navigator.clipboard.readText())).toBe(gfmMessage);
+  record('partial streamed table completes through agentMessage delta, survives native-history reread and copies original Markdown');
   for (const [requestId, decision] of [[71, '允许本次'], [72, '拒绝']] as const) {
     bus.emit('message', { id: requestId, method: 'item/commandExecution/requestApproval', params: { threadId: id, turnId: active.id, itemId: 'internal-approval-fixture', command: 'printf CARD_CONTRACT', cwd, reason: '模拟审批合约' } });
     await expect(desktop.getByTestId('turn-status')).toHaveText('待审批');
@@ -220,10 +315,13 @@ try {
   record('disconnect and explicit reconnect preserve the draft and unknown-send state');
 } catch (error) {
   failure = String(error);
-  for (const [name, page] of [['electron', desktop], ['mobile', phone]] as const) if (page && !page.isClosed()) await page.screenshot({ path: join(output, `failure-${name}.png`) }).catch(() => {});
+  for (const [name, page] of [['electron', desktop], ['mobile', phone]] as const) if (page && !page.isClosed()) {
+    failureLayout.push({ name, ...await page.evaluate(() => ({ viewport: [innerWidth, innerHeight], appHeight: document.documentElement.style.getPropertyValue('--app-height'), scroll: [scrollX, scrollY], active: document.activeElement?.outerHTML.slice(0, 200), boxes: ['.app-shell', '.conversation', '.conversation-scroll', '.composer', '.composer textarea', '.send-button'].map(selector => { const el = document.querySelector(selector); return { selector, box: el?.getBoundingClientRect().toJSON(), scrollTop: el?.scrollTop }; }) })) });
+    await page.screenshot({ path: join(output, `failure-${name}.png`) }).catch(() => {});
+  }
   throw error;
 } finally {
   await app?.close(); await browser?.close(); await server.close(); db.close();
-  await writeFile(join(output, 'report.json'), JSON.stringify({ date: new Date().toISOString(), realElectron: true, emulatedAndroid: true, nativeCodex: false, nativeIME: false, checks, errors, failure, passed: !failure }, null, 2));
+  await writeFile(join(output, 'report.json'), JSON.stringify({ date: new Date().toISOString(), realElectron: true, emulatedAndroid: true, nativeCodex: false, nativeIME: false, checks, errors, tableGeometry, failureLayout, failure, passed: !failure }, null, 2));
   console.log(JSON.stringify({ output, checks: checks.length, passed: !failure, failure }));
 }

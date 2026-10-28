@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import Markdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import type { ThreadItem } from '../../../packages/shared/protocol';
 import { MessageIdentity } from './identity-ui';
 import { analyzeDiff } from './diff-lines';
@@ -25,8 +26,9 @@ function CodeBlock({ children }: { children?: ReactNode }) {
 }
 
 export function Message({ text }: { text: string }) {
-  return <div className="markdown"><Markdown skipHtml components={{
+  return <div className="markdown"><Markdown skipHtml remarkPlugins={[remarkGfm]} components={{
     pre: CodeBlock,
+    table: ({ children }) => <div className="markdown-table-scroll" role="region" aria-label="表格（可横向滚动）" tabIndex={0}><table>{children}</table></div>,
     a: ({ children, href }) => <span className="message-link" title={href}>{children}{href && <> <Copy text={href}/></>}</span>,
     img: ({ alt }) => <span>[图片：{alt || '未加载'}]</span>,
   }}>{text}</Markdown></div>;
