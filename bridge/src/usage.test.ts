@@ -79,6 +79,9 @@ it('invalidates old account reads, optional usage and metadata on account change
   usage.invalidate(); limits.resolve(rateLimits); activity.resolve({ summary: { lifetimeTokens: 900 } });
   expect((await old).buckets).toEqual([]); expect((await oldActivity).lifetimeTokens).toBeNull();
   usage.update({ rateLimits: { primary: { usedPercent: 10 } } });
+  expect(usage.account.buckets).toEqual([]);
+  await usage.read(); usage.update({ rateLimits: { limitId: 'codex', primary: { usedPercent: 12 } } });
+  expect(usage.account.buckets[0].primary?.usedPercent).toBe(12);
   usage.invalidate(true); expect((await usage.read()).buckets).toEqual([]);
   usage.update(rateLimits); expect(usage.account.status).toBe('unavailable');
 });

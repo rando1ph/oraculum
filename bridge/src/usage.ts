@@ -66,6 +66,7 @@ export class NativeUsage {
   private usagePending?: Promise<AccountUsageSnapshot>;
   private usageReadAt = -Infinity;
   private live = true;
+  private awaitingAccountRead = false;
   readonly threads = new Map<string, ThreadUsage>();
   account: LimitsSnapshot = { source: 'codex-app-server', generation: 0, revision: 0, observedAt: 0, status: 'unavailable', buckets: [] };
   activity: AccountUsageSnapshot = { source: 'codex-app-server', generation: 0, revision: 0, observedAt: 0, status: 'unavailable', lifetimeTokens: null, peakDailyTokens: null };
@@ -74,11 +75,14 @@ export class NativeUsage {
   invalidate(stopped = false) {
     ++this.generation; this.pending = undefined; this.usagePending = undefined; this.patches = []; this.accountId = null;
     this.lastRead = -Infinity; this.usageReadAt = -Infinity; if (stopped) this.live = false;
+    this.awaitingAccountRead = true;
     this.activity = { ...this.stamp(), status: 'unavailable', lifetimeTokens: null, peakDailyTokens: null };
     this.account = { ...this.stamp(), status: 'unavailable', buckets: [] }; this.publish(this.account);
   }
   update(value: unknown) {
-    if (!this.live || !normalizeLimits(value).length) return;
+    // Rolling notifications have no account identity. After an auth change,
+    // only a successful read in the new generation can establish ownership.
+    if (!this.live || this.awaitingAccountRead || !normalizeLimits(value).length) return;
     // Save only the sanitized projection while a read is pending.
     const patch = { rateLimitsByLimitId: Object.fromEntries(normalizeLimits(value).map(b => [b.key, b])) };
     if (this.pending) this.patches.push(patch);
@@ -104,13 +108,14 @@ export class NativeUsage {
       if (generation !== this.generation) return this.account;
       const identity = label(object(value).accountId);
       const changed = this.accountId !== null && identity !== null && identity !== this.accountId;
-      this.accountId = identity;
+      this.accountId = identity ?? this.accountId;
       if (changed) {
         ++this.generation; this.usagePending = undefined;
         this.activity = { ...this.stamp(), status: 'unavailable', lifetimeTokens: null, peakDailyTokens: null }; this.usageReadAt = -Infinity;
       }
       let buckets = normalizeLimits(value);
       if (!changed) for (const patch of this.patches) buckets = mergeLimits(buckets, patch);
+      this.awaitingAccountRead = !buckets.length;
       this.account = { ...this.stamp(), status: buckets.length ? 'available' : 'unavailable', buckets };
       this.publish(this.account); return this.account;
     }).catch(error => {
