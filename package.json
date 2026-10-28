@@ -29,6 +29,7 @@
     "test:phase3:mobile": "tsx scripts/phase3-mobile-contract.ts",
     "test:phase3:android": "tsx scripts/phase3-android.ts",
     "test:themes:ui": "tsx scripts/themes-ui-contract.ts",
+    "test:themes:loading": "tsx scripts/theme-loading-contract.ts",
     "test:mobile-menu:ui": "tsx scripts/mobile-menu-contract.ts",
     "test:neon:ui": "tsx scripts/neon-ui-contract.ts",
     "test:terminal:ui": "tsx scripts/old-terminal-ui-contract.ts",

@@ -161,11 +161,11 @@ try {
   await desktop.reload(); await ready(desktop);
   for (const name of ['rain-night.webp', 'DejaVuSansMono.ttf']) {
     await select(phone, 'hong-kong-rain');
-    await phone.route(`**/themes/hong-kong-rain/assets/${name}`, route => route.fulfill({ body: 'broken', contentType: name.endsWith('ttf') ? 'font/ttf' : 'image/webp' }));
+    await phone.route(`**/themes/hong-kong-rain/assets/${name}*`, route => route.fulfill({ body: 'broken', contentType: name.endsWith('ttf') ? 'font/ttf' : 'image/webp' }));
     await phone.reload(); await ready(phone);
     await expect(phone.locator('.app-shell')).toHaveAttribute('data-theme-id', 'oracle-eye');
     await expect(phone.getByRole('alert')).toContainText('已恢复默认主题');
-    await phone.unroute(`**/themes/hong-kong-rain/assets/${name}`);
+    await phone.unroute(`**/themes/hong-kong-rain/assets/${name}*`);
   }
   await record('image/font decode errors restore default; simple button selector overrides host specificity');
   expect(calls).not.toContain('turn/start');
@@ -202,8 +202,10 @@ try {
   await rm(installed, { recursive: true }); await phone.reload(); await ready(phone);
   await expect(phone.getByRole('alert')).toContainText('已恢复默认主题'); await themes.install('test-violet');
   await select(phone, 'test-violet'); await phone.route('**/themes/test-violet/bundle', route => route.abort()); await phone.reload(); await ready(phone);
-  await expect(phone.getByRole('alert')).toContainText('已恢复默认主题'); await phone.unroute('**/themes/test-violet/bundle');
-  await record('missing package and network failure preserve usable default');
+  await expect(phone.getByRole('alert')).toContainText('已保留所选主题');
+  expect(await phone.evaluate(() => localStorage.getItem('oraculum.theme:/'))).toBe('test-violet');
+  await phone.unroute('**/themes/test-violet/bundle');
+  await record('missing package resets preference; temporary network failure preserves selection with usable default');
   // Installed trusted CSS can conceal the whole document. Native recovery must
   // bypass the actual persisted package (no injected substitute stylesheet).
   await writeFile(join(installed, 'theme.css'), 'html,body,body *{visibility:hidden!important}');

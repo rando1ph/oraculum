@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { appUrl } from '../../../packages/shared/entry';
-import { DEFAULT_THEME, defaultTheme, THEME_API, themeId, type ThemeBundle, type ThemeCatalog } from '../../../packages/shared/themes';
+import { DEFAULT_THEME, defaultTheme, themeId, type ThemeCatalog } from '../../../packages/shared/themes';
 import { androidShell } from './mobile';
+import { decodeThemeAsset, loadThemeBundle, temporaryThemeFailure } from './theme-loading';
 
 const preferenceKey = `oraculum.theme:${appUrl('').pathname}`;
 let forcedDefault = new URL(location.href).searchParams.get('theme') === 'default';
@@ -25,54 +26,37 @@ async function request<T>(path: string, body?: object): Promise<T> {
   }
   return response.json() as Promise<T>;
 }
-async function decodeAsset(path: string) {
-  const url = new URL(path, location.origin);
-  if (url.origin !== location.origin || !url.pathname.startsWith(appUrl('themes/').pathname)) throw new Error('主题资源越界');
-  if (/\.(woff2?|ttf|otf)$/.test(url.pathname)) {
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    try {
-      await Promise.race([
-        new FontFace('oraculum-theme-probe', `url("${url.href}")`).load(),
-        new Promise<never>((_resolve, reject) => { timer = setTimeout(() => reject(new Error('主题字体加载超时')), 5000); }),
-      ]);
-    } finally { clearTimeout(timer); }
-    return;
-  }
-  const picture = new Image();
-  await new Promise<void>((accept, reject) => {
-    const timer = window.setTimeout(() => { picture.src = ''; reject(new Error('主题图片加载超时')); }, 5000);
-    picture.onload = () => { clearTimeout(timer); accept(); };
-    picture.onerror = () => { clearTimeout(timer); reject(new Error('主题图片损坏或无法加载')); };
-    picture.src = url.href;
-  });
-}
 
 export function useTheme() {
   const [id, setId] = useState(DEFAULT_THEME);
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
-  const active = useRef(DEFAULT_THEME), revision = useRef(''), epoch = useRef(0), pending = useRef(false);
+  const active = useRef(DEFAULT_THEME), desired = useRef(DEFAULT_THEME), revision = useRef(''), epoch = useRef(0), pending = useRef(false);
+  const loading = useRef<AbortController | null>(null);
   const sheet = useRef<HTMLStyleElement | null>(null);
   function save(value: string) {
     try { localStorage.setItem(preferenceKey, value); }
     catch { setNotice('本次主题已应用，但此设备无法保存偏好。'); }
   }
-  function reset(reason = '') {
-    ++epoch.current; pending.current = false; setBusy(false);
+  function clearTheme() {
     sheet.current?.remove(); sheet.current = null; revision.current = '';
-    active.current = DEFAULT_THEME; setId(DEFAULT_THEME); setNotice(reason); save(DEFAULT_THEME);
+    active.current = DEFAULT_THEME; setId(DEFAULT_THEME);
+  }
+  function reset(reason = '') {
+    ++epoch.current; loading.current?.abort(); pending.current = false; setBusy(false);
+    clearTheme(); desired.current = DEFAULT_THEME; setNotice(reason); save(DEFAULT_THEME);
   }
   async function select(next: string, background = false) {
     if (next === DEFAULT_THEME) { reset(); return; }
     if (background && pending.current) return;
-    const ticket = ++epoch.current; pending.current = true;
+    const ticket = ++epoch.current; pending.current = true; desired.current = next;
+    loading.current?.abort();
+    const controller = new AbortController(); loading.current = controller;
     if (!background) { setBusy(true); setNotice(''); }
     try {
-      if (!themeId.test(next)) throw new Error('主题标识无效');
-      const result = await request<ThemeBundle>(`themes/${next}/bundle`);
-      if (result.manifest.themeApi !== THEME_API || result.manifest.id !== next || typeof result.css !== 'string') throw new Error('Theme API 不兼容');
+      const result = await loadThemeBundle(next, controller.signal);
       if (revision.current !== result.revision || active.current !== next) {
-        await Promise.all(result.assets.map(decodeAsset));
+        await Promise.all(result.assets.map(path => decodeThemeAsset(path, controller.signal)));
         if (ticket !== epoch.current) return;
         const nextSheet = document.createElement('style'); nextSheet.dataset.oraculumTheme = next;
         nextSheet.textContent = result.css;
@@ -80,19 +64,32 @@ export function useTheme() {
         sheet.current?.remove(); sheet.current = nextSheet; revision.current = result.revision;
       }
       if (ticket !== epoch.current) return;
-      active.current = next; setId(next); save(next);
+      active.current = next; setId(next); setNotice(''); save(next);
     } catch (error) {
-      if (ticket === epoch.current) reset(`已恢复默认主题：${error instanceof Error ? error.message : '加载失败'}`);
+      if (ticket === epoch.current) {
+        controller.abort();
+        const reason = error instanceof Error ? error.message : '加载失败';
+        if (temporaryThemeFailure(error)) {
+          if (active.current !== next) clearTheme();
+          save(next);
+          setNotice(`主题暂时不可用：${reason}。已保留所选主题，稍后或回到页面时重试；可手动恢复默认主题。`);
+        } else reset(`已恢复默认主题：${reason}`);
+      }
     } finally {
       if (ticket === epoch.current) { pending.current = false; setBusy(false); }
     }
   }
   useEffect(() => {
     void select(savedTheme());
-    const verify = () => { if (!document.hidden && active.current !== DEFAULT_THEME) void select(active.current, true); };
+    let verification: ReturnType<typeof setTimeout> | undefined;
+    // Focus and visibilitychange commonly arrive together on a resumed page.
+    const verify = () => {
+      clearTimeout(verification);
+      verification = setTimeout(() => { if (!document.hidden && desired.current !== DEFAULT_THEME) void select(desired.current, true); }, 250);
+    };
     const timer = window.setInterval(verify, 30_000);
     window.addEventListener('focus', verify); document.addEventListener('visibilitychange', verify);
-    return () => { ++epoch.current; sheet.current?.remove(); clearInterval(timer); window.removeEventListener('focus', verify); document.removeEventListener('visibilitychange', verify); };
+    return () => { ++epoch.current; loading.current?.abort(); sheet.current?.remove(); clearTimeout(verification); clearInterval(timer); window.removeEventListener('focus', verify); document.removeEventListener('visibilitychange', verify); };
   }, []);
   return { id, notice, busy, select, reset };
 }
