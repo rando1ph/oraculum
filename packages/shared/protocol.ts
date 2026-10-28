@@ -14,6 +14,7 @@ import type { SandboxMode } from '../../.local/codex-protocol/v2/SandboxMode';
 import type { SandboxPolicy } from '../../.local/codex-protocol/v2/SandboxPolicy';
 import type { WebSearchMode } from '../../.local/codex-protocol/WebSearchMode';
 import type { LimitsSnapshot, ThreadUsage } from './usage';
+import type { AttachmentDelivery } from './attachments';
 
 export type RpcId = string | number;
 export type WireMessage = {
@@ -43,6 +44,7 @@ export type NativeCapabilities = {
   plan: { available: false; reason: string };
 };
 export type BridgeEvent =
+  | { type: 'attachmentsChanged'; threadId: string; cwd: string; deliveries: AttachmentDelivery[] }
   | { type: 'nativeOperationChanged'; operation: NativeOperation }
   | { type: 'nativeCapabilitiesChanged'; capabilities: NativeCapabilities }
   | { type: 'threadHistoryChanged'; threadId: string; cwd: string; reason: 'revert' | 'compact'; historyRevision: number }
@@ -59,6 +61,7 @@ export type BridgeEvent =
 export type ThreadLifecycleState = 'active' | 'archived' | 'deleted' | 'unknown';
 export type ThreadLifecycleResult = { threadId: string; state: Exclude<ThreadLifecycleState, 'unknown'> };
 export type Snapshot = {
+  attachments?: AttachmentDelivery[];
   thread: Thread;
   pending: Approval[];
   settings?: NativeSessionSettings;

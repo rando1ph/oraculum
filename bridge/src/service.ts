@@ -26,6 +26,9 @@ import { permissionMode, threadPermissions, turnPermissions } from './permission
 import type { ThreadPermissionStore } from './thread-permissions';
 import { NativeUsage } from './usage';
 import { NativeOperations } from './native-operations';
+import { AttachmentStore, type AttachmentOwner } from './attachments';
+import { attachmentId } from '../../packages/shared/attachments';
+import type { Readable } from 'node:stream';
 
 type RequestContext = { deviceId: string; isAuthorized?: () => boolean };
 const nativeMethods = new Set<NativeOperationMethod>(['thread/name/set', 'thread/fork', 'thread/revert', 'turn/steer', 'review/start', 'thread/compact/start']);
@@ -43,6 +46,7 @@ export class BridgeService extends EventEmitter {
   private threadProjects = new Map<string, string>();
   private threadParents = new Map<string, string>();
   private busy = new Set<string>();
+  private startingTurns = new Set<string>();
   private activeTurns = new Map<string, string>();
   private revisions = new Map<string, number>();
   private unknownSends = new Set<string>();
@@ -67,7 +71,7 @@ export class BridgeService extends EventEmitter {
   private liveNativeOperations = new Map<string, NativeOperation>();
   private nameRevisions = new Map<string, number>();
   constructor(readonly codex: Pick<Codex, 'request' | 'send'> & { on(event: string, listener: (...args: any[]) => void): unknown }, readonly cwd: string,
-    private receipts?: ReceiptStore, private projects?: ProjectDirectories, private permissionChoices?: ThreadPermissionStore) {
+    private receipts?: ReceiptStore, private projects?: ProjectDirectories, private permissionChoices?: ThreadPermissionStore, readonly attachments?: AttachmentStore) {
     super();
     this.nativeOperations = receipts?.nativeOperations ?? new NativeOperations();
     this.usage = new NativeUsage((method, params) => codex.request(method, params), snapshot => this.emit('event', { type: 'accountLimits', snapshot } satisfies BridgeEvent));
@@ -233,9 +237,31 @@ export class BridgeService extends EventEmitter {
     if (this.deleted.has(threadId)) throw new Error('会话已删除，请刷新会话列表。');
     if (this.uncertainLifecycle.has(threadId)) throw new Error('会话操作结果未知，请刷新普通及已归档列表核实；不要重复操作。');
     if (!mutation && this.archived.has(threadId)) throw new Error('会话已归档，请先恢复归档。');
+    if (method === 'turn/start' && this.startingTurns.has(threadId)) throw new Error('发送正在进行，请查询状态。');
+    if (method === 'turn/start') this.startingTurns.add(threadId);
     if (mutation) this.lifecycle.add(threadId); else this.beginFlight(threadId);
     try { return await this.dispatchRequest(method, params, context); }
-    finally { if (mutation) this.lifecycle.delete(threadId); else this.endFlight(threadId); }
+    finally { if (method === 'turn/start') this.startingTurns.delete(threadId); if (mutation) this.lifecycle.delete(threadId); else this.endFlight(threadId); }
+  }
+  private attachmentOwner(params: Record<string, unknown>, context?: RequestContext): AttachmentOwner {
+    if (!this.attachments || !this.projects || !this.receipts || !context?.deviceId || !attachmentId(params.draftId) || typeof params.threadId !== 'string' || typeof params.cwd !== 'string') throw new Error('附件上传不可用，或草稿归属无效。');
+    const { cwd, threadId, draftId } = params;
+    const validate = async () => {
+      this.assertAuthorized(context);
+      if (!this.threads.has(threadId) || this.threadCwd(threadId) !== cwd || !this.loaded.has(threadId) ||
+        this.deleted.has(threadId) || this.archived.has(threadId) || this.uncertainLifecycle.has(threadId) || this.lifecycle.has(threadId)) throw new Error('附件不属于已选择的有效项目和会话。');
+      await this.projects!.resolve(cwd);
+      this.assertAuthorized(context);
+    };
+    return { cwd, threadId, draftId, deviceId: context.deviceId, authorized: context.isAuthorized ?? (() => true), validate };
+  }
+  async uploadAttachment(params: Record<string, unknown>, input: Readable, context?: RequestContext) {
+    const owner = this.attachmentOwner(params, context);
+    return this.attachments!.upload(params, input, owner);
+  }
+  async removeAttachment(params: Record<string, unknown>, context?: RequestContext) {
+    const owner = this.attachmentOwner(params, context);
+    return this.attachments!.remove(params.id, owner);
   }
   private async dispatchRequest(method: string, params: Record<string, unknown>, context?: RequestContext): Promise<unknown> {
     if (method === 'bridge/accountUsage') return this.usage.readActivity();
@@ -352,6 +378,7 @@ export class BridgeService extends EventEmitter {
         }
       }
       return { ...result, pending: [...this.pending.values()].filter(r => r.params.threadId === threadId || this.descendsFrom(r.params.threadId, threadId)),
+        attachments: await this.attachments?.deliveries(cwd, threadId, result.thread.turns.map(turn => turn.id)),
         settings: this.settings.get(threadId),
         sendBlocked: this.unknownSends.has(threadId) || !!this.receipts?.blocked(cwd, threadId) || this.nativeSendBlocked(threadId),
         receipts: this.receipts?.list(cwd, threadId),
@@ -361,9 +388,15 @@ export class BridgeService extends EventEmitter {
     if (method === 'turn/start') {
       if (this.busy.has(threadId) || this.activeTurns.has(threadId) || this.receipts?.blocked(cwd, threadId) || this.nativeSendBlocked(threadId)) throw new Error('Turn in progress or native operation result unknown; query state before continuing');
       if (!this.loaded.has(threadId)) throw new Error('Select and resume the thread before starting a turn');
-      if (typeof params.text !== 'string' || !params.text.trim() || params.text.length > 16000) throw new Error('Expected 1–16000 characters');
+      const hasAttachments = Array.isArray(params.attachmentIds) && params.attachmentIds.length > 0;
+      if (typeof params.text !== 'string' || (!params.text.trim() && !hasAttachments) || params.text.length > 16000) throw new Error('Expected 1–16000 characters or attachments');
+      if (params.cwd !== undefined && params.cwd !== cwd) throw new Error('Thread is outside the selected project');
+      // Client paths and binary are never native input. Only owned ready IDs map to files.
+      if (params.input !== undefined || params.path !== undefined || params.attachments !== undefined) throw new Error('只接受服务端附件标识。');
+      const attachmentOwner = params.attachmentIds !== undefined ? this.attachmentOwner({ ...params, cwd }, context) : undefined;
+      const prepared = attachmentOwner ? await this.attachments!.prepare(params.attachmentIds, attachmentOwner) : undefined;
       const request: TurnStartParams = {
-        threadId, input: [{ type: 'text', text: params.text, text_elements: [] }],
+        threadId, input: [{ type: 'text', text: (params.text.trim() ? params.text : '请查看所附文件。') + (prepared?.referenceText ?? ''), text_elements: [] }, ...(prepared?.input ?? [])],
         ...turnPermissions(permissionMode(params.permissionMode)),
         ...(typeof params.model === 'string' && params.model ? { model: params.model } : {}),
         ...(typeof params.effort === 'string' && params.effort ? { effort: params.effort } : {}),
@@ -371,7 +404,7 @@ export class BridgeService extends EventEmitter {
       this.assertAuthorized(context);
       if (this.receipts) {
         if (!context?.deviceId) throw new Error('Authenticated device context required');
-        this.receipts.reserve(params.operationId, cwd, threadId, context.deviceId);
+        this.receipts.reserve(params.operationId, cwd, threadId, context.deviceId, () => { if (prepared) this.attachments!.claim(prepared.rows, params.operationId as string); });
       }
       this.busy.add(threadId);
       this.unknownSends.add(threadId);
@@ -382,9 +415,15 @@ export class BridgeService extends EventEmitter {
       // Deliberately keep unknown sends blocked. A timeout is not a safe retry.
       try {
         const result = await this.codex.request<TurnStartResponse>('turn/start', request);
+        this.attachments?.accepted(params.operationId as string, result.turn.id);
         this.receipts?.accepted(params.operationId as string, result.turn.id);
         this.receipts?.observe(cwd, threadId, result.turn);
         this.unknownSends.delete(threadId);
+        if (prepared?.rows.length) {
+          // Metadata refresh cannot turn a confirmed native ACK into a failed send.
+          const deliveries = await this.attachments!.deliveries(cwd, threadId, [result.turn.id]).catch(() => []);
+          this.emit('event', { type: 'attachmentsChanged', threadId, cwd, deliveries } satisfies BridgeEvent);
+        }
         if (this.busy.has(threadId) && result.turn.status === 'inProgress' && (!this.activeTurns.has(threadId) || this.activeTurns.get(threadId) === result.turn.id)) this.activeTurns.set(threadId, result.turn.id);
         // A confirmed turn ACK remains accepted even if the settings read fails.
         // Never derive effective permissions from the requested preset alone.
@@ -394,6 +433,7 @@ export class BridgeService extends EventEmitter {
         return result;
       } catch (error) {
         if (error instanceof NativeRpcError) {
+          this.attachments?.rejected(params.operationId as string);
           this.receipts?.rejected(params.operationId as string);
           this.busy.delete(threadId);
           this.unknownSends.delete(threadId);

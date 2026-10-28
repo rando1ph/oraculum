@@ -14,7 +14,7 @@ export class ReceiptStore {
     ); CREATE INDEX IF NOT EXISTS receipt_thread ON send_receipts(workspace, thread_id);`);
     this.nativeOperations = new NativeOperations(db);
   }
-  reserve(operationId: unknown, workspace: string, threadId: string, deviceId: string) {
+  reserve(operationId: unknown, workspace: string, threadId: string, deviceId: string, onReserve?: () => void) {
     if (typeof operationId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(operationId)) {
       throw new Error('A unique operation ID is required');
     }
@@ -27,6 +27,7 @@ export class ReceiptStore {
       if (this.blocked(workspace, threadId)) throw new Error('Previous send result unknown or still active; query state');
       this.db.prepare(`INSERT INTO send_receipts VALUES (?, ?, ?, ?, ?, 'unknown', NULL)`)
         .run(operationId, workspace, threadId, deviceId, Date.now());
+      onReserve?.(); // Attachment claims share this transaction and crash boundary.
       this.db.exec('COMMIT');
     } catch (error) { this.db.exec('ROLLBACK'); throw error; }
   }

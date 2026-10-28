@@ -8,6 +8,8 @@ import type { BridgeService } from './service';
 import type { BridgeEvent, WireMessage } from '../../packages/shared/protocol';
 import type { TrustStore } from './trust-store';
 import type { Themes } from './themes';
+import type { Readable } from 'node:stream';
+import { attachmentLimits } from '../../packages/shared/attachments';
 
 export async function createServer(service: BridgeService, port: number, webRoot: string,
   options: { trust?: TrustStore; themes?: Themes; remoteOrigin?: string; remoteBasePath?: string; testOnlyUnauthenticated?: boolean } = {}) {
@@ -47,9 +49,16 @@ export async function createServer(service: BridgeService, port: number, webRoot
       ...ancestors.map(path => `${cookieName(source)}=; Secure; HttpOnly; SameSite=Strict; Path=${path}; Max-Age=0`)];
   let closing = false;
   const connections = new Set<() => void>();
+  let cleaning: Promise<void> | undefined;
+  const cleanupTimer = service.attachments ? setInterval(() => {
+    if (!cleaning) cleaning = service.attachments!.cleanup().catch(() => {}).finally(() => { cleaning = undefined; });
+  }, 60000) : undefined;
+  cleanupTimer?.unref();
   app.addHook('preClose', async () => {
     closing = true;
+    if (cleanupTimer) clearInterval(cleanupTimer);
     for (const cleanup of connections) cleanup();
+    await cleaning;
   });
   // Mark upgraded requests before any rejecting hook. The plugin's onResponse
   // must close rejected upgrade sockets; they cannot serve pooled HTTP traffic.
@@ -79,7 +88,7 @@ export async function createServer(service: BridgeService, port: number, webRoot
   });
   app.addHook('onSend', async (_request, reply) => {
     // CodeMirror inserts stylesheet rules and inline geometry; script policy stays strict.
-    reply.header('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'");
+    reply.header('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob:; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'");
     reply.header('X-Content-Type-Options', 'nosniff');
     // Only explicitly cacheable successful resources may override the default.
     // Errors and responses issuing credentials must never enter a cache.
@@ -137,6 +146,45 @@ export async function createServer(service: BridgeService, port: number, webRoot
       if (device) trust!.revoke(device.id);
       reply.header('Set-Cookie', cookies(source, '', 0));
       return { loggedOut: true };
+    });
+    // Encapsulated raw stream parser: ordinary JSON and WS stay at 64 KiB.
+    await app.register(async uploads => {
+      uploads.addContentTypeParser('application/octet-stream', (_request, payload, done) => done(null, payload));
+      const auth = async (request: FastifyRequest, reply: FastifyReply) => {
+        const source = requestOrigin(request.headers);
+        if (request.headers.origin !== source || request.headers['x-oraculum-upload'] !== '1') return reply.code(403).header('Connection', 'close').send({ error: 'Origin and upload CSRF header required' });
+        if (!service.attachments) return reply.code(503).send({ error: '附件上传不可用。' });
+        if (trust && !trust.authenticate(tokenFrom(request.headers, source), scope(source))) return reply.code(401).header('Connection', 'close').send({ error: 'Device authentication required' });
+      };
+      const context = (request: FastifyRequest) => {
+        const source = requestOrigin(request.headers), token = tokenFrom(request.headers, source);
+        return { deviceId: trust?.authenticate(token, scope(source))?.id ?? 'local-test',
+          isAuthorized: () => !closing && (!trust || !!trust.authenticate(token, scope(source))) };
+      };
+      const metadata = (request: FastifyRequest) => {
+        const value = request.headers['x-oraculum-file'];
+        if (typeof value !== 'string' || value.length > 8192) throw new Error('附件元数据无效。');
+        const parsed: unknown = JSON.parse(decodeURIComponent(value));
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('附件元数据无效。');
+        return parsed as Record<string, unknown>;
+      };
+      uploads.post(base + 'attachments', { config, onRequest: auth, bodyLimit: attachmentLimits.fileBytes }, async (request, reply) => {
+        const stream = request.body as Readable;
+        const cleanup = () => stream?.destroy(new Error('Bridge stopping'));
+        connections.add(cleanup);
+        try {
+          const meta = metadata(request);
+          if (request.headers['content-type'] !== 'application/octet-stream' || !stream || typeof stream[Symbol.asyncIterator] !== 'function' ||
+            request.headers['content-length'] !== undefined && Number(request.headers['content-length']) !== meta.size) throw new Error('附件大小或传输格式无效。');
+          return await service.uploadAttachment(meta, stream, context(request));
+        } catch (error) {
+          return reply.code(400).header('Connection', 'close').send({ error: error instanceof Error && !('code' in error) ? error.message : '附件上传失败。' });
+        } finally { connections.delete(cleanup); }
+      });
+      uploads.post(base + 'attachments/remove', { config, onRequest: auth }, async (request, reply) => {
+        try { return await service.removeAttachment(request.body as Record<string, unknown>, context(request)); }
+        catch (error) { return reply.code(400).send({ error: error instanceof Error && !('code' in error) ? error.message : '附件移除失败。' }); }
+      });
     });
     // Theme endpoints share the exact device trust and entry scope of the WS.
     // Installation takes a candidate directory name, never an arbitrary path.
