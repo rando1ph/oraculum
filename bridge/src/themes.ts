@@ -87,13 +87,14 @@ export class Themes {
     if (!files.has('theme.css')) invalid('缺少 theme.css');
     const assets = new Set([...files.keys()].filter(name => name.startsWith('assets/')));
     const assetBase = `${base}themes/${meta.id}/`;
-    const decode = (name: string) => new TextDecoder('utf-8', { fatal: true }).decode(files.get(name));
-    const css = compileThemeCss(decode('theme.css'), false, assets, assetBase) +
-      (files.has('mobile.css') ? compileThemeCss(decode('mobile.css'), true, assets, assetBase) : '');
     const digest = createHash('sha256');
     for (const [name, bytes] of [...files].sort(([a], [b]) => a.localeCompare(b))) digest.update(name).update(bytes);
-    const bundle: ThemeBundle = { manifest: meta, css, revision: digest.digest('hex'),
-      assets: [...assets].map(name => assetBase + name) };
+    const revision = digest.digest('hex');
+    const decode = (name: string) => new TextDecoder('utf-8', { fatal: true }).decode(files.get(name));
+    const css = compileThemeCss(decode('theme.css'), false, assets, assetBase, revision) +
+      (files.has('mobile.css') ? compileThemeCss(decode('mobile.css'), true, assets, assetBase, revision) : '');
+    const bundle: ThemeBundle = { manifest: meta, css, revision,
+      assets: [...assets].map(name => `${assetBase}${name}?oraculum-revision=${revision}`) };
     return { files, bundle };
   }
   private async entries(root: string, installed: boolean): Promise<ThemeEntry[]> {

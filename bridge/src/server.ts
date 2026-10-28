@@ -3,6 +3,7 @@ import { basePath, httpsOrigin } from '../../packages/shared/entry';
 import websocket from '@fastify/websocket';
 import staticFiles from '@fastify/static';
 import { existsSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import type { BridgeService } from './service';
 import type { BridgeEvent, WireMessage } from '../../packages/shared/protocol';
 import type { TrustStore } from './trust-store';
@@ -80,8 +81,21 @@ export async function createServer(service: BridgeService, port: number, webRoot
     // CodeMirror inserts stylesheet rules and inline geometry; script policy stays strict.
     reply.header('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'");
     reply.header('X-Content-Type-Options', 'nosniff');
-    reply.header('Cache-Control', 'no-store');
+    // Only explicitly cacheable successful resources may override the default.
+    // Errors and responses issuing credentials must never enter a cache.
+    if (reply.statusCode >= 400 || reply.hasHeader('Set-Cookie') || !reply.hasHeader('Cache-Control')) {
+      reply.header('Cache-Control', 'no-store');
+    }
   });
+  const themeResponse = (request: FastifyRequest, reply: FastifyReply, body: string | Buffer) => {
+    // Called only after device authentication and complete package validation.
+    // Hash the actual representation: bundle CSS differs between entry paths.
+    const etag = `"${createHash('sha256').update(body).digest('hex')}"`;
+    reply.header('Cache-Control', 'private, no-cache').header('Vary', 'Cookie, Origin').header('ETag', etag);
+    const candidates = request.headers['if-none-match']?.split(',').map(value => value.trim().replace(/^W\//, ''));
+    if (candidates?.some(value => value === '*' || value === etag)) return reply.code(304).send();
+    return reply.send(body);
+  };
   let failures = 0;
   let windowStart = Date.now();
   for (const base of new Set(['/', ...(remote ? [remoteBase] : [])])) {
@@ -143,14 +157,17 @@ export async function createServer(service: BridgeService, port: number, webRoot
     });
     app.get<{ Params: { id: string } }>(base + 'themes/:id/bundle', themeRoute, async (request, reply) => {
       if (!options.themes) return reply.code(404).send({ error: '主题不存在' });
-      try { return await options.themes.bundle(request.params.id, base); }
+      try {
+        const bundle = await options.themes.bundle(request.params.id, base);
+        return themeResponse(request, reply.type('application/json'), JSON.stringify(bundle));
+      }
       catch (error) { return reply.code(400).send({ error: options.themes.message(error) }); }
     });
     const themeAsset = async (request: FastifyRequest<{ Params: { id: string; '*': string } }>, reply: FastifyReply) => {
       if (!options.themes) return reply.code(404).send({ error: '主题不存在' });
       try {
         const asset = await options.themes.asset(request.params.id, 'assets/' + request.params['*']);
-        return reply.type(asset.type).send(asset.bytes);
+        return themeResponse(request, reply.type(asset.type), asset.bytes);
       } catch (error) { return reply.code(400).send({ error: options.themes.message(error) }); }
     };
     app.get<{ Params: { id: string; '*': string } }>(base + 'themes/:id/assets/*', themeRoute, themeAsset);
@@ -206,8 +223,21 @@ export async function createServer(service: BridgeService, port: number, webRoot
     const serve = async (request: FastifyRequest, reply: FastifyReply) => {
       const base = entryBase(requestOrigin(request.headers));
       const path = request.raw.url!.split('?')[0].slice(base.length);
+      // This build uses Vite's default assets/name-[hash:8].ext output. Keep
+      // unversioned public files outside that reserved naming pattern.
+      // Content hashes change the URL whenever a built asset changes.
+      // HTML and unversioned files are always fetched; in particular, do not
+      // allow a same-second Last-Modified comparison to keep an old entry page.
+      const fingerprinted = /^assets\/[\w.-]+-[\w-]{8}\.(?:js|mjs|css|woff2?|ttf|otf|png|jpe?g|webp|avif|gif|ico|svg)$/.test(path);
+      reply.header('Cache-Control', fingerprinted ? 'public, max-age=31536000, immutable' : 'no-store');
+      if (!fingerprinted) {
+        // @fastify/send can treat If-Modified-Since as fresh even without a
+        // Last-Modified response header. Unversioned files need a full read.
+        delete request.headers['if-modified-since'];
+        delete request.headers['if-none-match'];
+      }
       // No SPA fallback: missing API/resources must not return an HTML success.
-      return reply.sendFile(path || 'index.html');
+      return reply.sendFile(path || 'index.html', { cacheControl: false, etag: fingerprinted, lastModified: fingerprinted });
     };
     app.get('/', serve);
     app.get('/*', serve);

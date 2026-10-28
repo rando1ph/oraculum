@@ -11,7 +11,7 @@ const unescapeCss = (value: string) => value.replace(/\\([0-9a-f]{1,6})\s?|\\([^
 // Trusted local CSS, not a sandbox. Parse for author errors and resolve package
 // resources; do not audit selectors, properties, contrast, layout or animation.
 // External/absolute URLs retain their standard meaning under the existing CSP.
-export function compileThemeCss(css: string, mobile: boolean, assets: ReadonlySet<string>, assetBase: string): string {
+export function compileThemeCss(css: string, mobile: boolean, assets: ReadonlySet<string>, assetBase: string, revision?: string): string {
   if (Buffer.byteLength(css) > 64 * 1024 || css.includes('\0')) fail('invalid characters or size');
   let root;
   try { root = postcss.parse(css); } catch (error) {
@@ -23,7 +23,11 @@ export function compileThemeCss(css: string, mobile: boolean, assets: ReadonlySe
     if (/^(?:[a-z][a-z0-9+.-]*:|\/|#)/i.test(url)) return raw;
     const path = url.replace(/^\.\//, '').split(/[?#]/, 1)[0];
     if (!assets.has(path)) return fail(`missing or unsupported local asset: ${path}`);
-    return assetBase + url.replace(/^\.\//, '');
+    const resolved = assetBase + url.replace(/^\.\//, '');
+    if (!revision) return resolved;
+    const fragment = resolved.indexOf('#');
+    const resource = fragment < 0 ? resolved : resolved.slice(0, fragment);
+    return `${resource}${resource.includes('?') ? '&' : '?'}oraculum-revision=${revision}${fragment < 0 ? '' : resolved.slice(fragment)}`;
   }
   function resources(value: string, importRule = false) {
     const parsed = valueParser(value);

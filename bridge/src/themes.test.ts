@@ -221,7 +221,7 @@ describe('read-only built-in themes', () => {
       expect(bundle.json().css).toContain(`${base}themes/${id}/assets/night.png`);
       const asset = await server.inject({ url: `${base}themes/${id}/assets/night.png`, headers: auth });
       expect(asset.statusCode).toBe(200); expect(asset.headers['content-type']).toContain('image/png');
-      expect(asset.headers['x-content-type-options']).toBe('nosniff'); expect(asset.headers['cache-control']).toBe('no-store');
+      expect(asset.headers['x-content-type-options']).toBe('nosniff'); expect(asset.headers['cache-control']).toBe('private, no-cache');
       trust.revoke(paired.device.id);
       expect((await server.inject({ url: `${base}themes/${id}/bundle`, headers: auth })).statusCode).toBe(401);
       expect((await server.inject({ url: `${base}themes/${id}/assets/night.png`, headers: auth })).statusCode).toBe(401);
@@ -250,7 +250,7 @@ describe('authenticated theme HTTP boundary', () => {
       expect((await server.inject({ url: base + `themes/${meta.id}/bundle`, headers: auth })).statusCode).toBe(200);
       const asset = await server.inject({ url: base + `themes/${meta.id}/assets/p.png`, headers: auth });
       expect(asset.statusCode).toBe(200); expect(asset.headers['content-type']).toContain('image/png');
-      expect(asset.headers['x-content-type-options']).toBe('nosniff'); expect(asset.headers['cache-control']).toBe('no-store');
+      expect(asset.headers['x-content-type-options']).toBe('nosniff'); expect(asset.headers['cache-control']).toBe('private, no-cache');
       // The injector can normalize encoded dot segments before routing; both
       // canonical-path rejection and a missing route must deny file exposure.
       const traversal = await server.inject({ url: base + `themes/${meta.id}/assets/%2e%2e/manifest.json`, headers: auth });
