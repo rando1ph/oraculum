@@ -158,8 +158,9 @@ try {
     await trigger.click(); await expect(dialog(page, label)).toBeVisible(); await insideViewport(page, dialog(page, label));
     expect(await dialog(page, label).innerText()).not.toMatch(/继承|默认|即将支持/);
     if (label === '更多操作') {
-      await expect(dialog(page, label)).toHaveText(''); await expect(dialog(page, label).locator('*')).toHaveCount(0);
-      await expect(dialog(page, label).locator('button, a, input, [role="button"], [role="menuitem"]')).toHaveCount(0);
+      await expect(dialog(page, label).getByRole('button', { name: '添加图片或文档', exact: true })).toBeEnabled();
+      await expect(dialog(page, label)).toContainText('最多 6 个，单个 20 MB，合计 50 MB');
+      await expect(dialog(page, label).locator('button, a, input, [role="button"], [role="menuitem"]')).toHaveCount(1);
     }
     await page.keyboard.press('Escape'); await expect(dialog(page, label)).toHaveCount(0);
     await trigger.click(); await page.locator('.conversation-header').click({ position: { x: 100, y: 20 } }); await expect(dialog(page, label)).toHaveCount(0);
@@ -167,7 +168,7 @@ try {
       await trigger.click(); expect(await page.evaluate(() => (window as any).oraculumAndroidBack())).toBe(true); await expect(dialog(page, label)).toHaveCount(0);
     }
   }
-  record('all menus open/close by Escape and outside click; emulated Android Back closes menus; + tray has no text, children or actions');
+  record('all menus open/close by Escape and outside click; emulated Android Back closes menus; + tray exposes only the bounded attachment picker');
   const modelValues = ['fixture-one', 'fixture-two', 'fixture-long'];
   for (const page of [desktop, phone]) {
     const menu = dialog(page, '模型与思考强度');
@@ -304,7 +305,7 @@ try {
     await selectPermission(page, 'full-access');
     await expect(permissionTrigger(page)).toHaveCSS('color', await themeColor(page, '--warning'));
     await selectPermission(page, 'read-only');
-    await moreTrigger(page).click(); await expect(dialog(page, '更多操作')).toHaveText(''); await page.keyboard.press('Escape');
+    await moreTrigger(page).click(); await expect(dialog(page, '更多操作').getByRole('button', { name: '添加图片或文档', exact: true })).toBeEnabled(); await page.keyboard.press('Escape');
   }
   await phone.addStyleTag({ content: '[data-theme-slot="composer"] { border-radius: 20px; } [data-theme-slot="user-message"], [data-theme-slot="assistant-message"] { border-radius: 18px; }' });
   await geometry(phone, 375, 812); await expect(phone.locator('.composer')).toHaveCSS('border-radius', '20px');

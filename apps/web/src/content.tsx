@@ -5,6 +5,7 @@ import type { ThreadItem } from '../../../packages/shared/protocol';
 import { MessageIdentity } from './identity-ui';
 import { analyzeDiff } from './diff-lines';
 import { displayPath } from './paths';
+import { AttachmentCards } from './attachments';
 import './content.css';
 
 export function Copy({ text }: { text: string }) {
@@ -78,14 +79,14 @@ const itemLabels: Partial<Record<ThreadItem['type'], string>> = {
   enteredReviewMode: '开始审阅', exitedReviewMode: '审阅结果', contextCompaction: '上下文整理',
 };
 
-export function Item({ item, showDiff, showDetails, cwd, live = false, progress }: { item: ThreadItem; showDiff?: (path: string, diff: string) => void; showDetails?: (item: ThreadItem) => void; cwd?: string; live?: boolean; progress?: string[] }) {
+export function Item({ item, showDiff, showDetails, cwd, live = false, progress, attachments }: { item: ThreadItem; showDiff?: (path: string, diff: string) => void; showDetails?: (item: ThreadItem) => void; cwd?: string; live?: boolean; progress?: string[]; attachments?: import('../../../packages/shared/attachments').AttachmentDelivery }) {
   if (item.type === 'agentMessage') return <article data-theme-slot="assistant-message" data-message-role="assistant" className="message agent-message">
     <header className="message-heading"><MessageIdentity role="assistant"/><div className="message-actions"><Copy text={item.text}/></div></header>
     <div className="message-body"><Message text={item.text}/></div>
   </article>;
   if (item.type === 'userMessage') return <article data-theme-slot="user-message" data-message-role="user" className="message user">
     <header className="message-heading"><MessageIdentity role="user"/></header>
-    <div className="message-body"><p>{item.content.map(input => input.type === 'text' ? input.text : `[${input.type}]`).join('\n')}</p></div>
+    <div className="message-body"><p>{item.content.map(input => input.type === 'text' ? attachments?.referenceText && input.text.endsWith(attachments.referenceText) ? input.text.slice(0, -attachments.referenceText.length) : input.text : attachments && input.type === 'localImage' ? '' : `[${input.type}]`).filter(Boolean).join('\n')}</p>{attachments && <AttachmentCards delivery={attachments}/>}</div>
   </article>;
   if (item.type === 'plan') return <article data-theme-slot="tool" className="tool plan"><div className="tool-heading"><Glyph kind="plan"/><span>计划</span><span className="native-label">Codex</span></div><Message text={item.text}/></article>;
   if (item.type === 'commandExecution') return <details data-theme-slot="tool" className="tool command">

@@ -22,7 +22,7 @@ export type WireMessage = {
   method?: string;
   params?: Record<string, unknown>;
   result?: unknown;
-  error?: { code: number; message: string };
+  error?: { code: number; message: string; sendStatus?: 'notSent' | 'rejected' | 'unknown' | 'accepted' };
 };
 export type Approval = Extract<ServerRequest, { method: 'item/commandExecution/requestApproval' | 'item/fileChange/requestApproval' | 'item/tool/requestUserInput' | 'mcpServer/elicitation/request' | 'item/permissions/requestApproval' }> & { bridgeToken?: string; displayThreadIds?: string[] };
 export type NativeSessionSettings = {

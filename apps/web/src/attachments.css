@@ -1,0 +1,26 @@
+.attachment-tray { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr)); gap: 8px; max-height: 190px; overflow-y: auto; margin: 4px 0 10px; }
+.attachment-tile, .attachment-card { display: flex; gap: 10px; align-items: center; min-width: 0; padding: 9px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface, #111b24); }
+.attachment-thumbnail { width: 44px; height: 44px; object-fit: cover; flex-shrink: 0; border-radius: 7px; background: color-mix(in srgb, currentColor 6%, transparent); }
+.attachment-file-icon { display: grid; place-items: center; color: var(--accent); flex-shrink: 0; }
+.attachment-info { display: flex; flex-direction: column; gap: 4px; min-width: 0; flex: 1; }
+.attachment-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; line-height: 1.4; }
+.attachment-info small { color: var(--muted); font-size: 11px; line-height: 1.4; }
+.attachment-tile-actions { display: flex; flex-shrink: 0; }
+.attachment-tile-actions button { display: grid; place-items: center; width: 32px; height: 36px; padding: 0; border: 0; background: transparent; }
+.attachment-tile progress { height: 3px; width: 100%; accent-color: var(--accent); }
+.attachment-error { color: var(--danger, #ff9d9d); font-size: 12px; line-height: 1.5; margin: 4px 0; overflow-wrap: anywhere; }
+.attachment-tile.failed { border-color: var(--danger, #ff9d9d); }
+.attachment-hint { color: var(--muted); font-size: 11px; line-height: 1.5; margin: 0 0 6px; }
+.attachment-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(210px, 100%), 1fr)); gap: 8px; margin: 10px 0 0; }
+.attachment-card { background: transparent; max-width: 380px; }
+.composer.is-dragging { outline: 2px solid var(--accent); outline-offset: -3px; }
+.attachment-picker { display: none; }
+.composer-popover-more > button { width: 100%; display: flex; gap: 10px; align-items: center; min-height: 44px; }
+@media (max-width: 760px) {
+  .attachment-tray { display: flex; overflow-x: auto; max-height: 164px; scroll-snap-type: x proximity; }
+  .attachment-tile { flex: 0 0 min(290px, 94%); scroll-snap-align: start; }
+  .attachment-tile-actions button { min-width: 44px; min-height: 44px; }
+  .attachment-cards { grid-template-columns: 1fr; }
+}
+
+.composer-popover-more { height: auto; padding: 7px; }

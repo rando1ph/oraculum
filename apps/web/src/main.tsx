@@ -1,6 +1,8 @@
 import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { createRoot } from 'react-dom/client';
-import { BridgeClient } from '../../../packages/shared/client';
+import { BridgeClient, BridgeRpcError } from '../../../packages/shared/client';
+import { attachmentAccept } from '../../../packages/shared/attachments';
+import { AttachmentTray, useAttachments } from './attachments';
 import type { BridgeEvent, LocalConfig, Model, NativeOperation, NativeOperationMethod, ProjectList, Snapshot, Thread, ThreadItem } from '../../../packages/shared/protocol';
 import type { ThreadStartResponse } from '../../../.local/codex-protocol/v2/ThreadStartResponse';
 import type { ThreadListResponse } from '../../../.local/codex-protocol/v2/ThreadListResponse';
@@ -83,6 +85,10 @@ function App() {
   const [settings, setSettings] = useState(false);
   const [browsing, setBrowsing] = useState(false);
   const [expanded, setExpanded] = useState(false);
+  const [draggingFiles, setDraggingFiles] = useState(false);
+  const attachmentPicker = useRef<HTMLInputElement>(null);
+  const pickerScope = useRef('');
+  const { queues: attachmentQueues, queue: attachmentQueue } = useAttachments(config?.cwd ?? '', session.thread?.id ?? '');
   const [atBottom, setAtBottom] = useState(true);
   const client = useRef<BridgeClient>(null);
   const selected = useRef('');
@@ -348,6 +354,10 @@ function App() {
   }
   function apply(message: BridgeEvent, restoring = false) {
     const state = useSession.getState();
+    if (message.type === 'attachmentsChanged' && message.cwd === state.thread?.cwd && message.threadId === state.thread.id) {
+      useSession.setState({ attachments: [...state.attachments.filter(prior => !message.deliveries.some(value => value.operationId === prior.operationId)), ...message.deliveries] });
+      return;
+    }
     if (message.type === 'settingsChanged' && message.threadId === state.thread?.id) {
       useSession.setState({ settings: message.settings });
       const key = settingsDraftKey(workspace.current, message.threadId);
@@ -652,9 +662,21 @@ function App() {
   const nativeRunning = session.nativeOperations.find(operation => operation.state === 'running');
   const nativePending = nativeRunning ?? session.nativeOperations.find(operation => ['accepted', 'unknown'].includes(operation.state) && ['review/start', 'thread/compact/start', 'thread/revert', 'turn/steer'].includes(operation.method));
   const methodBlock = (method: NativeOperationMethod, threadId = selected.current) => (threadId === session.thread?.id ? session.nativeOperations : backgroundNative).some(operation => operation.threadId === threadId && operation.method === method && ['running', 'accepted', 'unknown'].includes(operation.state)) ? '此操作尚未确认完成，请查询状态，勿重复操作。' : '';
-  const canSend = projectAvailable && connected && synced && !!session.thread && !active && !session.sendBlocked && !session.historyReloading && !nativePending && !steerDraft && !sending && !switching && !lifecycleBusy && !!text.trim();
+  const canAttach = projectAvailable && connected && synced && !!session.thread && !active && !session.sendBlocked && !session.historyReloading && !nativePending && !steerDraft && !sending && !switching && !lifecycleBusy;
+  const canSend = canAttach && attachmentQueues.ready(attachmentQueue) && (!!text.trim() || !!attachmentQueue.files.length);
+  const attachmentScope = JSON.stringify([config?.cwd, session.thread?.id]);
+  const canAttachNow = () => canAttach && !nativeSubmitting.current && selected.current === attachmentQueue.scope.threadId && workspace.current === attachmentQueue.scope.cwd;
+  function addAttachments(files: File[]) { if (!canAttachNow()) { setError('请先选择可发送消息的会话，再添加附件。运行中的补充指令仅支持文字。'); return; } attachmentQueues.add(attachmentQueue, files); }
+  function openAttachmentPicker() { if (!canAttachNow()) return; pickerScope.current = attachmentScope; attachmentPicker.current?.click(); }
+  useEffect(() => { attachmentQueues.reconcile(attachmentQueue, session.receipts); }, [attachmentQueues, attachmentQueue, session.receipts]);
+  useEffect(() => { setDraggingFiles(false); }, [attachmentScope]);
+  useEffect(() => {
+    const preventFileNavigation = (event: DragEvent) => { if (event.dataTransfer?.types.includes('Files')) event.preventDefault(); };
+    window.addEventListener('dragover', preventFileNavigation); window.addEventListener('drop', preventFileNavigation);
+    return () => { window.removeEventListener('dragover', preventFileNavigation); window.removeEventListener('drop', preventFileNavigation); };
+  }, []);
   const canSteer = projectAvailable && connected && synced && !!session.activeTurn && !session.pending.length && !steerDeliveryBlocked(session.sendBlocked, session.receipts, session.activeTurn, session.nativeOperations.some(operation => operation.method === 'review/start' && operation.state === 'accepted' && operation.turnId === session.activeTurn)) && !session.historyReloading && !steerOperationBlocked(session.nativeOperations, session.activeTurn) && !sending && !switching && !lifecycleBusy && !!text.trim()
-    && !session.nativeCapabilities?.unsupportedMethods.includes('turn/steer') && (!steerDraft || steerDraft.threadId === session.thread?.id && steerDraft.turnId === session.activeTurn);
+    && !attachmentQueue.files.length && !session.nativeCapabilities?.unsupportedMethods.includes('turn/steer') && (!steerDraft || steerDraft.threadId === session.thread?.id && steerDraft.turnId === session.activeTurn);
   async function steer() {
     if (!canSteer || composing.current || nativeSubmitting.current) return;
     const observedThread = session.thread!.id;
@@ -674,7 +696,7 @@ function App() {
   function submitComposer() { if (useSession.getState().activeTurn || steerBinding.current) void steer(); else void send(); }
   async function send() {
     if (!canSend || composing.current || nativeSubmitting.current || steerBinding.current || useSession.getState().activeTurn) return;
-    setSending(true); setError(''); follow.current = true;
+    nativeSubmitting.current = true; setSending(true); setError(''); follow.current = true;
     const submittedRevision = draftRevision.current;
     const submittedSettings = useSession.getState().settings;
     const submittedKey = settingsKey;
@@ -686,14 +708,16 @@ function App() {
     }
     saveChoices(submittedChoices, submittedKey);
     try {
-      await client.current!.request('turn/start', { threadId: submittedThread, text, ...composerOverrides(submittedChoices) }, operationId);
+      const attachments = attachmentQueues.begin(attachmentQueue, operationId);
+      await client.current!.request('turn/start', { threadId: submittedThread, text, ...composerOverrides(submittedChoices), ...attachments }, operationId);
+      attachmentQueues.settled(attachmentQueue, operationId, 'accepted');
       const acknowledged = acknowledgedComposerDraft(parseComposerDraft(readSaved(submittedKey)), operationId);
       const current = useSession.getState();
       const readback = current.thread?.id === submittedThread ? current.settings : undefined;
       saveChoices(readback !== submittedSettings ? confirmedComposerDraft(acknowledged, readback) : acknowledged, submittedKey);
       if (draftRevision.current === submittedRevision && selected.current === submittedThread) writeDraft('');
-    } catch (value) { report(value); setSynced(false); }
-    finally { setSending(false); }
+    } catch (value) { attachmentQueues.settled(attachmentQueue, operationId, value instanceof BridgeRpcError ? value.sendStatus ?? 'unknown' : 'unknown'); report(value); setSynced(false); }
+    finally { nativeSubmitting.current = false; setSending(false); }
   }
   async function older() {
     const id = selected.current;
@@ -817,6 +841,7 @@ function App() {
             {groupTurns(items, session.turns).map(group => <TurnProcess key={`${session.thread?.id}:${group.id}`} {...group} threadId={session.thread?.id}
               pending={hasTurnApproval(session.pending, session.thread?.id, group.id, session.activeTurn)}
               connected={connected} synced={synced} plan={session.plans[group.id]} planAfter={session.planAfter[group.id]} diff={session.diffs[group.id]} cwd={session.thread?.cwd}
+              attachments={session.attachments.find(delivery => delivery.turnId === group.id)}
               showDiff={openDiff} showDetails={openItem} onToggle={() => { follow.current = false; }}/>) }
           </div>
           <section aria-label="待审批" className="approvals">
@@ -830,11 +855,18 @@ function App() {
         </div>
       </div>
       <div className="jump-latest-slot">{!atBottom && <button className="jump-latest" onClick={() => { follow.current = true; scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: 'smooth' }); }}><Icon name="arrowDown" size={14}/>返回最新{session.pending.length ? ' · 待审批' : ''}</button>}</div>
-      <form ref={composerForm} data-theme-slot="composer" className={`composer ${expanded ? 'expanded' : ''}`} onSubmit={event => { event.preventDefault(); submitComposer(); }}>
+      <form ref={composerForm} data-theme-slot="composer" className={`composer ${expanded ? 'expanded' : ''} ${draggingFiles ? 'is-dragging' : ''}`} onSubmit={event => { event.preventDefault(); submitComposer(); }}
+        onDragOver={event => { if (event.dataTransfer.types.includes('Files')) { event.preventDefault(); event.dataTransfer.dropEffect = canAttach ? 'copy' : 'none'; setDraggingFiles(canAttach); } }}
+        onDragLeave={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDraggingFiles(false); }}
+        onDrop={event => { if (event.dataTransfer.types.includes('Files')) { event.preventDefault(); setDraggingFiles(false); addAttachments(Array.from(event.dataTransfer.files)); } }}
+        onPaste={event => { const images = Array.from(event.clipboardData.items).filter(item => item.kind === 'file' && item.type.startsWith('image/')).map(item => item.getAsFile()).filter((file): file is File => !!file); if (images.length) { event.preventDefault(); addAttachments(images); } }}>
+        <input ref={attachmentPicker} className="attachment-picker" type="file" multiple accept={attachmentAccept} aria-label="选择图片或文档" onChange={event => { const files = Array.from(event.currentTarget.files ?? []); event.currentTarget.value = ''; if (pickerScope.current === attachmentScope) addAttachments(files); }}/>
         <div className="composer-context model-controls">
           <button type="button" className="composer-control project-control" aria-label={`项目：${projectLabel}`} title={projectLabel} aria-haspopup="dialog" aria-expanded={composerMenu === 'project'} disabled={disabled} onClick={event => toggleComposerMenu('project', event.currentTarget)}><Icon name="folder"/><span className="composer-value">{projectLabel}</span><Icon name="chevron" size={12}/></button>
           <button type="button" className="composer-control model-control" aria-label={`模型与思考强度：${modelLabel} · ${effort || '未读取'}`} title={`${modelLabel} · ${effort || '未读取'}`} aria-haspopup="dialog" aria-expanded={composerMenu === 'model'} data-state={choices.model || choices.effort ? 'pending' : 'native'} disabled={disabled || active || !synced || !projectAvailable || session.sendBlocked} onClick={event => toggleComposerMenu('model', event.currentTarget)}><Icon name="model"/><span className="composer-value">{modelLabel}</span>{effort && <span className="effort-badge">{effort}</span>}<Icon name="chevron" size={12}/></button>
         </div>
+        <AttachmentTray queue={attachmentQueue} queues={attachmentQueues} locked={sending || switching || lifecycleBusy}/>
+        {!!attachmentQueue.files.length && <p className="attachment-hint">最多 6 个 · 单个 20 MB · 合计 50 MB。文档通过主机工具读取。{active ? '附件保留到下一轮发送。' : ''}</p>}
         <div className="composer-input"><label className="sr-only" htmlFor="message">消息</label><textarea ref={composer} id="message" enterKeyHint="enter" onCompositionStart={() => { composing.current = true; }} onCompositionEnd={() => { composing.current = false; }} value={text} onChange={event => writeDraft(event.target.value)} placeholder={brandCopy.placeholder} maxLength={16000} rows={2} onKeyDown={event => { if (event.key === 'Enter' && (event.ctrlKey || event.metaKey) && !event.nativeEvent.isComposing && !composing.current && event.keyCode !== 229) { event.preventDefault(); submitComposer(); } }}/><button className="icon-button expand-composer" type="button" aria-label={expanded ? '收起输入框' : '展开输入框'} title="展开输入框" onClick={() => setExpanded(value => !value)}><Icon name="expand" size={15}/></button></div>
         {steerDraft && <div className="steer-draft-status" role="status">{active && session.activeTurn === steerDraft.turnId ? '补充到当前运行，不开启新一轮。' : '原运行已结束或切换，草稿已保留。'}{!active && <button type="button" onClick={() => bindSteerDraft(undefined)}>作为新消息</button>}</div>}
         <div className="composer-toolbar">
@@ -848,6 +880,7 @@ function App() {
           </div>
         </div>
         {composerMenu && <div ref={composerPanel} className={`composer-popover composer-popover-${composerMenu}`} data-level={composerMenu === 'model' ? modelMenuLevel : undefined} role="dialog" aria-label={{ project: '项目', model: '模型与思考强度', permission: '权限', more: '更多操作' }[composerMenu]} tabIndex={-1} onKeyDown={composerMenu === 'model' ? navigateModelMenu : undefined}>
+          {composerMenu === 'more' && <><button type="button" disabled={!canAttach} onClick={() => { closeComposerMenu(); openAttachmentPicker(); }}><Icon name="file"/>添加图片或文档</button><p className="attachment-hint">PNG / JPEG / WebP、PDF、Office、CSV、TXT、MD。最多 6 个，单个 20 MB，合计 50 MB。{!session.thread ? '请先选择或新建会话。' : active ? '请在当前运行结束后添加附件。' : ''}</p></>}
           {composerMenu === 'project' && <>
             <div role="radiogroup" aria-label="项目" className="composer-choice-list">{projects.projects.map(project => <button type="button" role="radio" aria-checked={project.cwd === config?.cwd} data-value={project.cwd} key={project.cwd} disabled={disabled || project.available === false} onClick={() => { closeComposerMenu(true); void selectProject(project.cwd).catch(report); }}><Icon name="folder" size={17}/><span>{project.name}{projects.projects.filter(entry => entry.name === project.name).length > 1 && <small>{project.cwd}</small>}</span>{project.cwd === config?.cwd && <Icon name="check" size={16}/>}</button>)}</div>
             <button type="button" className="composer-add-project" onClick={() => { closeComposerMenu(); setBrowsing(true); }}><Icon name="plus" size={17}/>添加项目</button>
@@ -899,7 +932,7 @@ function App() {
       <h3>连接</h3><p className="path">{connectionLabel} · {location.origin}{new URL('.', location.href).pathname}</p><button disabled={connecting || sending || approving} onClick={() => void connect().catch(report)}><Icon name="refresh" size={15}/>重新连接</button>
       {androidShell && <a className="server-settings-link" href="oraculum://settings/server"><Icon name="settings"/>服务器地址</a>}
       <h3>工作目录</h3><p className="path">{config?.cwd}</p><p>从导航浏览 Ubuntu 主机文件夹并添加已有项目。</p>
-      <p>当前支持文本消息；尚未接入附件上传或完整文件读取。</p>
+      <p>可发送图片和 PDF、Office、CSV、TXT、Markdown 文档。图片直接交给 Codex；文档上传到当前主机项目，由原生工具读取并遵循已有审批。每批最多 6 个、单个 20 MB、合计 50 MB。</p>
     </div></dialog>
   </main>;
 }

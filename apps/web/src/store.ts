@@ -20,6 +20,7 @@ type State = {
   plan: string;
   sendBlocked: boolean;
   receipts: NonNullable<Snapshot['receipts']>;
+  attachments: NonNullable<Snapshot['attachments']>;
   nativeOperations: NativeOperation[];
   nativeCapabilities?: Snapshot['nativeCapabilities'];
   historyRevision: number;
@@ -35,7 +36,7 @@ type State = {
 };
 const empty = () => ({ thread: undefined, items: {}, turns: {}, pending: [], events: [], notices: [],
   activeTurn: undefined, lastTurnId: undefined, history: undefined, settings: undefined, sendBlocked: false, receipts: [],
-  nativeOperations: [], nativeCapabilities: undefined, historyRevision: 0, historyReloading: false, discardedTurns: [],
+  attachments: [], nativeOperations: [], nativeCapabilities: undefined, historyRevision: 0, historyReloading: false, discardedTurns: [],
   diffs: {}, plans: {}, planAfter: {}, plan: '' });
 
 // Native pages define the order of their items. Keep observed-only records at
@@ -99,12 +100,12 @@ export const useSession = create<State>((set, get) => ({
   invalidateHistory: revision => {
     const state = get();
     if (revision <= state.historyRevision) return;
-    set({ items: {}, turns: {}, pending: [], receipts: [], diffs: {}, plans: {}, planAfter: {}, plan: '',
+    set({ items: {}, turns: {}, pending: [], receipts: [], attachments: [], diffs: {}, plans: {}, planAfter: {}, plan: '',
       activeTurn: undefined, lastTurnId: undefined, history: undefined, historyRevision: revision,
       historyReloading: true, sendBlocked: true,
       discardedTurns: [...new Set([...state.discardedTurns, ...Object.keys(state.turns)])] });
   },
-  snapshot: ({ thread, pending, history, settings, sendBlocked, receipts, nativeOperations, nativeCapabilities, historyRevision = 0 }) => {
+  snapshot: ({ thread, pending, history, settings, sendBlocked, receipts, attachments, nativeOperations, nativeCapabilities, historyRevision = 0 }) => {
     const state = get();
     const same = state.thread?.id === thread.id;
     if (same && historyRevision < state.historyRevision) return;
@@ -118,6 +119,7 @@ export const useSession = create<State>((set, get) => ({
     const discarded = same ? [...new Set([...state.discardedTurns, ...(!retain ? Object.keys(state.turns) : [])])] : [];
     set({ ...(retain ? {} : empty()), thread, pending, items, history, settings, sendBlocked: !!sendBlocked, receipts: receipts ?? [],
       nativeOperations: nativeOperations ?? [], nativeCapabilities, historyRevision, historyReloading: false,
+      attachments: [...(retain ? state.attachments.filter(prior => !attachments?.some(value => value.operationId === prior.operationId)) : []), ...(attachments ?? [])],
       discardedTurns: discarded.filter(id => !(id in turns)),
       turns, lastTurnId, plan: retain && lastTurnId ? state.plans[lastTurnId] ?? '' : '',
       activeTurn: thread.turns.find(turn => turns[turn.id].status === 'inProgress')?.id });
@@ -129,6 +131,7 @@ export const useSession = create<State>((set, get) => ({
     const incoming = nativeItems(snapshot.thread, state.items);
     const ordered = nativeOrder(state.items, incoming, 'after');
     set({ items: Object.fromEntries(Object.keys(ordered).map(key => [key, state.items[key] ?? ordered[key]])),
+      attachments: [...state.attachments.filter(prior => !snapshot.attachments?.some(value => value.operationId === prior.operationId)), ...(snapshot.attachments ?? [])],
       turns: nativeOrder(state.turns, Object.fromEntries(snapshot.thread.turns.map(turn =>
         [turn.id, state.turns[turn.id] ?? turn])), 'after'),
       history: snapshot.history, discardedTurns: state.discardedTurns.filter(id => !snapshot.thread.turns.some(turn => turn.id === id)) });

@@ -1,6 +1,6 @@
 import { EventEmitter } from 'node:events';
 import { randomUUID } from 'node:crypto';
-import { mkdtemp, mkdir, rm, readFile, rename, symlink, chmod, writeFile, stat, open } from 'node:fs/promises';
+import { mkdtemp, mkdir, rm, readFile, rename, symlink, link, chmod, writeFile, stat, open } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable, PassThrough } from 'node:stream';
@@ -158,15 +158,20 @@ it('enforces batch and storage quotas, expiry and authenticated removal; IDs nev
   const remove = (id: string, extra = {}) => f.app.inject({ method: 'POST', url: '/console/attachments/remove', headers: f.headers, payload: { ...f.meta, id, ...extra } });
   expect((await remove(files[0]!.id, { draftId: randomUUID() })).statusCode).toBe(400);
   expect((await remove(files[0]!.id)).statusCode).toBe(200);
+  expect((await remove(files[0]!.id)).statusCode).toBe(200);
   await expect(f.start([files[0]!.id])).rejects.toThrow('失效');
   f.advance(attachmentLimits.readyMs + 1); await f.attachments.cleanup();
   for (const file of files) await expect(readFile(join(f.cwd, inboxName, file.id, 'input.txt'))).rejects.toThrow();
+  expect((await remove(files[1]!.id)).statusCode).toBe(200);
+  expect((await remove(files[1]!.id, { draftId: randomUUID() })).statusCode).toBe(400);
   await expect(f.start([files[1]!.id])).rejects.toThrow('失效');
 });
 
 it('pins project/inbox directories and rejects symlink, replacement, hardlink and content changes before native use', async () => {
   const f = await fixture(), file = await f.file();
   const path = join(f.cwd, inboxName, file.id, 'input.txt');
+  const alias = join(f.temp, 'hardlink-alias'); await link(path, alias);
+  await expect(f.start([file.id])).rejects.toThrow('变化'); await rm(alias);
   await chmod(path, 0o600); await writeFile(path, 'tampered!');
   await expect(f.start([file.id])).rejects.toThrow('变化');
   await rm(path); await symlink('/etc/passwd', path); await expect(f.start([file.id])).rejects.toThrow();
@@ -214,4 +219,64 @@ it('rolls back the receipt if an attachment is no longer claimable', async () =>
   f.advance(attachmentLimits.readyMs + 1);
   expect(() => f.receipts.reserve(randomUUID(), f.cwd, f.thread.id, f.first.device.id, () => f.attachments.claim(prepared.rows, randomUUID()))).toThrow();
   expect(f.receipts.list(f.cwd, f.thread.id)).toEqual([]);
+});
+
+it('reports authenticated send outcomes without letting another device release an uncertain submission', async () => {
+  const f = await fixture(), file = await f.file();
+  const socket = await f.app.injectWS('/console/ws', { headers: f.headers });
+  const request = (id: string, attachmentIds: string[]) => new Promise<any>(resolve => {
+    const onMessage = (raw: Buffer) => { const message = JSON.parse(raw.toString()); if (message.id === id) { socket.off('message', onMessage); resolve(message); } };
+    socket.on('message', onMessage); socket.send(JSON.stringify({ id, method: 'turn/start', params: { ...f.meta, operationId: id, attachmentIds, text: 'fixture' } }));
+  });
+  try {
+    expect((await request(randomUUID(), [randomUUID()])).error.sendStatus).toBe('notSent');
+    f.send.mockRejectedValueOnce(new NativeRpcError('explicit rejection', -32602));
+    expect((await request(randomUUID(), [file.id])).error.sendStatus).toBe('rejected');
+    const unknownId = randomUUID(); f.send.mockRejectedValueOnce(new Error('uncertain native outcome'));
+    expect((await request(unknownId, [file.id])).error.sendStatus).toBe('unknown');
+    expect(f.service.sendStatus(unknownId, f.second.device.id)).toBe('unknown');
+    f.trust.revoke(f.first.device.id);
+    await expect(f.start([file.id])).rejects.toThrow(/授权|撤销/);
+    expect(f.send).toHaveBeenCalledTimes(2);
+  } finally { socket.close(); }
+});
+
+it('bounds draft bytes, retained device/global bytes, attempts and concurrent streams before filesystem writes', async () => {
+  const f = await fixture(), file = await f.file();
+  const setSize = (size: number) => f.trust.db.prepare('UPDATE attachments SET size=? WHERE id=?').run(size, file.id);
+  setSize(attachmentLimits.batchBytes);
+  expect((await f.upload()).body).toContain('50 MB');
+  setSize(200 * 1024 ** 2);
+  expect((await f.upload(undefined, { draftId: randomUUID() })).body).toContain('存储已达上限');
+  // Use another device's retained material to exercise the global budget.
+  f.trust.db.prepare('UPDATE attachments SET size=?, deviceId=? WHERE id=?').run(1024 ** 3, f.second.device.id, file.id);
+  expect((await f.upload(undefined, { draftId: randomUUID() })).body).toContain('存储已达上限');
+  setSize(Buffer.byteLength('合成文档'));
+  const stream = new PassThrough(); const uploading = f.service.uploadAttachment(f.meta, stream, f.context);
+  await vi.waitFor(() => expect(f.trust.db.prepare("SELECT COUNT(*) AS count FROM attachments WHERE state='uploading'").get()!.count).toBe(1));
+  expect((await f.upload()).body).toContain('上传正在进行');
+  stream.end(Buffer.from('合成文档')); await uploading;
+  for (let i = 0; i < 24; i++) await f.upload(undefined, { name: '../bad.txt' });
+  expect((await f.upload()).body).toContain('过于频繁');
+});
+
+it('expires sent bytes while retaining inert historical metadata', async () => {
+  const f = await fixture(), file = await f.file(); await f.start([file.id]);
+  f.advance(attachmentLimits.sentMs + 1); await f.attachments.cleanup();
+  await expect(readFile(join(f.cwd, inboxName, file.id, 'input.txt'))).rejects.toThrow();
+  const snapshot = await f.service.dispatch('bridge/subscribe', { threadId: f.thread.id }) as Snapshot;
+  expect(snapshot.attachments?.[0]?.files[0]).toMatchObject({ id: file.id, name: file.name, available: false });
+  await expect(f.start([file.id])).rejects.toThrow('失效');
+});
+
+it('keeps receipts and material held if persisting a native ACK fails partway through', async () => {
+  const f = await fixture(), file = await f.file();
+  const accepted = f.attachments.accepted.bind(f.attachments);
+  vi.spyOn(f.attachments, 'accepted').mockImplementation((operationId, turnId) => { accepted(operationId, turnId); throw new Error('simulated metadata write failure'); });
+  await expect(f.start([file.id])).rejects.toThrow('metadata write failure');
+  expect(f.receipts.list(f.cwd, f.thread.id)[0]?.status).toBe('unknown');
+  expect(f.trust.db.prepare('SELECT state FROM attachments WHERE id=?').get(file.id)!.state).toBe('held');
+  f.advance(attachmentLimits.sentMs + 1); await f.attachments.cleanup();
+  expect(await readFile(join(f.cwd, inboxName, file.id, 'input.txt'), 'utf8')).toBe('合成文档');
+  await expect(f.start([file.id])).rejects.toThrow(); expect(f.send).toHaveBeenCalledTimes(1);
 });

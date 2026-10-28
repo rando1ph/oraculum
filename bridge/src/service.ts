@@ -263,6 +263,7 @@ export class BridgeService extends EventEmitter {
     const owner = this.attachmentOwner(params, context);
     return this.attachments!.remove(params.id, owner);
   }
+  sendStatus(operationId: string, deviceId: string) { return this.receipts?.sendStatus(operationId, deviceId) ?? 'unknown'; }
   private async dispatchRequest(method: string, params: Record<string, unknown>, context?: RequestContext): Promise<unknown> {
     if (method === 'bridge/accountUsage') return this.usage.readActivity();
     if (method === 'bridge/usage') {
@@ -390,7 +391,7 @@ export class BridgeService extends EventEmitter {
       if (!this.loaded.has(threadId)) throw new Error('Select and resume the thread before starting a turn');
       const hasAttachments = Array.isArray(params.attachmentIds) && params.attachmentIds.length > 0;
       if (typeof params.text !== 'string' || (!params.text.trim() && !hasAttachments) || params.text.length > 16000) throw new Error('Expected 1–16000 characters or attachments');
-      if (params.cwd !== undefined && params.cwd !== cwd) throw new Error('Thread is outside the selected project');
+      if (params.attachmentIds !== undefined && params.cwd !== undefined && params.cwd !== cwd) throw new Error('Thread is outside the selected project');
       // Client paths and binary are never native input. Only owned ready IDs map to files.
       if (params.input !== undefined || params.path !== undefined || params.attachments !== undefined) throw new Error('只接受服务端附件标识。');
       const attachmentOwner = params.attachmentIds !== undefined ? this.attachmentOwner({ ...params, cwd }, context) : undefined;
@@ -415,8 +416,8 @@ export class BridgeService extends EventEmitter {
       // Deliberately keep unknown sends blocked. A timeout is not a safe retry.
       try {
         const result = await this.codex.request<TurnStartResponse>('turn/start', request);
-        this.attachments?.accepted(params.operationId as string, result.turn.id);
-        this.receipts?.accepted(params.operationId as string, result.turn.id);
+        this.receipts?.accepted(params.operationId as string, result.turn.id,
+          prepared ? () => this.attachments!.accepted(params.operationId as string, result.turn.id) : undefined);
         this.receipts?.observe(cwd, threadId, result.turn);
         this.unknownSends.delete(threadId);
         if (prepared?.rows.length) {
@@ -433,8 +434,8 @@ export class BridgeService extends EventEmitter {
         return result;
       } catch (error) {
         if (error instanceof NativeRpcError) {
-          this.attachments?.rejected(params.operationId as string);
-          this.receipts?.rejected(params.operationId as string);
+          this.receipts?.rejected(params.operationId as string,
+            prepared ? () => this.attachments!.rejected(params.operationId as string) : undefined);
           this.busy.delete(threadId);
           this.unknownSends.delete(threadId);
           if (fresh) this.fresh.set(threadId, fresh);

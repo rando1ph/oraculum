@@ -65,6 +65,7 @@ export function hasTurnApproval(pending: Approval[], threadId: string | undefine
 }
 
 type Props = {
+  attachments?: import('../../../packages/shared/attachments').AttachmentDelivery;
   id: string; threadId?: string; turn?: Turn; views: ItemView[]; pending: boolean; connected: boolean; synced?: boolean;
   plan?: string; planAfter?: string; diff?: string; cwd?: string;
   showDiff: (path: string, diff: string) => void;
@@ -72,7 +73,7 @@ type Props = {
   onToggle: () => void;
 };
 
-export function TurnProcess({ id, threadId, turn, views, pending, connected, synced = true, plan, planAfter, diff, cwd, showDiff, showDetails, onToggle }: Props) {
+export function TurnProcess({ id, threadId, turn, views, pending, connected, synced = true, plan, planAfter, diff, cwd, showDiff, showDetails, onToggle, attachments }: Props) {
   // Device-local reading preference only, never native conversation content.
   const storageKey = `oraculum.process:${threadId}:${id}`;
   const [expanded, setExpanded] = useState(() => {
@@ -136,7 +137,7 @@ export function TurnProcess({ id, threadId, turn, views, pending, connected, syn
         return <Fragment key={view.item.id}>
           {!running && index === firstRecord && summary}
           <div className={process ? 'process-records' : undefined} hidden={process && !open && !needsAttention(view.item)} data-turn-id={id} data-item-id={view.item.id}>
-            <Item item={view.item} cwd={cwd} showDiff={showDiff} showDetails={item => showDetails(item, id)} live={running && !view.complete} progress={view.progress}/>
+            <Item item={view.item} cwd={cwd} showDiff={showDiff} showDetails={item => showDetails(item, id)} live={running && !view.complete} progress={view.progress} attachments={view === views.find(value => value.item.type === 'userMessage') ? attachments : undefined}/>
           </div>
           {extras(index)}
         </Fragment>;

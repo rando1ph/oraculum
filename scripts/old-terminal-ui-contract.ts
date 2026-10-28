@@ -187,7 +187,7 @@ try {
     for (const [name, trigger] of [['project', projectTrigger(page)], ['model', modelTrigger(page)], ['permission', permissionTrigger(page)], ['more', moreTrigger(page)]] as const) {
       await sameControls(page, name + '-menu', async () => {
         await trigger.click(); await inViewport(page, '.composer-popover');
-        if (name === 'more') { await expect(dialog(page, '更多操作')).toHaveText(''); await expect(dialog(page, '更多操作').locator('*')).toHaveCount(0); }
+        if (name === 'more') { await expect(dialog(page, '更多操作').getByRole('button', { name: '添加图片或文档', exact: true })).toBeEnabled(); await expect(dialog(page, '更多操作')).toContainText('最多 6 个'); }
       }, async () => { await page.keyboard.press('Escape'); });
     }
     for (const level of ['模型', '思考强度'] as const) {

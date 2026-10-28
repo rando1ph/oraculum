@@ -2,6 +2,9 @@ import type { BridgeEvent, WireMessage } from './protocol';
 import { appUrl } from './entry';
 
 const operationMethods = new Set(['turn/start', 'thread/name/set', 'thread/fork', 'thread/revert', 'turn/steer', 'review/start', 'thread/compact/start']);
+export class BridgeRpcError extends Error {
+  constructor(message: string, readonly sendStatus?: 'notSent' | 'rejected' | 'unknown' | 'accepted') { super(message); }
+}
 
 export class BridgeClient {
   private socket?: WebSocket;
@@ -30,7 +33,7 @@ export class BridgeClient {
       if (!request) return;
       this.pending.delete(String(message.id));
       clearTimeout(request.timer);
-      if (message.error) request.reject(new Error(message.error.message));
+      if (message.error) request.reject(new BridgeRpcError(message.error.message, message.error.sendStatus));
       else request.resolve(message.result);
     };
     return new Promise((resolve, reject) => {

@@ -223,6 +223,9 @@ export class AttachmentStore {
   async remove(id: unknown, owner: AttachmentOwner) {
     authorized(owner); await owner.validate(); authorized(owner);
     const row = attachmentId(id) ? this.row(id) : undefined;
+    // Cleanup may have expired a visible draft since its last status refresh.
+    // Owned tombstones are safe to acknowledge so the UI can clear stale files.
+    if (this.belongs(row, owner) && row.state === 'expired') return { removed: true };
     if (!this.belongs(row, owner) || row.state !== 'ready') throw new Error('附件不可移除；发送结果未知的材料会保留。');
     await this.expire(row);
     return { removed: true };

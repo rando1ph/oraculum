@@ -31,11 +31,23 @@ export class ReceiptStore {
       this.db.exec('COMMIT');
     } catch (error) { this.db.exec('ROLLBACK'); throw error; }
   }
-  accepted(operationId: string, turnId: string) {
-    this.db.prepare("UPDATE send_receipts SET status='accepted', turn_id=? WHERE operation_id=? AND status='unknown'").run(turnId, operationId);
+  private finish(update: () => void, attachments?: () => void) {
+    if (!attachments) { update(); return; }
+    this.db.exec('BEGIN IMMEDIATE');
+    try { update(); attachments(); this.db.exec('COMMIT'); }
+    catch (error) { this.db.exec('ROLLBACK'); throw error; }
   }
-  rejected(operationId: string) {
-    this.db.prepare("UPDATE send_receipts SET status='rejected' WHERE operation_id=? AND status='unknown'").run(operationId);
+  accepted(operationId: string, turnId: string, attachments?: () => void) {
+    this.finish(() => { this.db.prepare("UPDATE send_receipts SET status='accepted', turn_id=? WHERE operation_id=? AND status='unknown'").run(turnId, operationId); }, attachments);
+  }
+  rejected(operationId: string, attachments?: () => void) {
+    this.finish(() => { this.db.prepare("UPDATE send_receipts SET status='rejected' WHERE operation_id=? AND status='unknown'").run(operationId); }, attachments);
+  }
+  sendStatus(operationId: string, deviceId: string) {
+    const row = this.db.prepare('SELECT status, device_id FROM send_receipts WHERE operation_id=?').get(operationId) as { status: string; device_id: string } | undefined;
+    if (!row) return 'notSent' as const;
+    if (row.device_id !== deviceId || row.status === 'unknown') return 'unknown' as const;
+    return row.status === 'rejected' ? 'rejected' as const : 'accepted' as const;
   }
   observe(workspace: string, threadId: string, turn: Pick<Turn, 'id' | 'status'>) {
     if (!['completed', 'failed', 'interrupted'].includes(turn.status)) return;

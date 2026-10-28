@@ -261,7 +261,9 @@ export async function createServer(service: BridgeService, port: number, webRoot
         seen.add(String(request.id));
         let response: WireMessage;
         try { response = { id: request.id, result: await service.dispatch(request.method!, request.params!, deviceId ? { deviceId, isAuthorized: authorized } : undefined) }; }
-        catch (error) { response = { id: request.id, error: { code: -32000, message: error instanceof Error ? error.message : 'Request failed' } }; }
+        catch (error) { response = { id: request.id, error: { code: -32000, message: error instanceof Error ? error.message : 'Request failed',
+          ...(request.method === 'turn/start' && request.params?.attachmentIds !== undefined && deviceId
+            ? { sendStatus: service.sendStatus(String(request.params.operationId), deviceId) } : {}) } }; }
         if (authorized() && socket.readyState === 1) socket.send(JSON.stringify(response));
       });
     });

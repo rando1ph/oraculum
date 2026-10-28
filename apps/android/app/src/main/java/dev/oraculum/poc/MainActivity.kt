@@ -47,7 +47,9 @@ class MainActivity : Activity() {
     private var imageCallback: ValueCallback<Array<Uri>>? = null
     private var imageOwner: WebView? = null
     private val imageRequest = 4105
-    private val imageTypes = arrayOf("image/jpeg", "image/png", "image/webp")
+    private val imageTypes = AttachmentPickerPolicy.mimeTypes
+    private var pickerPending = false
+    private var pickerMultiple = false
     private var pageFailed = false
     private val preferences by lazy { getSharedPreferences("server-entry", MODE_PRIVATE) }
     private val defaultEntry by lazy {
@@ -169,28 +171,31 @@ class MainActivity : Activity() {
             settings.setGeolocationEnabled(false)
             settings.userAgentString += " OraculumAndroid/1"
             cookieManager(this).setAcceptThirdPartyCookies(this, false)
-            // A user-selected image is the only file capability. No JS/OS bridge,
+            // User-selected attachments are the only file capability. No JS/OS bridge,
             // broad storage permission, camera capture or credential API.
             webChromeClient = object : WebChromeClient() {
                 override fun onShowFileChooser(view: WebView, callback: ValueCallback<Array<Uri>>,
                     params: FileChooserParams): Boolean {
                     if (view !== web || !target.trusts(view.url.orEmpty()) || pageFailed ||
-                        params.mode != FileChooserParams.MODE_OPEN || params.isCaptureEnabled ||
-                        params.acceptTypes.flatMap { it.split(",") }.map { it.trim() }.toSet() != imageTypes.toSet()) return false
+                        !AttachmentPickerPolicy.acceptsRequest(params.acceptTypes.toList(),
+                            params.mode in listOf(FileChooserParams.MODE_OPEN, FileChooserParams.MODE_OPEN_MULTIPLE), params.isCaptureEnabled)) return false
                     // Do not replace an outstanding Android activity/result pairing.
-                    if (imageCallback != null) return false
+                    if (pickerPending) return false
+                    pickerPending = true
+                    pickerMultiple = params.mode == FileChooserParams.MODE_OPEN_MULTIPLE
                     imageCallback = callback
                     imageOwner = view
                     val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
                         addCategory(Intent.CATEGORY_OPENABLE)
-                        type = "image/*"
+                        type = "*/*"
                         putExtra(Intent.EXTRA_MIME_TYPES, imageTypes)
+                        putExtra(Intent.EXTRA_ALLOW_MULTIPLE, pickerMultiple)
                         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                     }
                     try {
                         @Suppress("DEPRECATION")
                         startActivityForResult(intent, imageRequest)
-                    } catch (_: Exception) { cancelImagePicker() }
+                    } catch (_: Exception) { pickerPending = false; cancelImagePicker() }
                     return true
                 }
             }
@@ -318,20 +323,32 @@ class MainActivity : Activity() {
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode != imageRequest) return
+        pickerPending = false
         val callback = imageCallback ?: return
         val owner = imageOwner
         imageCallback = null
         imageOwner = null
-        val uri = data?.data
-        // Never accept file://, own/private providers, multiple items or a result
-        // without the system-granted read capability. Web UI validates bytes too.
-        val accepted = resultCode == RESULT_OK && owner === web &&
-            entry?.trusts(owner?.url.orEmpty()) == true && !pageFailed &&
-            uri?.scheme == "content" && uri.authority != null &&
-            uri.authority?.startsWith(packageName) == false && data.clipData == null &&
-            data.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION != 0 &&
-            runCatching { contentResolver.getType(uri) in imageTypes }.getOrDefault(false)
-        callback.onReceiveValue(if (accepted) arrayOf(uri!!) else null)
+        val clip = data?.clipData
+        // Never walk an unbounded provider list or accept ambiguous data/clipData.
+        val uris = when {
+            clip != null && clip.itemCount <= AttachmentPickerPolicy.maxFiles &&
+                (data.data == null || clip.itemCount == 1 && data.data == clip.getItemAt(0).uri) ->
+                (0 until clip.itemCount).map { clip.getItemAt(it).uri }
+            clip == null && data?.data != null -> listOf(data.data!!)
+            else -> emptyList()
+        }
+        val selections = uris.map { uri ->
+            val ownProvider = uri.authority?.startsWith(packageName) != false || runCatching {
+                @Suppress("DEPRECATION")
+                packageManager.resolveContentProvider(uri.authority.orEmpty(), 0)?.applicationInfo?.uid == applicationInfo.uid
+            }.getOrDefault(true)
+            AttachmentPickerPolicy.Selection(uri.toString(), uri.scheme, uri.authority,
+                runCatching { contentResolver.getType(uri) }.getOrNull(), ownProvider)
+        }
+        val accepted = resultCode == RESULT_OK && AttachmentPickerPolicy.acceptsResult(selections, pickerMultiple,
+            data != null && data.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION != 0,
+            owner != null && owner === web && entry?.trusts(owner.url.orEmpty()) == true && !pageFailed)
+        callback.onReceiveValue(if (accepted) uris.toTypedArray() else null)
     }
 
     private fun showServerSettings() {
