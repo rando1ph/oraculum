@@ -13,6 +13,7 @@ import type { ApprovalsReviewer } from '../../.local/codex-protocol/v2/Approvals
 import type { SandboxMode } from '../../.local/codex-protocol/v2/SandboxMode';
 import type { SandboxPolicy } from '../../.local/codex-protocol/v2/SandboxPolicy';
 import type { WebSearchMode } from '../../.local/codex-protocol/WebSearchMode';
+import type { LimitsSnapshot, ThreadUsage } from './usage';
 
 export type RpcId = string | number;
 export type WireMessage = {
@@ -32,6 +33,8 @@ export type NativeSessionSettings = {
 // Inherit means no override: native turn overrides persist on the thread.
 export type PermissionMode = 'inherit' | 'read-only' | 'auto' | 'full-access';
 export type BridgeEvent =
+  | { type: 'accountLimits'; snapshot: LimitsSnapshot }
+  | { type: 'threadUsage'; snapshot: ThreadUsage }
   | { type: 'event'; event: ServerNotification }
   | { type: 'approval'; request: Approval }
   | { type: 'requestAnswered'; requestId: RpcId; bridgeToken?: string }

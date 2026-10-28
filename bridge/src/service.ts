@@ -18,8 +18,15 @@ import { basename, dirname } from 'node:path';
 import { nativeResponse, responseNeedsDirectory, supportedRequest } from './native-requests';
 import { permissionMode, threadPermissions, turnPermissions } from './permissions';
 import type { ThreadPermissionStore } from './thread-permissions';
+import { NativeUsage } from './usage';
+
+const forwardedNotifications = new Set(['thread/status/changed', 'thread/settings/updated', 'thread/archived', 'thread/unarchived', 'thread/deleted',
+  'turn/started', 'turn/completed', 'turn/diff/updated', 'turn/plan/updated', 'item/started', 'item/completed', 'item/agentMessage/delta',
+  'item/commandExecution/outputDelta', 'item/fileChange/patchUpdated', 'item/mcpToolCall/progress', 'item/plan/delta',
+  'item/reasoning/summaryPartAdded', 'item/reasoning/summaryTextDelta', 'item/reasoning/textDelta', 'serverRequest/resolved', 'error']);
 
 export class BridgeService extends EventEmitter {
+  private usage: NativeUsage;
   readonly threads = new Set<string>();
   readonly pending = new Map<RpcId, Approval>();
   private threadProjects = new Map<string, string>();
@@ -44,8 +51,10 @@ export class BridgeService extends EventEmitter {
   constructor(readonly codex: Pick<Codex, 'request' | 'send'> & { on(event: string, listener: (...args: any[]) => void): unknown }, readonly cwd: string,
     private receipts?: ReceiptStore, private projects?: ProjectDirectories, private permissionChoices?: ThreadPermissionStore) {
     super();
+    this.usage = new NativeUsage((method, params) => codex.request(method, params), snapshot => this.emit('event', { type: 'accountLimits', snapshot } satisfies BridgeEvent));
     codex.on('message', (message: WireMessage) => this.receive(message));
     codex.on('unavailable', (message: string) => {
+      this.usage.invalidate(true);
       this.pending.clear();
       this.emit('event', { type: 'unavailable', message } satisfies BridgeEvent);
     });
@@ -94,7 +103,17 @@ export class BridgeService extends EventEmitter {
       }
       return;
     }
-    if (!threadId || !this.threads.has(threadId)) return;
+    if (message.method === 'account/updated') { this.usage.invalidate(); return; }
+    if (message.method === 'account/rateLimits/updated') { this.usage.update(params); return; }
+    if (!threadId || !this.threads.has(threadId) || this.deleted.has(threadId)) return;
+    if (message.method === 'thread/tokenUsage/updated') {
+      const active = this.activeTurns.get(threadId);
+      if (active && params.turnId !== active) return;
+      const snapshot = this.usage.thread(threadId, this.threadCwd(threadId), params.turnId, params.tokenUsage);
+      if (snapshot) this.emit('event', { type: 'threadUsage', snapshot } satisfies BridgeEvent);
+      return;
+    }
+    if (!message.method || !forwardedNotifications.has(message.method)) return;
     if (message.method === 'thread/status/changed') {
       const status = params.status as Thread['status'] | undefined;
       if (status?.type) this.nativeStatuses.set(threadId, status.type);
@@ -162,6 +181,14 @@ export class BridgeService extends EventEmitter {
     finally { if (mutation) this.lifecycle.delete(threadId); else this.endFlight(threadId); }
   }
   private async dispatchRequest(method: string, params: Record<string, unknown>, context?: { deviceId: string }): Promise<unknown> {
+    if (method === 'bridge/accountUsage') return this.usage.readActivity();
+    if (method === 'bridge/usage') {
+      const id = params.threadId;
+      if (id !== undefined && (typeof id !== 'string' || !this.threads.has(id) || this.deleted.has(id))) throw new Error('Thread is outside this workspace');
+      if (typeof id === 'string' && params.cwd !== undefined && params.cwd !== this.threadCwd(id)) throw new Error('Thread is outside this workspace');
+      const account = await this.usage.read();
+      return { account, thread: typeof id === 'string' && !this.deleted.has(id) ? this.usage.threads.get(id) ?? null : null };
+    }
     if (method === 'bridge/projects') {
       return this.projects?.list() ?? { root: dirname(this.cwd), projects: [{ cwd: this.cwd, name: basename(this.cwd) }] };
     }
