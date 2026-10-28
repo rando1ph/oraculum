@@ -1,0 +1,51 @@
+import { beforeEach, expect, it } from 'vitest';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { cacheRatio, resetTime, UsagePanel } from './usage';
+import { usageKey, useUsage } from './usage-store';
+import { tokenUsage, rateLimits } from '../../../scripts/fixtures/usage';
+import { normalizeLimits } from '../../../bridge/src/usage';
+import type { LimitsSnapshot, ThreadUsage } from '../../../packages/shared/usage';
+const stamp = { source: 'codex-app-server' as const, revision: 1, observedAt: 1793188800000 };
+const thread: ThreadUsage = { ...stamp, threadId: 'a', cwd: '/a', turnId: 'turn-a', ...tokenUsage };
+const account: LimitsSnapshot = { ...stamp, generation: 0, status: 'available', buckets: normalizeLimits(rateLimits) };
+beforeEach(() => useUsage.getState().connect(true));
+it('isolates projects and threads, rejects late RPCs and never accumulates duplicate snapshots', () => {
+  const store = useUsage.getState(), ticket = store.connection;
+  store.thread(thread); store.thread(thread);
+  store.thread({ ...thread, cwd: '/b', threadId: 'b', total: { ...thread.total, totalTokens: 99 } });
+  expect(useUsage.getState().threads[usageKey('/a', 'a')].total.totalTokens).toBe(42000);
+  expect(useUsage.getState().threads[usageKey('/b', 'b')].total.totalTokens).toBe(99);
+  store.thread({ ...thread, revision: 0, total: { ...thread.total, totalTokens: 5 } });
+  expect(useUsage.getState().threads[usageKey('/a', 'a')].total.totalTokens).toBe(42000);
+  store.limits({ ...account, revision: 10 }); store.snapshot({ account, thread }, ticket);
+  expect(useUsage.getState().account?.revision).toBe(10);
+  store.connect(false); store.snapshot({ account, thread }, ticket);
+  expect(useUsage.getState().account).toBeUndefined();
+  store.connect(true); store.snapshot({ account, thread }, ticket);
+  expect(useUsage.getState().account).toBeUndefined(); expect(useUsage.getState().threads).toEqual({});
+});
+it('discards optional activity when the account changes and ignores old-account results', () => {
+  const store = useUsage.getState(), ticket = store.connection;
+  store.limits(account);
+  store.accountActivity({ ...stamp, generation: 0, status: 'available', lifetimeTokens: 9000, peakDailyTokens: 1000 }, ticket);
+  store.limits({ ...account, generation: 1, revision: 2, buckets: [], status: 'unavailable' });
+  expect(useUsage.getState().activity).toBeUndefined();
+  store.accountActivity({ ...stamp, generation: 0, status: 'available', lifetimeTokens: 9000, peakDailyTokens: 1000 }, ticket);
+  expect(useUsage.getState().activity).toBeUndefined();
+});
+it('labels subset counts, total/last, unknown occupancy and used quota without fabricated percentages', () => {
+  const html = renderToStaticMarkup(<UsagePanel thread={thread} account={account} connected open={false} refreshing={false} onOpen={() => {}} onClose={() => {}} onRefresh={() => {}}/>);
+  for (const text of ['累计', '最近一次', '42,000', '6,500', '128,000', '当前占用未知', '含于输入', '含于输出', '已用 25%', '已用 42%', 'Code review', '缓存输入 ÷ 输入']) expect(html).toContain(text);
+  expect(html).not.toContain('剩余'); expect(html).not.toContain('32.8%');
+  expect(html.match(/<progress/g)).toHaveLength(3);
+  expect(cacheRatio(thread.total)).toBe('75%');
+  expect(cacheRatio({ ...thread.total, inputTokens: 0 })).toBe('暂不可用');
+  expect(cacheRatio({ ...thread.total, cachedInputTokens: 999999 })).toBe('暂不可用');
+  const empty = renderToStaticMarkup(<UsagePanel connected={false} open={false} refreshing={false} onOpen={() => {}} onClose={() => {}} onRefresh={() => {}}/>);
+  expect(empty).toContain('暂不可用'); expect(empty).not.toContain('0%'); expect(empty).not.toContain('<progress');
+});
+it('formats Unix seconds in the local timezone and rejects ms and invalid timestamps', () => {
+  const date = new Date(1793203200 * 1000);
+  expect(resetTime(1793203200)).toBe(date.toLocaleString(undefined, { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', timeZoneName: 'short' }));
+  for (const input of [null, -1, NaN, Infinity, 1793203200000]) expect(resetTime(input)).toBe('暂不可用');
+});

@@ -41,6 +41,7 @@
     "test:lifecycle:android": "tsx scripts/lifecycle-live.ts --android",
     "test:lifecycle:ui": "tsx scripts/lifecycle-ui-contract.ts",
     "test:messages:ui": "tsx scripts/messages-ui-contract.ts",
+    "test:usage:ui": "tsx scripts/usage-ui-contract.ts",
     "test:messages:live": "tsx scripts/messages-live.ts",
     "test:native:elicitation": "tsx scripts/native-elicitation.ts",
     "test:native:capabilities": "tsx scripts/native-capabilities-live.ts",

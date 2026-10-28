@@ -22,6 +22,9 @@ import { NativeRequest } from './native-request';
 import { PermissionDetails, permissionModes } from './permissions';
 import { acknowledgedComposerDraft, actualComposerValues, composerOverrides, confirmedComposerDraft, parseComposerDraft, reconcileComposerDraft, type ComposerDraft } from './composer-settings';
 import { SessionActions, sessionActionBlock, sessionLabel, type SessionAction, type SessionTarget } from './session-actions';
+import { UsagePanel } from './usage';
+import { usageKey, useUsage } from './usage-store';
+import type { AccountUsageSnapshot, UsageSnapshot } from '../../../packages/shared/usage';
 import './style.css';
 import './mobile.css';
 
@@ -34,6 +37,10 @@ const readingStorage = () => androidShell ? localStorage : sessionStorage;
 function App() {
   const theme = useTheme();
   const session = useSession();
+  const usage = useUsage();
+  const [usageOpen, setUsageOpen] = useState(false);
+  const [usageRefreshing, setUsageRefreshing] = useState(false);
+  const usageRequest = useRef(0);
   const mobile = useMobile();
   const [menu, setMenu] = useState(false);
   const [readingSize, setReadingSize] = useState(() => Math.min(150, Math.max(100, Number(readSaved('oraculum.reading-size')) || 100)));
@@ -310,6 +317,18 @@ function App() {
       useSession.setState({ notices: [...state.notices, message.message] });
     }
   }
+  async function refreshUsage(id = selected.current, activity = false) {
+    const connection = useUsage.getState().connection;
+    const ticket = ++usageRequest.current;
+    setUsageRefreshing(true);
+    const reads: Promise<unknown>[] = [client.current!.request<UsageSnapshot>('bridge/usage', {
+      ...(id ? { threadId: id, cwd: workspace.current } : {}),
+    }).then(value => useUsage.getState().snapshot(value, connection))];
+    if (activity) reads.push(client.current!.request<AccountUsageSnapshot>('bridge/accountUsage', {}).then(value => useUsage.getState().accountActivity(value, connection)));
+    // Optional read failures never affect connection, sends, model settings or recovery.
+    await Promise.allSettled(reads);
+    if (ticket === usageRequest.current) setUsageRefreshing(false);
+  }
   async function refresh(id = selected.current) {
     setCreatedThreadId('');
     const ticket = ++epoch.current;
@@ -318,6 +337,7 @@ function App() {
     let position = savedScroll(id);
     if (changed) { readingRestore.current = ticket; follow.current = false; }
     selected.current = id;
+    void refreshUsage(id);
     setSynced(false); setLoadingHistory(false);
     if (changed) {
       useSession.getState().reset(); closeComposerMenu(); setError(''); setInspected(undefined);
@@ -398,6 +418,7 @@ function App() {
     if (!authenticated) { client.current!.close(); throw new Error('设备需要重新配对'); }
     await client.current!.connect();
     if (ticket !== connectionEpoch.current) return;
+    void refreshUsage('');
     const settings = await client.current!.request<LocalConfig>('bridge/config', {});
     const directory = await client.current!.request<ProjectList>('bridge/projects', {});
     if (ticket !== connectionEpoch.current) return;
@@ -419,9 +440,11 @@ function App() {
   }
   useEffect(() => {
     client.current = new BridgeClient(message => {
+      if (message.type === 'accountLimits') { useUsage.getState().limits(message.snapshot); return; }
+      if (message.type === 'threadUsage') { useUsage.getState().thread(message.snapshot); return; }
       if (message.type === 'projectsChanged') { void refreshProjects().catch(report); return; }
       if (message.type === 'threadLifecycleChanged') { lifecycleChanged(message); return; }
-      if (message.type === 'unavailable') { ++epoch.current; readingRestore.current = null; buffer.current = null; useSession.setState({ pending: [] }); setError(message.message); setSynced(false); setLoadingHistory(false); return; }
+      if (message.type === 'unavailable') { useUsage.getState().connect(false); ++epoch.current; readingRestore.current = null; buffer.current = null; useSession.setState({ pending: [] }); setError(message.message); setSynced(false); setLoadingHistory(false); return; }
       if (buffer.current) buffer.current.push(message);
       else {
         apply(message);
@@ -430,6 +453,7 @@ function App() {
         }
       }
     }, value => {
+      useUsage.getState().connect(value);
       setConnected(value);
       if (!value) { ++epoch.current; ++listEpoch.current; setListing(false); setSynced(false); void checkSession().catch(() => {}); }
     });
@@ -509,6 +533,7 @@ function App() {
     // Android invokes this single UI-only callback after the IME has handled Back.
     // It grants no native, filesystem, network or credential capability to JS.
     const back = () => {
+      if (usageOpen) { setUsageOpen(false); return true; }
       if (composerMenu) {
         if (composerMenu === 'model' && modelMenuLevel !== 'summary') setModelMenuLevel('summary');
         else closeComposerMenu(true);
@@ -529,7 +554,7 @@ function App() {
     };
     window.addEventListener('keydown', close);
     return () => { delete window.oraculumAndroidBack; window.removeEventListener('keydown', close); };
-  }, [settings, browsing, menu, composerMenu, modelMenuLevel, drawer, expanded, layout.inspector, actionTarget, lifecycleBusy]);
+  }, [usageOpen, settings, browsing, menu, composerMenu, modelMenuLevel, drawer, expanded, layout.inspector, actionTarget, lifecycleBusy]);
   async function createThread() {
     setSending(true); setError('');
     try {
@@ -666,6 +691,10 @@ function App() {
           <button role="menuitem" onClick={() => { setMenu(false); setSettings(true); }}><Icon name="settings"/>设置</button>
         </div>}
       </header>
+      <UsagePanel thread={session.thread && !switching ? usage.threads[usageKey(session.thread.cwd, session.thread.id)] : undefined}
+        account={usage.account} activity={usage.activity} connected={usage.connected} open={usageOpen} refreshing={usageRefreshing}
+        onOpen={() => { setUsageOpen(true); void refreshUsage(selected.current, true); }} onClose={() => setUsageOpen(false)}
+        onRefresh={() => void refreshUsage(selected.current, true)}/>
       {!connected && <div className="disconnect-banner">连接已断开，主机任务不会因此停止。<button disabled={connecting || sending || approving} onClick={() => void connect().catch(report)}>重新连接</button></div>}
       <div className="conversation-scroll" ref={scroller} onScroll={() => { if (readingRestore.current !== null) return; const element = scroller.current!; follow.current = element.scrollHeight - element.scrollTop - element.clientHeight < 60; setAtBottom(follow.current); rememberScroll(); }}>
         <div data-theme-slot="content" className="conversation-content" ref={scrollContent}>
