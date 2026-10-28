@@ -23,6 +23,8 @@ const cwd = join(dir, 'fixture-project');
 const calls: string[] = [];
 const service = Object.assign(new EventEmitter(), { dispatch: async (method: string) => {
   calls.push(method);
+  if (method === 'bridge/usage') return { account: { source: 'codex-app-server', revision: 0, observedAt: now,
+    generation: 0, status: 'unavailable', buckets: [] }, thread: null };
   if (method === 'bridge/config') return { cwd, model: null, effort: null, provider: null, approvalPolicy: null,
     sandbox: null, approvalsReviewer: null, webSearch: null };
   if (method === 'bridge/projects') return { root: dir, projects: [{ name: 'fixture-project', cwd }] };
@@ -69,7 +71,7 @@ try {
   await expect.poll(() => checks).toBeGreaterThan(foreground);
   await expect.poll(async () => ((await context.cookies()).find(cookie => cookie.name === 'oraculum_local')?.expires ?? 0) - Date.now() / 1000).toBeGreaterThan(364 * 86400);
   await expect(page.locator('.app-shell')).toHaveAttribute('data-continuity', 'preserved');
-  expect(calls.filter(method => !['bridge/config', 'bridge/projects', 'model/list', 'thread/list'].includes(method))).toEqual([]);
+  expect(calls.filter(method => !['bridge/config', 'bridge/projects', 'model/list', 'thread/list', 'bridge/usage'].includes(method))).toEqual([]);
 
   await context.clearCookies();
   await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));

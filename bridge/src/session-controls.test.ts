@@ -182,6 +182,14 @@ describe('B4 native session control boundary', () => {
     await expect(old).rejects.toThrow('历史已变化');
   });
 
+  it('rejects an old cursor dispatched after history invalidation before reading native history', async () => {
+    const f = fixture(); const before = await f.subscribe();
+    f.codex.emit('message', { method: 'thread/reverted', params: { threadId: f.thread.id } });
+    const nativeCalls = f.codex.request.mock.calls.length;
+    await expect(f.service.dispatch('bridge/history', { threadId: f.thread.id, cursor: 'before-revert', historyRevision: before.historyRevision })).rejects.toThrow('历史版本已变化');
+    expect(f.codex.request).toHaveBeenCalledTimes(nativeCalls);
+  });
+
   it('steers only the observed active native turn, allowing its accepted ordinary send receipt', async () => {
     const f = fixture(); await f.subscribe(); f.activate();
     const receipt = randomUUID(); f.receipts.reserve(receipt, cwd, f.thread.id, 'device'); f.receipts.accepted(receipt, 'active');

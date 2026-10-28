@@ -67,3 +67,14 @@ it('folds successful commentary but always renders final cards; failed and pendi
     expect(output).not.toContain('aria-expanded="false"');
   }
 });
+
+it('keeps native Review findings visible when the completed process is folded', () => {
+  const review = { type: 'exitedReviewMode', id: 'findings', review: '发现一处待修复问题。' } as ThreadItem;
+  const entered = { type: 'enteredReviewMode', id: 'review-start', review: '正在审阅未提交更改。' } as ThreadItem;
+  expect(isProcessItem(review)).toBe(false);
+  expect(isProcessItem(entered)).toBe(true);
+  const markup = renderToStaticMarkup(<TurnProcess id="turn" views={[view(entered), view(review)]} pending={false} connected={true} turn={turn()} showDiff={() => {}} showDetails={() => {}} onToggle={() => {}}/>);
+  expect(markup).toContain('class="process-records" hidden="" data-turn-id="turn" data-item-id="review-start"');
+  expect(markup).toContain('<div data-turn-id="turn" data-item-id="findings">');
+  expect(markup).toContain('发现一处待修复问题。');
+});

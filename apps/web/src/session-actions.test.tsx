@@ -37,3 +37,33 @@ it('labels archive as recoverable and deletion as permanent before any confirmat
   expect(archived).toContain('恢复归档');
   expect(archived).not.toContain('归档会话');
 });
+
+it('validates native names by Unicode character count and rejects hidden controls', async () => {
+  const { nativeNameError } = await import('./session-actions');
+  expect(nativeNameError('  ')).toContain('请输入');
+  expect(nativeNameError('  中文会话 🧭  ')).toBe('');
+  expect(nativeNameError('🧭'.repeat(128))).toBe('');
+  expect(nativeNameError('🧭'.repeat(129))).toContain('128');
+  for (const value of ['line\nname', 'a\u007fb', 'a\u0085b', 'a\u202eb', 'a\u2067b']) expect(nativeNameError(value)).toContain('控制字符');
+});
+
+it('exposes native controls for the selected session with isolated capability failures', () => {
+  const markup = renderToStaticMarkup(<SessionActions target={{ thread, archived: false }} projectName="测试项目" blocked="" busy={false}
+    native={{ current: true, turns: [{ id: 'turn-1', label: '第 1 轮' }], blocked: '', renameBlocked: '', operationBlocks: {}, unsupported: ['thread/compact/start'], onAction: async () => {} }} onAction={async () => {}} onClose={() => {}}/>);
+  expect(markup).toContain('重命名');
+  expect(markup).toContain('分叉会话');
+  expect(markup).toContain('审阅未提交更改');
+  expect(markup).toContain('回退会话');
+  expect(markup).toMatch(/<button disabled=""><svg[^]*?<span>压缩上下文<\/span><small>当前版本暂不支持<\/small>/);
+  expect(markup).toContain('归档会话');
+  expect(markup).not.toContain('确认移除历史');
+});
+
+it('keeps unknown fork separate from rename and hides execution actions for other sessions', () => {
+  const markup = renderToStaticMarkup(<SessionActions target={{ thread, archived: false }} projectName="测试项目" blocked="" busy={false}
+    native={{ current: false, turns: [], blocked: '', renameBlocked: '', operationBlocks: { 'thread/fork': '结果未知' }, unsupported: [], onAction: async () => {} }} onAction={async () => {}} onClose={() => {}}/>);
+  expect(markup).toContain('重命名');
+  expect(markup).not.toContain('分叉会话');
+  expect(markup).not.toContain('审阅未提交更改');
+  expect(markup).not.toContain('压缩上下文');
+});

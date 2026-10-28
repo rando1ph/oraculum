@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BridgeClient } from '../../../packages/shared/client';
-import type { BridgeEvent, LocalConfig, Model, ProjectList, Snapshot, Thread, ThreadItem } from '../../../packages/shared/protocol';
+import type { BridgeEvent, LocalConfig, Model, NativeOperation, NativeOperationMethod, ProjectList, Snapshot, Thread, ThreadItem } from '../../../packages/shared/protocol';
 import type { ThreadStartResponse } from '../../../.local/codex-protocol/v2/ThreadStartResponse';
 import type { ThreadListResponse } from '../../../.local/codex-protocol/v2/ThreadListResponse';
 import { itemKey, useSession } from './store';
@@ -21,12 +21,14 @@ import { ThemeSettings, useTheme } from './themes';
 import { NativeRequest } from './native-request';
 import { PermissionDetails, permissionModes } from './permissions';
 import { acknowledgedComposerDraft, actualComposerValues, composerOverrides, confirmedComposerDraft, parseComposerDraft, reconcileComposerDraft, type ComposerDraft } from './composer-settings';
-import { SessionActions, sessionActionBlock, sessionLabel, type SessionAction, type SessionTarget } from './session-actions';
+import { SessionActions, sessionActionBlock, sessionLabel, type SessionAction, type SessionNativeAction, type SessionTarget } from './session-actions';
+import { steerDeliveryBlocked, steerOperationBlocked } from './native-controls';
 import { SessionUsage, WeeklyQuota } from './usage';
 import { usageKey, useUsage } from './usage-store';
 import type { UsageSnapshot } from '../../../packages/shared/usage';
 import './style.css';
 import './mobile.css';
+import './native-controls.css';
 
 const Diff = lazy(() => import('./diff').then(module => ({ default: module.Diff })));
 type Inspected = { kind: 'diff'; path: string; diff: string } | { kind: 'item'; id: string; turnId: string } | { kind: 'usage' | 'emptyDiff' };
@@ -60,6 +62,7 @@ function App() {
   const [lifecycleBusy, setLifecycleBusy] = useState(false);
   const [lifecycleNotice, setLifecycleNotice] = useState('');
   const [unknownThreads, setUnknownThreads] = useState(new Set<string>());
+  const [backgroundNative, setBackgroundNative] = useState<NativeOperation[]>([]);
   // A brand presentation cue, never persisted or sent to the native Harness.
   const [createdThreadId, setCreatedThreadId] = useState('');
   const [nextCursor, setNextCursor] = useState<string | null>(null);
@@ -67,6 +70,9 @@ function App() {
   const [query, setQuery] = useState('');
   const [error, setError] = useState('');
   const [sending, setSending] = useState(false);
+  const [steerDraft, setSteerDraft] = useState<{ threadId: string; turnId: string }>();
+  const steerBinding = useRef<typeof steerDraft>(undefined);
+  const nativeSubmitting = useRef(false);
   const [switching, setSwitching] = useState(false);
   const [approving, setApproving] = useState(false);
   const [inspected, setInspected] = useState<Inspected>();
@@ -187,7 +193,27 @@ function App() {
       return previous;
     } catch { return ''; }
   }
-  function writeDraft(value: string) { ++draftRevision.current; setText(value); try { readingStorage().setItem(draftKey(), value); } catch { /* Keep current in-memory input. */ } }
+  function bindSteerDraft(value: typeof steerDraft) {
+    steerBinding.current = value; setSteerDraft(value);
+    try { if (value) readingStorage().setItem(`${draftKey()}:steer`, JSON.stringify(value)); else readingStorage().removeItem(`${draftKey()}:steer`); } catch { /* Draft remains available in memory. */ }
+  }
+  function restoreSteerDraft() {
+    let value: typeof steerDraft;
+    try {
+      const stored: unknown = JSON.parse(readingStorage().getItem(`${draftKey()}:steer`) ?? 'null');
+      if (stored && typeof stored === 'object' && 'threadId' in stored && stored.threadId === selected.current && 'turnId' in stored && typeof stored.turnId === 'string') value = { threadId: stored.threadId, turnId: stored.turnId };
+    } catch { /* Invalid optional binding is discarded. */ }
+    steerBinding.current = value; setSteerDraft(value);
+  }
+  function writeDraft(value: string) {
+    ++draftRevision.current; setText(value);
+    if (!value.trim()) bindSteerDraft(undefined);
+    else {
+      const state = useSession.getState();
+      if (!steerBinding.current && state.thread?.id === selected.current && state.activeTurn) bindSteerDraft({ threadId: selected.current, turnId: state.activeTurn });
+    }
+    try { readingStorage().setItem(draftKey(), value); } catch { /* Keep current in-memory input. */ }
+  }
   const readingKey = (id = selected.current) => `oraculum.reading:${workspace.current}:${id}`;
   function rememberScroll() {
     if (readingRestore.current !== null || !scroller.current || !selected.current || useSession.getState().thread?.id !== selected.current) return;
@@ -257,13 +283,13 @@ function App() {
     actionTargetId.current = ''; setActionTarget(undefined);
     requestAnimationFrame(() => {
       if (actionReturnFocus.current?.isConnected) actionReturnFocus.current.focus();
-      else sessionTabs.current?.querySelector<HTMLButtonElement>('[aria-pressed="true"]')?.focus();
+      else { const tab = sessionTabs.current?.querySelector<HTMLButtonElement>('[aria-pressed="true"]'); if (tab?.checkVisibility()) tab.focus(); else composer.current?.focus(); }
     });
   }
-  function openSessionActions(thread: Thread, trigger: HTMLButtonElement) {
-    actionReturnFocus.current = trigger;
+  function openSessionActions(thread: Thread, trigger: HTMLButtonElement, isArchived = archivedView.current) {
+    actionReturnFocus.current = trigger.closest('.mobile-session-menu') ? document.querySelector<HTMLButtonElement>('.mobile-menu-toggle') : trigger.closest('.composer-popover') ? composerTrigger.current : trigger;
     actionTargetId.current = thread.id;
-    setActionTarget({ thread, archived: archivedView.current });
+    setActionTarget({ thread, archived: isArchived });
   }
   function lifecycleChanged(message: Extract<BridgeEvent, { type: 'threadLifecycleChanged' }>) {
     // Handle before the subscribe buffer: an older snapshot must never revive
@@ -273,7 +299,7 @@ function App() {
     if (selected.current === message.threadId) {
       ++epoch.current; readingRestore.current = null; buffer.current = null;
       selected.current = ''; save(storageKey(), '');
-      useSession.getState().reset(); setText(''); ++draftRevision.current;
+      useSession.getState().reset(); setText(''); steerBinding.current = undefined; setSteerDraft(undefined); ++draftRevision.current;
       setSynced(true); setLoadingHistory(false); setCreatedThreadId(''); setInspected(undefined);
       closeComposerMenu();
     }
@@ -297,6 +323,29 @@ function App() {
     } catch (value) { report(value); throw value; }
     finally { setLifecycleBusy(false); }
   }
+  async function changeNativeSession(action: SessionNativeAction) {
+    if (!actionTarget || lifecycleBusy || nativeSubmitting.current || methodBlock(action.method, actionTarget.thread.id) || (action.method === 'thread/name/set' ? renameBlocked : nativeActionBlocked || actionBlocked)) return;
+    const target = actionTarget.thread;
+    const operationId = crypto.randomUUID();
+    nativeSubmitting.current = true; setLifecycleBusy(true); setError('');
+    try {
+      const result = await client.current!.request<{ thread?: Thread }>(action.method, { threadId: target.id, cwd: target.cwd,
+        ...(action.method === 'thread/name/set' ? { name: action.name } : action.method === 'thread/revert' ? { beforeTurnId: action.beforeTurnId, confirm: true } : action.method === 'review/start' ? { target: { type: 'uncommittedChanges' } } : {}) }, operationId);
+      closeSessionActions();
+      if (workspace.current !== target.cwd) return;
+      await listThreads();
+      if (action.method === 'thread/fork' && result.thread) { await refresh(result.thread.id); composer.current?.focus(); }
+      else if (selected.current === target.id) await refresh(target.id);
+    } catch (value) { report(value); if (!['thread/name/set', 'thread/fork'].includes(action.method) && useSession.getState().nativeOperations.find(operation => operation.operationId === operationId)?.state !== 'rejected') setSynced(false); throw value; }
+    finally { nativeSubmitting.current = false; setLifecycleBusy(false); }
+  }
+  function cacheNativeOperation(operation: NativeOperation) {
+    setBackgroundNative(current => {
+      const prior = current.find(value => value.operationId === operation.operationId);
+      if (prior && ['completed', 'rejected'].includes(prior.state) && ['running', 'accepted', 'unknown'].includes(operation.state)) return current;
+      return [...current.filter(value => value.operationId !== operation.operationId), operation].slice(-100);
+    });
+  }
   function apply(message: BridgeEvent, restoring = false) {
     const state = useSession.getState();
     if (message.type === 'settingsChanged' && message.threadId === state.thread?.id) {
@@ -304,10 +353,17 @@ function App() {
       const key = settingsDraftKey(workspace.current, message.threadId);
       saveChoices(confirmedComposerDraft(parseComposerDraft(readSaved(key)), message.settings), key);
     }
+    if (message.type === 'nativeOperationChanged') state.nativeOperation(message.operation);
+    if (message.type === 'nativeCapabilitiesChanged') useSession.setState({ nativeCapabilities: message.capabilities });
     if (message.type === 'approval') state.approval(message.request);
     if (message.type === 'requestAnswered') useSession.setState({ pending: state.pending.filter(request => request.id !== message.requestId || request.bridgeToken !== message.bridgeToken) });
     if (message.type === 'event') {
       state.event(message.event, restoring);
+      if (message.event.method === 'thread/name/updated') {
+        const { threadId, threadName } = message.event.params;
+        setThreads(current => current.map(thread => thread.id === threadId ? { ...thread, name: threadName ?? null } : thread));
+        ++listEpoch.current; void listThreads().catch(() => {});
+      }
       if (message.event.method === 'thread/status/changed') {
         const { threadId, status } = message.event.params;
         setThreads(current => current.map(t => t.id === threadId ? { ...t, status } : t));
@@ -340,7 +396,7 @@ function App() {
     setSynced(false); setLoadingHistory(false);
     if (changed) {
       useSession.getState().reset(); closeComposerMenu(); setError(''); setInspected(undefined);
-      setText(readDraft()); setDrawer(false); setMenu(false);
+      setText(readDraft()); restoreSteerDraft(); setDrawer(false); setMenu(false);
     }
     if (!id) { readingRestore.current = null; useSession.getState().reset(); setSynced(true); buffer.current = null; return; }
     buffer.current = [];
@@ -353,6 +409,7 @@ function App() {
       if (!changed) { rememberScroll(); position = savedScroll(id); }
       readingRestore.current = ticket; follow.current = false;
       useSession.getState().snapshot(snapshot);
+      for (const operation of snapshot.nativeOperations ?? []) cacheNativeOperation(operation);
       const key = settingsDraftKey(workspace.current, id);
       saveChoices(confirmedComposerDraft(parseComposerDraft(readSaved(key)), snapshot.settings, snapshot.receipts), key);
       const queued = buffer.current ?? [];
@@ -361,7 +418,7 @@ function App() {
       await restoreEarlier(position, id, ticket);
       if (ticket !== epoch.current) return;
       save(storageKey(), id);
-      setSynced(true);
+      setSynced(!useSession.getState().historyReloading);
       scheduled = true;
       requestAnimationFrame(() => {
         if (ticket !== epoch.current || selected.current !== id || !scroller.current) return;
@@ -390,7 +447,7 @@ function App() {
       workspace.current = settings.cwd; save('oraculum.project', settings.cwd);
       archivedView.current = false; setArchived(false); actionTargetId.current = ''; setActionTarget(undefined); setLifecycleNotice('');
       setConfig(settings); setThreads([]); setNextCursor(null); setQuery(''); closeComposerMenu(); setInspected(undefined);
-      useSession.getState().reset(); setText(readDraft());
+      useSession.getState().reset(); setText(readDraft()); restoreSteerDraft();
       const saved = restore ? readSaved(storageKey()) : null;
       let page = await listThreads();
       const fallback = restore ? page?.data[0]?.id ?? '' : '';
@@ -441,8 +498,20 @@ function App() {
     client.current = new BridgeClient(message => {
       if (message.type === 'accountLimits') { useUsage.getState().limits(message.snapshot); return; }
       if (message.type === 'threadUsage') { useUsage.getState().thread(message.snapshot); return; }
-      if (message.type === 'projectsChanged') { void refreshProjects().catch(report); return; }
+      if (message.type === 'projectsChanged') { void refreshProjects().catch(report); void listThreads().catch(() => {}); return; }
       if (message.type === 'threadLifecycleChanged') { lifecycleChanged(message); return; }
+      if (message.type === 'threadHistoryChanged') {
+        if (message.threadId === selected.current) {
+          ++epoch.current; buffer.current = null; readingRestore.current = null;
+          useSession.getState().invalidateHistory(message.historyRevision);
+          setSynced(false); setInspected(undefined); setLoadingHistory(false);
+          void refresh().catch(report);
+        }
+        if (message.cwd === workspace.current) void listThreads().catch(() => {});
+        return;
+      }
+      if (message.type === 'nativeOperationChanged') cacheNativeOperation(message.operation);
+      if (message.type === 'nativeCapabilitiesChanged') { useSession.setState({ nativeCapabilities: message.capabilities }); return; }
       if (message.type === 'unavailable') { useUsage.getState().connect(false); ++epoch.current; readingRestore.current = null; buffer.current = null; useSession.setState({ pending: [] }); setError(message.message); setSynced(false); setLoadingHistory(false); return; }
       if (buffer.current) buffer.current.push(message);
       else {
@@ -562,8 +631,8 @@ function App() {
         model: initialChoices.model?.value, permissionMode: initialChoices.permissionMode?.value, cwd: workspace.current,
       });
       rememberScroll(); ++epoch.current; readingRestore.current = null; buffer.current = null; selected.current = result.thread.id;
-      setInspected(undefined); setText(readDraft()); setDrawer(false); follow.current = true;
-      useSession.getState().reset(); useSession.getState().snapshot({ thread: result.thread, pending: [], settings: {
+      setInspected(undefined); setText(readDraft()); restoreSteerDraft(); setDrawer(false); follow.current = true;
+      useSession.getState().reset(); useSession.getState().snapshot({ thread: result.thread, pending: [], nativeCapabilities: session.nativeCapabilities, settings: {
         approvalPolicy: result.approvalPolicy, sandbox: result.sandbox, approvalsReviewer: result.approvalsReviewer, model: result.model, effort: result.reasoningEffort,
       } });
       if (initialChoices.effort) saveChoices({ effort: { ...initialChoices.effort,
@@ -580,9 +649,31 @@ function App() {
   }
   const active = !!session.activeTurn || session.thread?.status.type === 'active';
   const projectAvailable = !!config && projects.projects.some(p => p.cwd === config.cwd && p.available !== false);
-  const canSend = projectAvailable && connected && synced && !!session.thread && !active && !session.sendBlocked && !sending && !switching && !lifecycleBusy && !!text.trim();
+  const nativeRunning = session.nativeOperations.find(operation => operation.state === 'running');
+  const nativePending = nativeRunning ?? session.nativeOperations.find(operation => ['accepted', 'unknown'].includes(operation.state) && ['review/start', 'thread/compact/start', 'thread/revert', 'turn/steer'].includes(operation.method));
+  const methodBlock = (method: NativeOperationMethod, threadId = selected.current) => (threadId === session.thread?.id ? session.nativeOperations : backgroundNative).some(operation => operation.threadId === threadId && operation.method === method && ['running', 'accepted', 'unknown'].includes(operation.state)) ? '此操作尚未确认完成，请查询状态，勿重复操作。' : '';
+  const canSend = projectAvailable && connected && synced && !!session.thread && !active && !session.sendBlocked && !session.historyReloading && !nativePending && !steerDraft && !sending && !switching && !lifecycleBusy && !!text.trim();
+  const canSteer = projectAvailable && connected && synced && !!session.activeTurn && !session.pending.length && !steerDeliveryBlocked(session.sendBlocked, session.receipts, session.activeTurn, session.nativeOperations.some(operation => operation.method === 'review/start' && operation.state === 'accepted' && operation.turnId === session.activeTurn)) && !session.historyReloading && !steerOperationBlocked(session.nativeOperations, session.activeTurn) && !sending && !switching && !lifecycleBusy && !!text.trim()
+    && !session.nativeCapabilities?.unsupportedMethods.includes('turn/steer') && (!steerDraft || steerDraft.threadId === session.thread?.id && steerDraft.turnId === session.activeTurn);
+  async function steer() {
+    if (!canSteer || composing.current || nativeSubmitting.current) return;
+    const observedThread = session.thread!.id;
+    const observedTurn = steerBinding.current?.turnId ?? session.activeTurn!;
+    const current = useSession.getState();
+    if (selected.current !== observedThread || current.thread?.id !== observedThread || current.activeTurn !== observedTurn) { setError('原运行已结束或切换，补充指令未发送。'); return; }
+    nativeSubmitting.current = true; setSending(true); setError('');
+    bindSteerDraft({ threadId: observedThread, turnId: observedTurn });
+    const submittedRevision = draftRevision.current;
+    const operationId = crypto.randomUUID();
+    try {
+      await client.current!.request('turn/steer', { threadId: observedThread, cwd: workspace.current, expectedTurnId: observedTurn, text }, operationId);
+      if (selected.current === observedThread && draftRevision.current === submittedRevision) writeDraft('');
+    } catch (value) { report(value); if (useSession.getState().nativeOperations.find(operation => operation.operationId === operationId)?.state !== 'rejected') setSynced(false); }
+    finally { nativeSubmitting.current = false; setSending(false); }
+  }
+  function submitComposer() { if (useSession.getState().activeTurn || steerBinding.current) void steer(); else void send(); }
   async function send() {
-    if (!canSend || composing.current) return;
+    if (!canSend || composing.current || nativeSubmitting.current || steerBinding.current || useSession.getState().activeTurn) return;
     setSending(true); setError(''); follow.current = true;
     const submittedRevision = draftRevision.current;
     const submittedSettings = useSession.getState().settings;
@@ -610,7 +701,7 @@ function App() {
     const cursor = session.history!.nextCursor;
     setLoadingHistory(true); follow.current = false;
     try {
-      const value = await client.current!.request<Snapshot>('bridge/history', { threadId: id, cursor });
+      const value = await client.current!.request<Snapshot>('bridge/history', { threadId: id, cursor, historyRevision: session.historyRevision });
       if (selected.current !== id || epoch.current !== ticket) return;
       const top = scroller.current?.scrollTop ?? 0;
       const height = scroller.current?.scrollHeight ?? 0;
@@ -631,7 +722,18 @@ function App() {
   const title = session.thread?.name || session.thread?.preview.slice(0, 48) || '新会话';
   const disabled = !connected || connecting || sending || approving || switching || lifecycleBusy;
   const targetThread = actionTarget && (threads.find(thread => thread.id === actionTarget.thread.id) ?? actionTarget.thread);
-  const actionBlocked = !connected ? '连接已断开，重新连接后才能操作。' : !projectAvailable ? '项目已移除或目录失效。' : targetThread && unknownThreads.has(targetThread.id) ? '此会话操作结果尚未确认，请查询原生状态，勿重复操作。' : targetThread ? sessionActionBlock(targetThread, targetThread.id === selected.current ? { active, pending: !!session.pending.length, sendBlocked: session.sendBlocked, synced } : undefined) : '';
+  const targetNative = targetThread?.id === session.thread?.id ? session.nativeOperations : backgroundNative.filter(operation => operation.threadId === targetThread?.id);
+  const nativeActionBlocked = nativePending ? nativePending.state === 'unknown' ? '操作结果尚未确认，请查询状态，勿重复操作。' : '原生操作正在进行，请等待完成。' : '';
+  const actionBlocked = !connected ? '连接已断开，重新连接后才能操作。' : !projectAvailable ? '项目已移除或目录失效。' : targetThread && unknownThreads.has(targetThread.id) ? '此会话操作结果尚未确认，请查询原生状态，勿重复操作。' : targetThread?.id === selected.current && nativeActionBlocked ? nativeActionBlocked : targetNative.some(operation => operation.state === 'running') ? '原生操作正在进行，请等待完成。' : targetThread ? sessionActionBlock(targetThread, targetThread.id === selected.current ? { active, pending: !!session.pending.length, sendBlocked: session.sendBlocked, synced } : undefined) : '';
+  const renameBlocked = targetNative.some(operation => operation.state === 'running') ? '原生操作正在进行，请等待完成。' : !connected ? '连接已断开，重新连接后才能操作。' : !projectAvailable ? '项目已移除或目录失效。' : !synced || session.historyReloading ? '当前会话状态尚未确认，请先查询状态。' : '';
+  const completedTurns = Object.values(session.turns).map((turn, index) => {
+    const user = items.find(view => view.turnId === turn.id && view.item.type === 'userMessage')?.item;
+    const preview = user?.type === 'userMessage' ? user.content.filter(input => input.type === 'text').map(input => input.text).join(' ').slice(0, 36) : '';
+    return { id: turn.id, completed: turn.status === 'completed', label: `第 ${index + 1} 轮${preview ? ' · ' + preview : ''}` };
+  }).filter(turn => turn.completed);
+  const nativeLatest = session.nativeOperations.find(operation => operation.state === 'unknown') ?? nativePending ?? [...session.nativeOperations].sort((a, b) => b.createdAt - a.createdAt)[0];
+  const nativeLabels = { 'thread/name/set': '重命名', 'thread/fork': '分叉', 'thread/revert': '历史回退', 'turn/steer': '补充指令', 'review/start': '原生审阅', 'thread/compact/start': '上下文压缩' };
+  const nativeStatusLabel = nativeLatest ? `${nativeLabels[nativeLatest.method]}${nativeLatest.state === 'running' || nativeLatest.state === 'accepted' ? '正在进行' : nativeLatest.state === 'unknown' ? '结果待确认，请查询状态，勿重复操作' : nativeLatest.state === 'rejected' ? '未完成' : '已完成'}` : '';
   const connectionLabel = !connected ? '已断开' : synced ? '状态已查询' : '待查询状态';
   const sessionNavigation = <nav aria-label="原生会话" aria-busy={listing}>{threads.filter(thread => `${thread.name} ${thread.preview} ${thread.id}`.toLowerCase().includes(query.toLowerCase())).map(thread => {
         const current = thread.id === session.thread?.id;
@@ -683,10 +785,11 @@ function App() {
         <button className="mobile-brand icon-button" aria-label="打开导航" onClick={() => setDrawer(true)}><OracleEye/></button>
         <div className="session-title"><span>{session.thread ? title : 'Oraculum · 神谕'}</span><small>{projects.projects.find(p => p.cwd === config?.cwd)?.name ?? 'Codex'}</small></div>
         <button className="icon-button desktop-header-action" title="新建会话" aria-label="新增会话" disabled={disabled || !projectAvailable} onClick={() => void createThread()}><Icon name="plus"/></button>
-        <div className="header-actions"><span className="connection-status" role="status" title={connectionLabel}><i className={connected ? 'online' : ''}/><span className="sr-only">{connectionLabel}</span></span><span className={`turn-state ${active ? 'running' : ''}`} data-testid="turn-status">{!synced && session.thread ? '状态未确认' : session.pending.length ? '待审批' : active ? '执行中' : session.sendBlocked ? '发送待确认' : session.thread ? turnLabel : '—'}</span><button className="icon-button desktop-header-action" aria-label="查询状态" title="查询状态" disabled={disabled || !session.thread} onClick={() => void refresh().catch(report)}><Icon name="refresh" size={16}/></button><button className="icon-button inspector-toggle" aria-label={layout.inspector ? '收起检查器' : '打开检查器'} title="检查器" onClick={() => setLayout(l => ({ ...l, inspector: !l.inspector }))}><Icon name="panel"/></button><button className="icon-button mobile-menu-toggle" aria-label="会话菜单" aria-expanded={menu} onClick={() => setMenu(value => !value)}><Icon name="more"/></button></div>
+        <div className="header-actions"><span className="connection-status" role="status" title={connectionLabel}><i className={connected ? 'online' : ''}/><span className="sr-only">{connectionLabel}</span></span><span className={`turn-state ${active ? 'running' : ''}`} data-testid="turn-status">{!synced && session.thread ? '状态未确认' : session.pending.length ? '待审批' : active ? '执行中' : session.sendBlocked ? '发送待确认' : session.thread ? turnLabel : '—'}</span><button className="icon-button desktop-header-action" aria-label="查询状态" title="查询状态" disabled={disabled || !session.thread} onClick={() => void refresh().catch(report)}><Icon name="refresh" size={16}/></button><button className="icon-button desktop-header-action" aria-label="当前会话操作" title="会话操作" aria-haspopup="dialog" disabled={disabled || !session.thread} onClick={event => openSessionActions(session.thread!, event.currentTarget, false)}><Icon name="more"/></button><button className="icon-button inspector-toggle" aria-label={layout.inspector ? '收起检查器' : '打开检查器'} title="检查器" onClick={() => setLayout(l => ({ ...l, inspector: !l.inspector }))}><Icon name="panel"/></button><button className="icon-button mobile-menu-toggle" aria-label="会话菜单" aria-expanded={menu} onClick={() => setMenu(value => !value)}><Icon name="more"/></button></div>
         {menu && <div className="mobile-session-menu" role="menu" aria-label="会话操作">
           <button role="menuitem" disabled={disabled || !projectAvailable} onClick={() => { setMenu(false); void createThread(); }}><Icon name="plus"/>新建会话</button>
           <button role="menuitem" disabled={disabled || !session.thread} onClick={() => { setMenu(false); void refresh().catch(report); }}><Icon name="refresh"/>查询状态</button>
+          <button role="menuitem" disabled={disabled || !session.thread} onClick={event => { setMenu(false); openSessionActions(session.thread!, event.currentTarget, false); }}><Icon name="more"/>当前会话操作</button>
           <button role="menuitem" onClick={openUsage}><Icon name="usage"/>会话用量</button>
           <button role="menuitem" onClick={() => { setMenu(false); setSettings(true); }}><Icon name="settings"/>设置</button>
         </div>}
@@ -696,9 +799,10 @@ function App() {
         <div data-theme-slot="content" className="conversation-content" ref={scrollContent}>
           {theme.notice && !settings && <p className="error" role="alert">{theme.notice}</p>}
           {session.history?.nextCursor && <button className="history-more" disabled={loadingHistory || !connected} onClick={() => void older()}>{loadingHistory ? '正在加载…' : '加载更早历史'}</button>}
-          {session.sendBlocked && <p role="alert" className="error">有发送尚未确认终态，禁止重发。请查询原生状态；结果仍未知时使用新会话。</p>}
+          {session.sendBlocked && (session.receipts.some(receipt => receipt.status === 'unknown') || !active && !nativePending) && <p role="alert" className="error">有发送尚未确认终态，禁止重发。请查询原生状态；结果仍未知时使用新会话。</p>}
           {config && !projectAvailable && <p className="error" role="alert">项目已移除或目录失效。请浏览主机文件夹并重新添加；仍可停止当前执行或拒绝审批。</p>}
           {error && <p className="error" role="alert">{error}</p>}
+          {nativeLatest && <p className={`native-operation-status ${nativeLatest.state}`} role="status" aria-label="原生操作状态">{nativeStatusLabel}{nativeLatest.state === 'rejected' && nativeLatest.message ? `：${nativeLatest.message}` : ''}</p>}
           {session.notices.map((notice, i) => <p className="history-warning" key={i}>{notice}</p>)}
           {lastReceipt?.status === 'rejected' && <p className="error" role="alert">最近一次发送已被拒绝，请检查错误提示后再发送。</p>}
           <div className="timeline" aria-label="会话时间线">
@@ -726,19 +830,20 @@ function App() {
         </div>
       </div>
       <div className="jump-latest-slot">{!atBottom && <button className="jump-latest" onClick={() => { follow.current = true; scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: 'smooth' }); }}><Icon name="arrowDown" size={14}/>返回最新{session.pending.length ? ' · 待审批' : ''}</button>}</div>
-      <form ref={composerForm} data-theme-slot="composer" className={`composer ${expanded ? 'expanded' : ''}`} onSubmit={event => { event.preventDefault(); void send(); }}>
+      <form ref={composerForm} data-theme-slot="composer" className={`composer ${expanded ? 'expanded' : ''}`} onSubmit={event => { event.preventDefault(); submitComposer(); }}>
         <div className="composer-context model-controls">
           <button type="button" className="composer-control project-control" aria-label={`项目：${projectLabel}`} title={projectLabel} aria-haspopup="dialog" aria-expanded={composerMenu === 'project'} disabled={disabled} onClick={event => toggleComposerMenu('project', event.currentTarget)}><Icon name="folder"/><span className="composer-value">{projectLabel}</span><Icon name="chevron" size={12}/></button>
-          <button type="button" className="composer-control model-control" aria-label={`模型与思考强度：${modelLabel} · ${effort || '未读取'}`} title={`${modelLabel} · ${effort || '未读取'}`} aria-haspopup="dialog" aria-expanded={composerMenu === 'model'} data-state={choices.model || choices.effort ? 'pending' : 'native'} disabled={disabled || !synced || !projectAvailable || session.sendBlocked} onClick={event => toggleComposerMenu('model', event.currentTarget)}><Icon name="model"/><span className="composer-value">{modelLabel}</span>{effort && <span className="effort-badge">{effort}</span>}<Icon name="chevron" size={12}/></button>
+          <button type="button" className="composer-control model-control" aria-label={`模型与思考强度：${modelLabel} · ${effort || '未读取'}`} title={`${modelLabel} · ${effort || '未读取'}`} aria-haspopup="dialog" aria-expanded={composerMenu === 'model'} data-state={choices.model || choices.effort ? 'pending' : 'native'} disabled={disabled || active || !synced || !projectAvailable || session.sendBlocked} onClick={event => toggleComposerMenu('model', event.currentTarget)}><Icon name="model"/><span className="composer-value">{modelLabel}</span>{effort && <span className="effort-badge">{effort}</span>}<Icon name="chevron" size={12}/></button>
         </div>
-        <div className="composer-input"><label className="sr-only" htmlFor="message">消息</label><textarea ref={composer} id="message" enterKeyHint="enter" onCompositionStart={() => { composing.current = true; }} onCompositionEnd={() => { composing.current = false; }} value={text} onChange={event => writeDraft(event.target.value)} placeholder={brandCopy.placeholder} maxLength={16000} rows={2} onKeyDown={event => { if (event.key === 'Enter' && (event.ctrlKey || event.metaKey) && !event.nativeEvent.isComposing && !composing.current && event.keyCode !== 229) { event.preventDefault(); void send(); } }}/><button className="icon-button expand-composer" type="button" aria-label={expanded ? '收起输入框' : '展开输入框'} title="展开输入框" onClick={() => setExpanded(value => !value)}><Icon name="expand" size={15}/></button></div>
+        <div className="composer-input"><label className="sr-only" htmlFor="message">消息</label><textarea ref={composer} id="message" enterKeyHint="enter" onCompositionStart={() => { composing.current = true; }} onCompositionEnd={() => { composing.current = false; }} value={text} onChange={event => writeDraft(event.target.value)} placeholder={brandCopy.placeholder} maxLength={16000} rows={2} onKeyDown={event => { if (event.key === 'Enter' && (event.ctrlKey || event.metaKey) && !event.nativeEvent.isComposing && !composing.current && event.keyCode !== 229) { event.preventDefault(); submitComposer(); } }}/><button className="icon-button expand-composer" type="button" aria-label={expanded ? '收起输入框' : '展开输入框'} title="展开输入框" onClick={() => setExpanded(value => !value)}><Icon name="expand" size={15}/></button></div>
+        {steerDraft && <div className="steer-draft-status" role="status">{active && session.activeTurn === steerDraft.turnId ? '补充到当前运行，不开启新一轮。' : '原运行已结束或切换，草稿已保留。'}{!active && <button type="button" onClick={() => bindSteerDraft(undefined)}>作为新消息</button>}</div>}
         <div className="composer-toolbar">
           <div className="composer-options">
             <button type="button" className="icon-button composer-more" aria-label="更多操作" title="更多操作" aria-haspopup="dialog" aria-expanded={composerMenu === 'more'} onClick={event => toggleComposerMenu('more', event.currentTarget)}><Icon name="plus" size={21}/></button>
-            <button type="button" className={`composer-control permission-control ${permissionMode === 'full-access' ? 'full-access' : ''}`} aria-label={`权限：${permissionLabel}`} title={permissionLabel} aria-haspopup="dialog" aria-expanded={composerMenu === 'permission'} data-state={choices.permissionMode ? 'pending' : 'native'} disabled={disabled || !synced || !projectAvailable || session.sendBlocked} onClick={event => toggleComposerMenu('permission', event.currentTarget)}><Icon name="shield"/><span className="composer-value">{permissionLabel}</span><Icon name="chevron" size={12}/></button>
+            <button type="button" className={`composer-control permission-control ${permissionMode === 'full-access' ? 'full-access' : ''}`} aria-label={`权限：${permissionLabel}`} title={permissionLabel} aria-haspopup="dialog" aria-expanded={composerMenu === 'permission'} data-state={choices.permissionMode ? 'pending' : 'native'} disabled={disabled || active || !synced || !projectAvailable || session.sendBlocked} onClick={event => toggleComposerMenu('permission', event.currentTarget)}><Icon name="shield"/><span className="composer-value">{permissionLabel}</span><Icon name="chevron" size={12}/></button>
           </div>
           <div className="composer-actions">{active
-            ? <button type="button" className="stop-button" aria-label="停止" title="停止" disabled={!connected || !session.activeTurn} onClick={() => void client.current!.request('turn/interrupt', { threadId: selected.current, turnId: session.activeTurn }).catch(report)}><Icon name="stop" size={18}/></button>
+            ? <><button type="button" className="steer-button" aria-label="补充指令" title={session.nativeCapabilities?.unsupportedMethods.includes('turn/steer') ? '当前版本暂不支持' : '补充到当前运行 · Ctrl+Enter'} disabled={!canSteer} onClick={() => void steer()}>补充指令</button><button type="button" className="stop-button" aria-label="停止" title="停止" disabled={!connected || !session.activeTurn} onClick={() => void client.current!.request('turn/interrupt', { threadId: selected.current, turnId: session.activeTurn }).catch(report)}><Icon name="stop" size={18}/></button></>
             : <button className="primary send-button" title="发送 · Ctrl+Enter" aria-label="发送" disabled={!canSend}><Icon name="arrowUp" size={21}/></button>}
           </div>
         </div>
@@ -783,7 +888,7 @@ function App() {
       <footer className="mobile-detail-footer"><button onClick={() => setLayout(l => ({ ...l, inspector: false }))}><Icon name="back"/>返回会话</button></footer>
     </section>}
     {browsing && client.current && <ProjectBrowser client={client.current} projects={projects} onRefresh={refreshProjects} onSelect={selectProject} onClose={() => setBrowsing(false)}/>}
-    {actionTarget && targetThread && <SessionActions key={targetThread.id} target={{ ...actionTarget, thread: targetThread }} projectName={projects.projects.find(project => project.cwd === targetThread.cwd)?.name ?? '当前项目'} blocked={actionBlocked} busy={lifecycleBusy} onAction={changeSession} onClose={closeSessionActions}/>}
+    {actionTarget && targetThread && <SessionActions key={targetThread.id} target={{ ...actionTarget, thread: targetThread }} projectName={projects.projects.find(project => project.cwd === targetThread.cwd)?.name ?? '当前项目'} blocked={actionBlocked} busy={lifecycleBusy} native={{ current: targetThread.id === session.thread?.id, turns: targetThread.id === session.thread?.id ? completedTurns : [], blocked: targetThread.id === session.thread?.id ? nativeActionBlocked : targetNative.some(operation => operation.state === 'running') ? '原生操作正在进行，请等待完成。' : '', renameBlocked, operationBlocks: Object.fromEntries(targetNative.filter(operation => operation.threadId === targetThread.id && ['running', 'accepted', 'unknown'].includes(operation.state)).map(operation => [operation.method, '此操作尚未确认完成，请查询状态，勿重复操作。'])), unsupported: session.nativeCapabilities?.unsupportedMethods ?? [], onAction: changeNativeSession }} onAction={changeSession} onClose={closeSessionActions}/>}
     <dialog data-theme-slot="settings" ref={dialog} className="settings-dialog app-settings" aria-label="设置" onCancel={event => { if (event.target === event.currentTarget) setSettings(false); }} onClick={event => { if (event.target === event.currentTarget) setSettings(false); }}><div className="settings-content">
       <header><div><OracleEye/><h2>设置</h2></div><button className="icon-button" aria-label="关闭设置" onClick={() => setSettings(false)}><Icon name="close"/></button></header>
       {settings && <IdentitySettings/>}

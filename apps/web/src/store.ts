@@ -134,9 +134,11 @@ export const useSession = create<State>((set, get) => ({
       history: snapshot.history, discardedTurns: state.discardedTurns.filter(id => !snapshot.thread.turns.some(turn => turn.id === id)) });
   },
   approval: request => {
-    const threadId = get().thread?.id;
+    const state = get();
+    const threadId = state.thread?.id;
     if (!threadId || (request.params.threadId !== threadId && !request.displayThreadIds?.includes(threadId))) return;
-    set({ pending: [...get().pending.filter(p => p.id !== request.id), request] });
+    if (state.historyReloading || typeof request.params.turnId === 'string' && state.discardedTurns.includes(request.params.turnId)) return;
+    set({ pending: [...state.pending.filter(p => p.id !== request.id), request] });
   },
   event: (event, skipDeltas = false) => {
     const state = get();

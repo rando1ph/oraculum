@@ -324,6 +324,9 @@ export class BridgeService extends EventEmitter {
     if (needsDirectory && this.projects && await this.projects.resolve(cwd) !== cwd) throw new Error('Project directory changed; refresh the native thread list');
     if (method === 'bridge/subscribe' || method === 'bridge/history') {
       const historyRevision = this.historyRevision(threadId);
+      if (method === 'bridge/history' && params.historyRevision !== undefined && params.historyRevision !== historyRevision) {
+        throw new Error('原生历史版本已变化，请重新查询会话。');
+      }
       const wasLoaded = this.loaded.has(threadId);
       await this.resume(threadId);
       // Stable native notifications need not include permission changes. Rejoin

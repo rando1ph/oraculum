@@ -20,7 +20,9 @@ it('replaces reverted history and ignores obsolete pages, snapshots and late nat
   useSession.getState().snapshot({ ...snapshot([turn('keep')]), historyRevision: 1 });
   useSession.getState().older(snapshot([turn('remove', [message])]));
   emit('turn/completed', { threadId: 't', turn: turn('remove', [message]) });
+  useSession.getState().approval({ id: 'late-approval', method: 'item/commandExecution/requestApproval', params: { threadId: 't', turnId: 'remove', itemId: 'old-command' } } as Approval);
   expect(Object.keys(useSession.getState().turns)).toEqual(['keep']);
+  expect(useSession.getState().pending).toEqual([]);
   expect(useSession.getState()).toMatchObject({ diffs: {}, plans: {}, sendBlocked: false, historyReloading: false });
   useSession.getState().older({ ...snapshot([turn('older')]), historyRevision: 1 });
   expect(Object.keys(useSession.getState().turns)).toEqual(['older', 'keep']);

@@ -8,7 +8,7 @@ import './process.css';
 // Unknown message phases remain visible. Only the native commentary phase is
 // known to be progress; guessing from prose or position can hide an answer.
 export function isProcessItem(item: ThreadItem) {
-  return item.type !== 'userMessage' && (item.type !== 'agentMessage' || item.phase === 'commentary');
+  return item.type !== 'userMessage' && item.type !== 'exitedReviewMode' && (item.type !== 'agentMessage' || item.phase === 'commentary');
 }
 
 export function needsAttention(item: ThreadItem) {

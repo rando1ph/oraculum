@@ -1,0 +1,20 @@
+@layer oraculum {
+.session-rename { display: grid; gap: 8px; }
+.session-rename label, .session-turn-label { color: var(--muted); font-size: 12px; }
+.session-rename input, #revert-turn { width: 100%; min-height: 44px; color: var(--foreground); background: var(--surface-raised); }
+.session-turn-label { display: block; margin-bottom: 8px; }
+.session-actions-content .session-revert-selection { padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius); overflow-wrap: anywhere; }
+.native-operation-status { color: var(--muted); margin: 10px 0; font-size: 12px; line-height: 1.7; }
+.native-operation-status.unknown { color: var(--warning); }
+.native-operation-status.rejected { color: var(--danger); }
+.native-operation-status.completed { color: var(--success); }
+.steer-button { min-height: 44px; color: var(--accent); border-color: var(--line-bright); white-space: nowrap; }
+.steer-draft-status { display: flex; align-items: center; gap: 10px; margin: 0 0 8px; color: var(--muted); font-size: 11px; line-height: 1.6; }
+.steer-draft-status button { min-height: 36px; flex-shrink: 0; }
+@media (max-width: 760px), (pointer: coarse) {
+  .session-rename input, #revert-turn, .steer-button { min-height: 48px; }
+  .steer-button { padding-inline: 10px; font-size: 12px; }
+  .session-action-list { gap: 6px; }
+  .steer-draft-status { font-size: 11px; }
+}
+}
