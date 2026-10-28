@@ -64,6 +64,7 @@ main.app-shell[data-theme-root][data-theme-id]
   aside.navigation[data-theme-slot="navigation"]   桌面侧栏 / Android Drawer
     .brand-row / .project-picker / .mobile-project-tree
     .session-link / .navigation-footer
+      .weekly-quota / .quota-ring                  本周额度 / 剩余比例环图
   section.conversation[data-theme-slot="conversation"]
     div.theme-decoration[data-theme-slot="decoration"]（默认不接收点击）
     header.conversation-header[data-theme-slot="header"]
@@ -93,6 +94,8 @@ main.app-shell[data-theme-root][data-theme-id]
         .composer-submenu-header / .composer-choice-list（二级返回栏与纵向选项）
       .send-button / .stop-button
   section.inspector[data-theme-slot="inspector"]      桌面详情 / 手机全屏
+    .inspector-tabs                                 Diff / 输出 / 用量
+    .session-usage / .token-split / .usage-details   会话用量 / 输入输出条 / 详细数据
     .diff-editor / .cm-editor / .cm-gutters
     .diff-added / .diff-removed / .diff-hunk
   dialog.settings-dialog.app-settings[data-theme-slot="settings"]

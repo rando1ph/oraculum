@@ -1,73 +1,86 @@
-import { useEffect, useRef } from 'react';
-import type { AccountUsageSnapshot, LimitsSnapshot, QuotaBucket, QuotaWindow, ThreadUsage, TokenCounts } from '../../../packages/shared/usage';
+import type { LimitsSnapshot, QuotaWindow, ThreadUsage, TokenCounts } from '../../../packages/shared/usage';
+import { Icon } from './icons';
 import './usage.css';
 
-export const tokenNumber = (value: number | null | undefined) => value == null ? '暂不可用' : value.toLocaleString();
-export function resetTime(seconds: number | null) {
-  if (seconds === null || !Number.isSafeInteger(seconds) || seconds <= 0 || seconds > 253402300799) return '暂不可用';
-  return new Date(seconds * 1000).toLocaleString(undefined, { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', timeZoneName: 'short' });
+export const tokenNumber = (value: number | null | undefined) => value == null ? '—' : value.toLocaleString();
+export function compactTokens(value: number | null | undefined) {
+  if (value == null) return '—';
+  const unit = value >= 1_000_000 ? 1_000_000 : value >= 1_000 ? 1_000 : 1;
+  return (value / unit).toLocaleString(undefined, { maximumFractionDigits: unit === 1 ? 0 : 1 }) + (unit === 1_000_000 ? 'm' : unit === 1_000 ? 'k' : '');
 }
-const at = (ms: number) => ms ? new Date(ms).toLocaleString() : '尚未收到';
-const duration = (minutes: number) => minutes % 1440 === 0 ? `${minutes / 1440} 天` : minutes % 60 === 0 ? `${minutes / 60} 小时` : `${minutes.toLocaleString()} 分钟`;
+export function resetTime(seconds: number | null) {
+  if (seconds === null || !Number.isSafeInteger(seconds) || seconds <= 0 || seconds > 253402300799) return null;
+  return new Date(seconds * 1000).toLocaleString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+export function weeklyQuota(account: LimitsSnapshot | undefined): { remaining: number; resetsAt: number | null } | null {
+  if (account?.status !== 'available') return null;
+  const windows = account.buckets
+    // Match a proven Codex bucket, not its display name or another product's quota.
+    .filter(bucket => bucket.limitId === 'codex' || (bucket.limitId === null && bucket.key === 'codex'))
+    .flatMap(bucket => [bucket.primary, bucket.secondary])
+    .filter((window): window is QuotaWindow => window?.windowDurationMins === 10080 &&
+      typeof window.usedPercent === 'number' && Number.isFinite(window.usedPercent) && window.usedPercent >= 0 && window.usedPercent <= 100);
+  const window = windows[0];
+  // Two conflicting weekly windows cannot establish one reliable remaining value.
+  if (!window || windows.some(other => other.usedPercent !== window.usedPercent || other.resetsAt !== window.resetsAt)) return null;
+  return { remaining: 100 - window.usedPercent!, resetsAt: window.resetsAt };
+}
 export function cacheRatio(counts: TokenCounts) {
   return counts.inputTokens !== null && counts.inputTokens > 0 && counts.cachedInputTokens !== null && counts.cachedInputTokens <= counts.inputTokens
-    ? `${(counts.cachedInputTokens / counts.inputTokens * 100).toLocaleString(undefined, { maximumFractionDigits: 1 })}%` : '暂不可用';
+    ? `${(counts.cachedInputTokens / counts.inputTokens * 100).toLocaleString(undefined, { maximumFractionDigits: 1 })}%` : '—';
 }
-function Counts({ title, counts }: { title: string; counts: TokenCounts }) {
-  return <section className="usage-counts"><h3>{title}</h3><dl>
-    <dt>总 Token</dt><dd>{tokenNumber(counts.totalTokens)}</dd>
-    <dt>输入</dt><dd>{tokenNumber(counts.inputTokens)}</dd>
-    <dt>缓存输入（含于输入）</dt><dd>{tokenNumber(counts.cachedInputTokens)}</dd>
-    {counts.cacheWriteInputTokens !== null && <><dt>缓存写入</dt><dd>{tokenNumber(counts.cacheWriteInputTokens)}</dd></>}
-    <dt>输出</dt><dd>{tokenNumber(counts.outputTokens)}</dd>
-    <dt>推理输出（含于输出）</dt><dd>{tokenNumber(counts.reasoningOutputTokens)}</dd>
-    <dt>缓存率</dt><dd>{cacheRatio(counts)}</dd>
-  </dl></section>;
+export function tokenSplit(counts: TokenCounts) {
+  const { totalTokens: total, inputTokens: input, outputTokens: output } = counts;
+  // Cached input / reasoning output are subsets. A chart uses only verified
+  // input + output = total, and never total / context-window capacity.
+  return total !== null && input !== null && output !== null &&
+    [total, input, output, input + output].every(value => Number.isSafeInteger(value) && value >= 0) && total > 0 && input + output === total
+    ? { input: input / total * 100, output: output / total * 100 } : null;
 }
-function Window({ label, value }: { label: string; value: QuotaWindow | null }) {
-  return <div className="usage-window"><div><span>{label}{value?.windowDurationMins != null ? ` · ${duration(value.windowDurationMins)}` : ''}</span>
-    <strong>{value?.usedPercent != null ? `已用 ${value.usedPercent.toLocaleString()}%` : '暂不可用'}</strong></div>
-    {value?.usedPercent != null && <progress max={100} value={value.usedPercent} aria-label={`${label} 已用百分比`}/>}
-    <small>重置：{resetTime(value?.resetsAt ?? null)}</small></div>;
-}
-function Bucket({ bucket }: { bucket: QuotaBucket }) {
-  return <section className="usage-bucket"><h3>{bucket.limitName ?? bucket.limitId ?? '账户额度'}{bucket.limitName && bucket.limitId && <small>{bucket.limitId}</small>}</h3>
-    <Window label="Primary" value={bucket.primary}/><Window label="Secondary" value={bucket.secondary}/>
-    {bucket.credits && <p className="usage-note">账户 Credits：{bucket.credits.unlimited === true ? '原生报告不限额' : bucket.credits.balance !== null ? bucket.credits.balance : '暂不可用'}（独立于 Token 和窗口额度）</p>}
+export function WeeklyQuota({ account, connected }: { account?: LimitsSnapshot; connected: boolean }) {
+  const quota = connected ? weeklyQuota(account) : null;
+  const percent = quota?.remaining.toLocaleString(undefined, { maximumFractionDigits: 1 });
+  const reset = quota ? resetTime(quota.resetsAt) : null;
+  return <section className={`weekly-quota ${quota ? '' : 'quota-unavailable'}`} aria-label="Codex 本周额度">
+    {quota && <svg className="quota-ring" aria-hidden="true" viewBox="0 0 48 48" data-remaining={quota.remaining}>
+      <circle className="quota-ring-track" cx="24" cy="24" r="20"/>
+      <circle className="quota-ring-value" cx="24" cy="24" r="20" pathLength="100" strokeDasharray={`${quota.remaining} 100`} transform="rotate(-90 24 24)"/>
+    </svg>}
+    <div className="weekly-quota-copy">
+      {quota ? <><span className="quota-label">本周额度</span><div className="quota-remaining"><strong>{percent}%</strong><span>剩余</span></div>
+        <small>{reset ? <><time dateTime={new Date(quota.resetsAt! * 1000).toISOString()}>{reset}</time> 重置</> : '重置时间暂不可用'}</small></>
+        : <><span className="quota-label">本周额度暂不可用</span><small>{connected ? '额度更新后显示' : '连接后查看'}</small></>}
+    </div>
   </section>;
 }
-export function UsagePanel({ thread, account, activity, connected, open, onOpen, onClose, onRefresh, refreshing }: {
-  thread?: ThreadUsage; account?: LimitsSnapshot; activity?: AccountUsageSnapshot; connected: boolean; open: boolean;
-  onOpen: () => void; onClose: () => void; onRefresh: () => void; refreshing: boolean;
+function Counts({ counts }: { counts: TokenCounts }) {
+  return <dl className="usage-metrics">
+    <dt>总计</dt><dd>{tokenNumber(counts.totalTokens)}</dd>
+    <dt>输入</dt><dd>{tokenNumber(counts.inputTokens)}</dd>
+    <dt>输出</dt><dd>{tokenNumber(counts.outputTokens)}</dd>
+    <dt title="缓存输入包含在输入 Token 中">缓存输入</dt><dd>{tokenNumber(counts.cachedInputTokens)}</dd>
+    {counts.cacheWriteInputTokens !== null && <><dt>缓存写入</dt><dd>{tokenNumber(counts.cacheWriteInputTokens)}</dd></>}
+    <dt title="推理输出包含在输出 Token 中">推理输出</dt><dd>{tokenNumber(counts.reasoningOutputTokens)}</dd>
+    <dt title="缓存输入 ÷ 输入 Token；分母为零或未知时不计算">缓存率</dt><dd>{cacheRatio(counts)}</dd>
+  </dl>;
+}
+export function SessionUsage({ thread, selected, connected, refreshing, onRefresh }: {
+  thread?: ThreadUsage; selected: boolean; connected: boolean; refreshing: boolean; onRefresh: () => void;
 }) {
-  const dialog = useRef<HTMLDialogElement>(null);
-  useEffect(() => { if (open) dialog.current?.showModal(); else dialog.current?.close(); }, [open]);
-  const primary = account?.status === 'available' ? account.buckets.find(b => b.primary?.usedPercent != null) : undefined;
-  return <>
-    <button className="usage-summary" aria-label="用量详情" onClick={onOpen}>
-      <span>用量 · {thread?.total.totalTokens != null ? `${tokenNumber(thread.total.totalTokens)} Token` : 'Token 暂不可用'}</span>
-      <span>{!connected ? '已断线' : primary ? `${primary.limitName ?? primary.limitId ?? '账户'} 已用 ${primary.primary!.usedPercent}%` : '额度暂不可用'} <span aria-hidden="true">↗</span></span>
-    </button>
-    <dialog ref={dialog} className="usage-dialog" aria-labelledby="usage-title" onCancel={event => { event.preventDefault(); onClose(); }} onClick={event => { if (event.target === event.currentTarget) onClose(); }}>
-      <div className="usage-content"><header><div><h2 id="usage-title">用量</h2><p>Codex 原生快照</p></div><button aria-label="关闭用量" onClick={onClose}>关闭</button></header>
-        {!connected && <p className="usage-note" role="status">连接已断开。会话数据为缓存，账户额度需重连后查询。</p>}
-        <section><h3 className="usage-section-title">当前会话 · Token</h3>
-          {thread ? <><div className="usage-count-grid"><Counts title="累计" counts={thread.total}/><Counts title="最近一次" counts={thread.last}/></div>
-            <p className="usage-note">缓存率 = 缓存输入 ÷ 输入。缓存输入和推理输出是子集，不额外加总。</p>
-            <div className="usage-context"><span>上下文窗口上限</span><strong>{tokenNumber(thread.modelContextWindow)}{thread.modelContextWindow !== null ? ' Token' : ''}</strong><small>当前占用未知</small></div>
-            <p className="usage-note">最近收到：{at(thread.observedAt)}。累计 Token 不代表当前上下文占用。</p>
-          </> : <p className="usage-note">暂不可用，等待该会话的原生用量快照。历史会话不保证提供此数据。</p>}
-        </section>
-        <section><h3 className="usage-section-title">账户额度 · 已用百分比</h3>
-          {account?.status === 'available' ? <>{account.buckets.map(bucket => <Bucket key={bucket.key} bucket={bucket}/>)}<p className="usage-note">最近收到：{at(account.observedAt)} · 重置时间为本地时间。其他窗口请逐项查看。</p></>
-            : <p className="usage-note">{account?.status === 'unsupported' ? '当前 Codex 不支持额度接口。' : '暂不可用，当前账户、Provider 或连接未提供额度。'}</p>}
-        </section>
-        <details className="usage-activity"><summary>账户 Token 活动（可选）</summary>
-          {activity?.status === 'available' ? <><dl><dt>账户生命周期 Token</dt><dd>{tokenNumber(activity.lifetimeTokens)}</dd><dt>单日峰值 Token</dt><dd>{tokenNumber(activity.peakDailyTokens)}</dd></dl><p className="usage-note">最近读取：{at(activity.observedAt)}。这是账户累计统计，与当前会话和额度窗口分开。</p></>
-            : <p className="usage-note">{activity?.status === 'unsupported' ? '当前 Codex 不支持账户活动接口。' : '暂不可用。该附加统计不影响会话操作。'}</p>}
-        </details>
-        <footer><span className="usage-note">读取有短暂缓存，更新事件自动同步</span><button disabled={!connected || refreshing} onClick={onRefresh}>{refreshing ? '读取中…' : '刷新用量'}</button></footer>
-      </div>
-    </dialog>
-  </>;
+  const split = thread ? tokenSplit(thread.total) : null;
+  return <section className="session-usage" aria-label="当前会话用量">
+    <header className="usage-heading"><h2>会话用量</h2><button className="icon-button" aria-label="刷新用量" title="刷新用量" disabled={!connected || refreshing} onClick={onRefresh}><Icon name="refresh" size={16}/></button></header>
+    {!connected && thread && <p className="usage-offline">已离线 · 显示上次数据</p>}
+    <div className="usage-total" title={thread ? `${tokenNumber(thread.total.totalTokens)} Tokens` : undefined}>
+      <span>本会话累计</span><div><strong>{compactTokens(thread?.total.totalTokens)}</strong><span>Tokens</span></div>
+    </div>
+    {thread ? <>
+      {split && <div className="token-split" aria-hidden="true"><span className="token-split-input" style={{ width: `${split.input}%` }}/><span className="token-split-output" style={{ width: `${split.output}%` }}/></div>}
+      <dl className="usage-key-metrics"><div><dt><i className="input-key"/>输入</dt><dd>{tokenNumber(thread.total.inputTokens)}</dd></div><div><dt><i className="output-key"/>输出</dt><dd>{tokenNumber(thread.total.outputTokens)}</dd></div></dl>
+      <div className="usage-context" title="模型的上下文容量上限；当前占用未知，不从累计 Token 推算"><span>上下文窗口</span><strong>{compactTokens(thread.modelContextWindow)}<small> 上限</small></strong></div>
+      <details className="usage-details"><summary>详细数据<Icon name="chevron" size={14}/></summary>
+        <section><h3>累计</h3><Counts counts={thread.total}/></section><section><h3>最近一次</h3><Counts counts={thread.last}/></section>
+      </details>
+    </> : <p className="usage-empty">{!selected ? '选择会话查看用量' : !connected ? '连接后查看用量' : '此会话暂无用量数据'}</p>}
+  </section>;
 }

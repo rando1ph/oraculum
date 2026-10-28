@@ -99,14 +99,14 @@ try {
       await page.locator('.conversation-scroll').evaluate(element => { element.scrollTop = 0; });
       await page.getByRole('button', { name: '会话菜单', exact: true }).click();
       const menu = page.getByRole('menu', { name: '会话操作', exact: true });
-      await expect(menu.getByRole('menuitem')).toHaveText(['新建会话', '查询状态', '设置']);
+      await expect(menu.getByRole('menuitem')).toHaveText(['新建会话', '查询状态', '会话用量', '设置']);
       await menuSnapshot(`${theme}-${width}x${height}`);
       if (theme === 'hong-kong-neon' && height === 844) await page.screenshot({ path: join(output, 'neon-menu-portrait.png') });
       const bounds = (await menu.boundingBox())!;
       expect(bounds.x).toBeGreaterThanOrEqual(0); expect(bounds.x + bounds.width).toBeLessThanOrEqual(width);
       expect(bounds.y).toBeGreaterThanOrEqual(0); expect(bounds.y + bounds.height).toBeLessThanOrEqual(height);
       expect(bounds.y).toBe(60); expect(width - bounds.x - bounds.width).toBe(12);
-      for (const name of ['新建会话', '查询状态', '设置']) {
+      for (const name of ['新建会话', '查询状态', '会话用量', '设置']) {
         const item = menu.getByRole('menuitem', { name, exact: true });
         await item.scrollIntoViewIfNeeded(); await hit(item, `${theme}/${width}x${height}/${name}`);
       }
@@ -114,7 +114,7 @@ try {
       const before = requests.filter(value => value === 'thread/read').length;
       const query = menu.getByRole('menuitem', { name: '查询状态', exact: true }); await query.scrollIntoViewIfNeeded(); await rawClick(query);
       await expect(menu).toHaveCount(0); await expect.poll(() => requests.filter(value => value === 'thread/read').length).toBeGreaterThan(before); await ready();
-      record(`${theme} ${width}x${height}: 3 menu items retain order, >=44px targets, viewport bounds and real hit testing; status click reaches Bridge`);
+      record(`${theme} ${width}x${height}: 4 menu items retain order, >=44px targets, viewport bounds and real hit testing; status click reaches Bridge`);
     }
     await page.setViewportSize({ width: 390, height: 844 }); await settle();
     await page.getByRole('button', { name: '会话菜单', exact: true }).click();

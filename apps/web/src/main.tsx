@@ -22,14 +22,14 @@ import { NativeRequest } from './native-request';
 import { PermissionDetails, permissionModes } from './permissions';
 import { acknowledgedComposerDraft, actualComposerValues, composerOverrides, confirmedComposerDraft, parseComposerDraft, reconcileComposerDraft, type ComposerDraft } from './composer-settings';
 import { SessionActions, sessionActionBlock, sessionLabel, type SessionAction, type SessionTarget } from './session-actions';
-import { UsagePanel } from './usage';
+import { SessionUsage, WeeklyQuota } from './usage';
 import { usageKey, useUsage } from './usage-store';
-import type { AccountUsageSnapshot, UsageSnapshot } from '../../../packages/shared/usage';
+import type { UsageSnapshot } from '../../../packages/shared/usage';
 import './style.css';
 import './mobile.css';
 
 const Diff = lazy(() => import('./diff').then(module => ({ default: module.Diff })));
-type Inspected = { kind: 'diff'; path: string; diff: string } | { kind: 'item'; id: string; turnId: string };
+type Inspected = { kind: 'diff'; path: string; diff: string } | { kind: 'item'; id: string; turnId: string } | { kind: 'usage' | 'emptyDiff' };
 const readSaved = (key: string) => { try { return localStorage.getItem(key); } catch { return null; } };
 const save = (key: string, value: string) => { try { localStorage.setItem(key, value); } catch { /* Storage is optional. */ } };
 // Android server profiles survive WebView recreation; tab-scoped desktop drafts stay unchanged.
@@ -38,7 +38,6 @@ function App() {
   const theme = useTheme();
   const session = useSession();
   const usage = useUsage();
-  const [usageOpen, setUsageOpen] = useState(false);
   const [usageRefreshing, setUsageRefreshing] = useState(false);
   const usageRequest = useRef(0);
   const mobile = useMobile();
@@ -227,6 +226,7 @@ function App() {
   }
   const openDiff = (path: string, diff: string) => { setInspected({ kind: 'diff', path, diff }); setLayout(l => ({ ...l, inspector: true })); };
   function openItem(item: ThreadItem, turnId: string) { setInspected({ kind: 'item', id: item.id, turnId }); setLayout(l => ({ ...l, inspector: true })); }
+  function openUsage() { setInspected({ kind: 'usage' }); setLayout(l => ({ ...l, inspector: true })); setMenu(false); void refreshUsage(); }
   async function refreshProjects() {
     const ticket = ++registryEpoch.current;
     const directory = await client.current!.request<ProjectList>('bridge/projects', {});
@@ -317,17 +317,16 @@ function App() {
       useSession.setState({ notices: [...state.notices, message.message] });
     }
   }
-  async function refreshUsage(id = selected.current, activity = false) {
+  async function refreshUsage(id = selected.current) {
     const connection = useUsage.getState().connection;
     const ticket = ++usageRequest.current;
     setUsageRefreshing(true);
-    const reads: Promise<unknown>[] = [client.current!.request<UsageSnapshot>('bridge/usage', {
-      ...(id ? { threadId: id, cwd: workspace.current } : {}),
-    }).then(value => useUsage.getState().snapshot(value, connection))];
-    if (activity) reads.push(client.current!.request<AccountUsageSnapshot>('bridge/accountUsage', {}).then(value => useUsage.getState().accountActivity(value, connection)));
     // Optional read failures never affect connection, sends, model settings or recovery.
-    await Promise.allSettled(reads);
-    if (ticket === usageRequest.current) setUsageRefreshing(false);
+    try {
+      const value = await client.current!.request<UsageSnapshot>('bridge/usage', { ...(id ? { threadId: id, cwd: workspace.current } : {}) });
+      useUsage.getState().snapshot(value, connection);
+    } catch { /* Keep the last verified values; connection changes invalidate the store. */ }
+    finally { if (ticket === usageRequest.current) setUsageRefreshing(false); }
   }
   async function refresh(id = selected.current) {
     setCreatedThreadId('');
@@ -533,7 +532,6 @@ function App() {
     // Android invokes this single UI-only callback after the IME has handled Back.
     // It grants no native, filesystem, network or credential capability to JS.
     const back = () => {
-      if (usageOpen) { setUsageOpen(false); return true; }
       if (composerMenu) {
         if (composerMenu === 'model' && modelMenuLevel !== 'summary') setModelMenuLevel('summary');
         else closeComposerMenu(true);
@@ -554,7 +552,7 @@ function App() {
     };
     window.addEventListener('keydown', close);
     return () => { delete window.oraculumAndroidBack; window.removeEventListener('keydown', close); };
-  }, [usageOpen, settings, browsing, menu, composerMenu, modelMenuLevel, drawer, expanded, layout.inspector, actionTarget, lifecycleBusy]);
+  }, [settings, browsing, menu, composerMenu, modelMenuLevel, drawer, expanded, layout.inspector, actionTarget, lifecycleBusy]);
   async function createThread() {
     setSending(true); setError('');
     try {
@@ -629,6 +627,7 @@ function App() {
   const files = items.flatMap(view => view.item.type === 'fileChange' ? view.item.changes : []);
   const tools = items.filter(view => ['commandExecution', 'mcpToolCall'].includes(view.item.type));
   const inspectedItem = inspected?.kind === 'item' ? items.find(view => view.item.id === inspected.id && view.turnId === inspected.turnId)?.item : undefined;
+  const viewingUsage = !inspected || inspected.kind === 'usage';
   const title = session.thread?.name || session.thread?.preview.slice(0, 48) || '新会话';
   const disabled = !connected || connecting || sending || approving || switching || lifecycleBusy;
   const targetThread = actionTarget && (threads.find(thread => thread.id === actionTarget.thread.id) ?? actionTarget.thread);
@@ -674,7 +673,7 @@ function App() {
           {open && <><p className="project-group-path" title={project.cwd}>{project.cwd}</p>{sessionNavigation}</>}
         </section>;
       })}</div> : sessionNavigation}
-      <footer className="navigation-footer"><button className="settings-button" onClick={() => setSettings(true)}><Icon name="settings"/>设置</button><div className="connection"><i className={connected ? 'online' : ''}/><span>{connectionLabel}</span><small>{location.protocol === 'https:' ? 'HTTPS' : 'LOCAL'}</small></div></footer>
+      <footer className="navigation-footer"><WeeklyQuota account={usage.account} connected={usage.connected}/><button className="settings-button" onClick={() => setSettings(true)}><Icon name="settings"/>设置</button><div className="connection"><i className={connected ? 'online' : ''}/><span>{connectionLabel}</span><small>{location.protocol === 'https:' ? 'HTTPS' : 'LOCAL'}</small></div></footer>
       <ResizeHandle side="navigation" value={layout.navigationWidth} onChange={navigationWidth => setLayout(l => ({ ...l, navigationWidth }))}/>
     </aside>
     <section data-theme-slot="conversation" data-thread-id={session.thread?.id ?? ''} data-last-turn-status={lastTurn?.status ?? ''} className="conversation" aria-label="对话" inert={browsing || settings || (mobile && (drawer || layout.inspector))}>
@@ -688,13 +687,10 @@ function App() {
         {menu && <div className="mobile-session-menu" role="menu" aria-label="会话操作">
           <button role="menuitem" disabled={disabled || !projectAvailable} onClick={() => { setMenu(false); void createThread(); }}><Icon name="plus"/>新建会话</button>
           <button role="menuitem" disabled={disabled || !session.thread} onClick={() => { setMenu(false); void refresh().catch(report); }}><Icon name="refresh"/>查询状态</button>
+          <button role="menuitem" onClick={openUsage}><Icon name="usage"/>会话用量</button>
           <button role="menuitem" onClick={() => { setMenu(false); setSettings(true); }}><Icon name="settings"/>设置</button>
         </div>}
       </header>
-      <UsagePanel thread={session.thread && !switching ? usage.threads[usageKey(session.thread.cwd, session.thread.id)] : undefined}
-        account={usage.account} activity={usage.activity} connected={usage.connected} open={usageOpen} refreshing={usageRefreshing}
-        onOpen={() => { setUsageOpen(true); void refreshUsage(selected.current, true); }} onClose={() => setUsageOpen(false)}
-        onRefresh={() => void refreshUsage(selected.current, true)}/>
       {!connected && <div className="disconnect-banner">连接已断开，主机任务不会因此停止。<button disabled={connecting || sending || approving} onClick={() => void connect().catch(report)}>重新连接</button></div>}
       <div className="conversation-scroll" ref={scroller} onScroll={() => { if (readingRestore.current !== null) return; const element = scroller.current!; follow.current = element.scrollHeight - element.scrollTop - element.clientHeight < 60; setAtBottom(follow.current); rememberScroll(); }}>
         <div data-theme-slot="content" className="conversation-content" ref={scrollContent}>
@@ -766,13 +762,23 @@ function App() {
         </div>}
       </form>
     </section>
-    {layout.inspector && <section data-theme-slot="inspector" className="inspector" inert={browsing || settings || (mobile && drawer)} aria-label={inspected?.kind === 'item' ? '工具详情面板' : '文件 Diff 面板'}>
+    {layout.inspector && <section data-theme-slot="inspector" className="inspector" inert={browsing || settings || (mobile && drawer)} aria-label={viewingUsage ? '会话用量面板' : inspected?.kind === 'item' ? '工具详情面板' : '文件 Diff 面板'}>
       <ResizeHandle side="inspector" value={layout.inspectorWidth} onChange={inspectorWidth => setLayout(l => ({ ...l, inspectorWidth }))}/>
-      <header className="inspector-header"><button className="icon-button mobile-detail-back" aria-label="返回会话" onClick={() => setLayout(l => ({ ...l, inspector: false }))}><Icon name="back"/></button><div className="inspector-tabs"><button className={inspected?.kind !== 'item' ? 'active' : ''} onClick={() => { if (files[0]) openDiff(files[0].path, files[0].diff); else setInspected(undefined); }}><Icon name="file" size={15}/>Diff</button><button className={inspected?.kind === 'item' ? 'active' : ''} disabled={!tools.length} onClick={() => { const view = tools.at(-1)!; openItem(view.item, view.turnId); }}><Icon name="terminal" size={15}/>输出</button></div><button className="icon-button" aria-label="关闭面板" title="关闭面板" onClick={() => setLayout(l => ({ ...l, inspector: false }))}><Icon name="close"/></button></header>
+      <header className="inspector-header">
+        <button className="icon-button mobile-detail-back" aria-label="返回会话" onClick={() => setLayout(l => ({ ...l, inspector: false }))}><Icon name="back"/></button>
+        <div className="inspector-tabs" role="group" aria-label="检查器视图">
+          <button className={!viewingUsage && inspected?.kind !== 'item' ? 'active' : ''} aria-pressed={!viewingUsage && inspected?.kind !== 'item'}
+            onClick={() => { if (files[0]) openDiff(files[0].path, files[0].diff); else setInspected({ kind: 'emptyDiff' }); }}><Icon name="file" size={15}/>Diff</button>
+          <button className={inspected?.kind === 'item' ? 'active' : ''} aria-pressed={inspected?.kind === 'item'} disabled={!tools.length}
+            onClick={() => { const view = tools.at(-1)!; openItem(view.item, view.turnId); }}><Icon name="terminal" size={15}/>输出</button>
+          <button className={viewingUsage ? 'active' : ''} aria-pressed={viewingUsage} onClick={openUsage}><Icon name="usage" size={15}/>用量</button>
+        </div>
+        <button className="icon-button" aria-label="关闭面板" title="关闭面板" onClick={() => setLayout(l => ({ ...l, inspector: false }))}><Icon name="close"/></button>
+      </header>
       <div className="inspector-scroll">
-        {inspected?.kind === 'diff' ? <><div className="inspector-file"><Icon name="file"/><h2 title={inspected.path}>{displayPath(inspected.path, session.thread?.cwd)}</h2></div><small className="inspector-caption">Codex 原生差异 · 只读</small><Suspense fallback={<p>正在加载 Diff…</p>}><Diff text={inspected.diff} label={`Diff ${inspected.path}`}/></Suspense></> : inspectedItem ? <><div className="inspector-file"><Icon name="terminal"/><h2>{inspectedItem.type === 'commandExecution' ? '命令输出' : '工具详情'}</h2></div><ItemDetail item={inspectedItem}/></> : <div className="inspector-empty"><OracleEye/><h2>{brandCopy.inspectorTitle}</h2><p>{brandCopy.inspectorDescription}</p></div>}
-        {!!files.length && <details className="inspector-list" open><summary>变更文件 <span>{files.length}</span></summary>{files.map((file, index) => <button key={`${file.path}:${index}`} onClick={() => openDiff(file.path, file.diff)} className={inspected?.kind === 'diff' && inspected.path === file.path ? 'selected' : ''}><Icon name="file" size={14}/><span title={file.path}>{displayPath(file.path, session.thread?.cwd)}</span></button>)}</details>}
-        {!!tools.length && <details className="inspector-list"><summary>工具记录 <span>{tools.length}</span></summary>{tools.map(view => <button key={`${view.turnId}:${view.item.id}`} onClick={() => openItem(view.item, view.turnId)}><Icon name="terminal" size={14}/><span>{view.item.type === 'commandExecution' ? view.item.command : view.item.type}</span></button>)}</details>}
+        {viewingUsage ? <SessionUsage thread={session.thread && !switching ? usage.threads[usageKey(session.thread.cwd, session.thread.id)] : undefined} selected={!!session.thread && !switching} connected={usage.connected} refreshing={usageRefreshing} onRefresh={() => void refreshUsage()}/> : inspected?.kind === 'diff' ? <><div className="inspector-file"><Icon name="file"/><h2 title={inspected.path}>{displayPath(inspected.path, session.thread?.cwd)}</h2></div><small className="inspector-caption">Codex 原生差异 · 只读</small><Suspense fallback={<p>正在加载 Diff…</p>}><Diff text={inspected.diff} label={`Diff ${inspected.path}`}/></Suspense></> : inspectedItem ? <><div className="inspector-file"><Icon name="terminal"/><h2>{inspectedItem.type === 'commandExecution' ? '命令输出' : '工具详情'}</h2></div><ItemDetail item={inspectedItem}/></> : <div className="inspector-empty"><OracleEye/><h2>{brandCopy.inspectorTitle}</h2><p>{brandCopy.inspectorDescription}</p></div>}
+        {!viewingUsage && !!files.length && <details className="inspector-list" open><summary>变更文件 <span>{files.length}</span></summary>{files.map((file, index) => <button key={`${file.path}:${index}`} onClick={() => openDiff(file.path, file.diff)} className={inspected?.kind === 'diff' && inspected.path === file.path ? 'selected' : ''}><Icon name="file" size={14}/><span title={file.path}>{displayPath(file.path, session.thread?.cwd)}</span></button>)}</details>}
+        {!viewingUsage && !!tools.length && <details className="inspector-list"><summary>工具记录 <span>{tools.length}</span></summary>{tools.map(view => <button key={`${view.turnId}:${view.item.id}`} onClick={() => openItem(view.item, view.turnId)}><Icon name="terminal" size={14}/><span>{view.item.type === 'commandExecution' ? view.item.command : view.item.type}</span></button>)}</details>}
       </div>
       <footer className="mobile-detail-footer"><button onClick={() => setLayout(l => ({ ...l, inspector: false }))}><Icon name="back"/>返回会话</button></footer>
     </section>}

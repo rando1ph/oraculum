@@ -1,47 +1,57 @@
 @layer oraculum {
-  .usage-summary { display: flex; flex: 0 0 auto; justify-content: space-between; gap: 12px; min-width: 0; min-height: 36px; padding: 6px 18px; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; color: var(--muted); background: var(--surface); font-size: 11px; text-align: left; }
-  .usage-summary > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .usage-summary > span:last-child { color: var(--accent); }
-  .usage-dialog { width: min(640px, calc(100vw - 24px)); max-height: calc(100dvh - 28px); margin: auto; padding: 0; overflow: auto; border: 1px solid var(--line-bright); border-radius: 16px; color: var(--foreground); background: var(--surface); box-shadow: 0 24px 100px #0009; }
-  .usage-dialog::backdrop { background: #0009; backdrop-filter: blur(4px); }
-  .usage-content { padding: 24px; }
-  .usage-content > header, .usage-content > footer { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
-  .usage-content > header { position: sticky; top: 0; z-index: 1; padding-bottom: 12px; background: var(--surface); border-bottom: 1px solid var(--line); }
-  .usage-content h2 { margin: 0; font-size: 21px; }
-  .usage-content header p { margin: 5px 0 0; color: var(--muted); font-size: 12px; }
-  .usage-content h3 { margin: 0 0 12px; font-size: 13px; }
-  .usage-content .usage-section-title { margin: 25px 0 14px; color: var(--accent); }
-  .usage-count-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
-  .usage-counts { min-width: 0; }
-  .usage-content dl { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 9px 12px; margin: 0; font-size: 12px; }
-  .usage-content dt { color: var(--muted); }
-  .usage-content dd { margin: 0; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
-  .usage-note { margin: 12px 0; font-size: 11px; line-height: 1.8; color: var(--muted); }
-  .usage-context { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding: 13px 0; border-block: 1px solid var(--line); font-size: 12px; }
-  .usage-context strong { margin-left: auto; font-weight: 500; }
-  .usage-context small { color: var(--muted); }
-  .usage-bucket { padding: 16px; margin: 12px 0; border: 1px solid var(--line); border-radius: 10px; background: var(--background); }
-  .usage-bucket h3 { display: flex; gap: 12px; flex-wrap: wrap; overflow-wrap: anywhere; }
-  .usage-bucket h3 small { color: var(--muted); font-weight: 400; }
-  .usage-window + .usage-window { margin-top: 16px; }
-  .usage-window > div { display: flex; justify-content: space-between; gap: 12px; font-size: 12px; }
-  .usage-window strong { font-weight: 500; }
-  .usage-window small { display: block; color: var(--muted); font-size: 11px; margin-top: 6px; }
-  .usage-window progress { display: block; width: 100%; height: 4px; margin-top: 9px; accent-color: var(--accent); }
-  .usage-window progress::-webkit-progress-bar { background: var(--line); border-radius: 3px; }
-  .usage-window progress::-webkit-progress-value { background: var(--accent); border-radius: 3px; }
-  .usage-activity { margin-top: 18px; border-top: 1px solid var(--line); padding-top: 16px; font-size: 12px; }
-  .usage-activity summary { cursor: pointer; margin-bottom: 14px; }
-  .usage-content > footer { margin-top: 20px; border-top: 1px solid var(--line); padding-top: 14px; }
-  .usage-content button { min-height: 44px; flex-shrink: 0; }
-  @media (max-width: 760px) {
-    .usage-summary { min-height: 44px; padding-inline: 12px; font-size: 10px; gap: 8px; }
-    .usage-content { padding: 18px; }
-    .usage-count-grid { grid-template-columns: 1fr; gap: 20px; }
-    .usage-context small { width: 100%; }
-  }
-  /* Match the existing extreme IME layout: preserve input and Send first. */
-  @media (max-height: 160px) and (max-width: 760px), (max-height: 160px) and (pointer: coarse) {
-    .usage-summary { display: none; }
+  .weekly-quota { display: flex; align-items: center; gap: 12px; padding: 2px 6px 14px; margin-bottom: 7px; border-bottom: 1px solid var(--line); }
+  .quota-ring { width: 46px; height: 46px; flex-shrink: 0; fill: none; stroke-width: 3; }
+  .quota-ring-track { stroke: var(--line); }
+  .quota-ring-value { stroke: var(--accent); }
+  .weekly-quota-copy { min-width: 0; display: grid; gap: 3px; }
+  .quota-label { color: var(--muted); font-size: 11px; line-height: 1.5; }
+  .quota-remaining { display: flex; align-items: baseline; gap: 7px; font-variant-numeric: tabular-nums; }
+  .quota-remaining strong { color: var(--foreground); font-size: 24px; font-weight: 500; letter-spacing: -.04em; line-height: 1.25; }
+  .quota-remaining > span { color: var(--muted); font-size: 11px; }
+  .weekly-quota small { color: var(--subtle); font-size: 10px; line-height: 1.6; overflow-wrap: anywhere; }
+  .quota-unavailable { padding-top: 8px; padding-bottom: 16px; }
+  .quota-unavailable .quota-label { color: var(--foreground); font-size: 12px; }
+  .session-usage { max-width: 480px; margin: 0 auto; padding: 20px 8px 12px; color: var(--foreground); }
+  .usage-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .usage-heading h2 { margin: 0; font-size: 13px; font-weight: 500; }
+  .usage-heading .icon-button { min-width: 32px; min-height: 32px; color: var(--muted); }
+  .usage-total { margin: 29px 0 24px; }
+  .usage-total > span { color: var(--muted); font-size: 11px; }
+  .usage-total > div { display: flex; align-items: baseline; gap: 9px; margin-top: 6px; }
+  .usage-total strong { font-size: 52px; font-weight: 400; line-height: 1.12; letter-spacing: -.055em; font-variant-numeric: tabular-nums; }
+  .usage-total > div > span { color: var(--muted); font-size: 12px; }
+  .token-split { display: flex; height: 5px; gap: 3px; overflow: hidden; border-radius: 3px; }
+  .token-split-input { background: var(--accent); }
+  .token-split-output { background: var(--success); }
+  .usage-key-metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 17px 0 24px; }
+  .usage-key-metrics > div { min-width: 0; }
+  .usage-key-metrics dt { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 11px; }
+  .usage-key-metrics i { width: 5px; height: 5px; border-radius: 50%; }
+  .input-key { background: var(--accent); }
+  .output-key { background: var(--success); }
+  .usage-key-metrics dd { margin: 7px 0 0; font-size: 20px; font-weight: 400; letter-spacing: -.03em; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+  .usage-context { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 17px 0; border-block: 1px solid var(--line); font-size: 11px; color: var(--muted); }
+  .usage-context strong { color: var(--foreground); font-size: 13px; font-weight: 500; font-variant-numeric: tabular-nums; }
+  .usage-context small { color: var(--subtle); font-size: 10px; font-weight: 400; }
+  .usage-details { margin-top: 6px; }
+  .usage-details > summary { display: flex; justify-content: space-between; align-items: center; gap: 12px; cursor: pointer; list-style: none; min-height: 48px; color: var(--muted); font-size: 11px; }
+  .usage-details > summary::-webkit-details-marker { display: none; }
+  .usage-details[open] > summary svg { transform: rotate(90deg); }
+  .usage-details > section { margin: 12px 0 22px; }
+  .usage-details h3 { margin: 0 0 13px; font-size: 11px; font-weight: 500; }
+  .usage-metrics { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 11px 14px; margin: 0; font-size: 11px; }
+  .usage-metrics dt { color: var(--muted); }
+  .usage-metrics dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+  .usage-offline, .usage-empty { color: var(--muted); font-size: 11px; line-height: 1.8; }
+  .usage-offline { margin: 10px 0 -12px; color: var(--warning); }
+  .usage-empty { padding: 12px 0; }
+  @media (max-width: 760px), (pointer: coarse) {
+    .session-usage { padding: 18px 6px; }
+    .usage-heading h2 { font-size: 14px; }
+    .usage-heading .icon-button { min-width: 44px; min-height: 44px; }
+    .inspector-header .inspector-tabs { gap: 4px; min-width: 0; }
+    .inspector-header .inspector-tabs button { padding-inline: 10px; gap: 5px; font-size: 13px; }
+    .quota-label { font-size: 12px; }
+    .weekly-quota small { font-size: 11px; }
   }
 }
