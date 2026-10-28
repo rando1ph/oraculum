@@ -8,6 +8,38 @@ const turn = (id: string, items: ThreadItem[] = [], status: Turn['status'] = 'co
 });
 const snapshot = (turns: Turn[]) => ({ thread: { id: 't', turns } as Thread, pending: [] });
 beforeEach(() => { useSession.getState().reset(); useSession.setState({ thread: { id: 't', turns: [] } as unknown as Thread }); });
+it('replaces reverted history and ignores obsolete pages, snapshots and late native events', () => {
+  const message = { ...item, type: 'agentMessage' as const, text: 'removed' };
+  useSession.getState().snapshot({ ...snapshot([turn('keep'), turn('remove', [message])]), historyRevision: 0 });
+  useSession.setState({ diffs: { remove: 'old patch' }, plans: { remove: 'old plan' }, receipts: [{ operationId: 'old', status: 'unknown', turnId: null, createdAt: 1 }] });
+  useSession.getState().invalidateHistory(1);
+  expect(useSession.getState()).toMatchObject({ items: {}, pending: [], receipts: [], sendBlocked: true, historyReloading: true });
+  useSession.getState().snapshot(snapshot([turn('remove', [message])]));
+  emit('item/completed', { threadId: 't', turnId: 'remove', item: message });
+  expect(useSession.getState().items).toEqual({});
+  useSession.getState().snapshot({ ...snapshot([turn('keep')]), historyRevision: 1 });
+  useSession.getState().older(snapshot([turn('remove', [message])]));
+  emit('turn/completed', { threadId: 't', turn: turn('remove', [message]) });
+  expect(Object.keys(useSession.getState().turns)).toEqual(['keep']);
+  expect(useSession.getState()).toMatchObject({ diffs: {}, plans: {}, sendBlocked: false, historyReloading: false });
+  useSession.getState().older({ ...snapshot([turn('older')]), historyRevision: 1 });
+  expect(Object.keys(useSession.getState().turns)).toEqual(['older', 'keep']);
+});
+it('accepts a newer native history revision even when its invalidation event was missed', () => {
+  useSession.getState().snapshot(snapshot([turn('old')]));
+  useSession.getState().snapshot({ ...snapshot([turn('new')]), historyRevision: 2 });
+  useSession.getState().snapshot({ ...snapshot([turn('old')]), historyRevision: 1 });
+  expect(Object.keys(useSession.getState().turns)).toEqual(['new']);
+});
+it('updates native names and scopes native operation states to the selected thread', () => {
+  emit('thread/name/updated', { threadId: 't', threadName: '原生名称' });
+  expect(useSession.getState().thread?.name).toBe('原生名称');
+  const operation = { operationId: 'once', threadId: 't', cwd: '/fixture', method: 'thread/compact/start' as const, state: 'completed' as const, createdAt: 1 };
+  useSession.getState().nativeOperation(operation);
+  useSession.getState().nativeOperation({ ...operation, state: 'running' });
+  useSession.getState().nativeOperation({ ...operation, threadId: 'other' });
+  expect(useSession.getState().nativeOperations).toEqual([operation]);
+});
 it('deduplicates by turn/item and ignores other threads and late deltas after completion', () => {
   emit('item/started', { threadId: 't', turnId: 'u', item });
   emit('item/agentMessage/delta', { threadId: 't', turnId: 'u', itemId: 'i', delta: 'hello' });

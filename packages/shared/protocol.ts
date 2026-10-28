@@ -32,7 +32,20 @@ export type NativeSessionSettings = {
 };
 // Inherit means no override: native turn overrides persist on the thread.
 export type PermissionMode = 'inherit' | 'read-only' | 'auto' | 'full-access';
+export type NativeOperationMethod = 'thread/name/set' | 'thread/fork' | 'thread/revert' | 'turn/steer' | 'review/start' | 'thread/compact/start';
+export type NativeOperation = {
+  operationId: string; threadId: string; cwd: string; method: NativeOperationMethod;
+  state: 'running' | 'accepted' | 'unknown' | 'rejected' | 'completed'; createdAt: number;
+  message?: string; resultThreadId?: string; turnId?: string;
+};
+export type NativeCapabilities = {
+  unsupportedMethods: NativeOperationMethod[];
+  plan: { available: false; reason: string };
+};
 export type BridgeEvent =
+  | { type: 'nativeOperationChanged'; operation: NativeOperation }
+  | { type: 'nativeCapabilitiesChanged'; capabilities: NativeCapabilities }
+  | { type: 'threadHistoryChanged'; threadId: string; cwd: string; reason: 'revert' | 'compact'; historyRevision: number }
   | { type: 'accountLimits'; snapshot: LimitsSnapshot }
   | { type: 'threadUsage'; snapshot: ThreadUsage }
   | { type: 'event'; event: ServerNotification }
@@ -52,6 +65,10 @@ export type Snapshot = {
   history?: { source: 'native-read' | 'native-pages'; warning: string; nextCursor?: string | null };
   sendBlocked?: boolean;
   receipts?: SendReceipt[];
+  nativeOperations?: NativeOperation[];
+  nativeCapabilities?: NativeCapabilities;
+  // A native history mutation invalidates all prior pages and observed items.
+  historyRevision?: number;
 };
 export type SendReceipt = {
   operationId: string;

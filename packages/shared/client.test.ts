@@ -20,6 +20,20 @@ beforeEach(() => {
   vi.stubGlobal('location', { href: 'http://127.0.0.1:17860/' });
 });
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
+it.each(['thread/name/set', 'thread/fork', 'thread/revert', 'turn/steer', 'review/start', 'thread/compact/start'])('correlates %s once and never retries it after a disconnect', async method => {
+  const client = new BridgeClient(vi.fn(), vi.fn());
+  const connected = client.connect(); const socket = Socket.instances[0]; socket.open(); await connected;
+  const request = client.request(method, { threadId: 't', expectedTurnId: 'active', text: 'supplement' });
+  const wire = JSON.parse(socket.sent[0]);
+  expect(wire.params.operationId).toBe(wire.id);
+  expect(wire.params.expectedTurnId).toBe('active');
+  const rejection = expect(request).rejects.toThrow('未知');
+  socket.close(); await rejection;
+  const reconnect = client.connect(); Socket.instances[1].open(); await reconnect;
+  expect(socket.sent).toHaveLength(1);
+  expect(Socket.instances[1].sent).toEqual([]);
+  client.close();
+});
 it('connects WSS under the configured page directory rather than the origin root', async () => {
   vi.stubGlobal('location', { href: 'https://example.test:9443/team/console/' });
   const client = new BridgeClient(vi.fn(), vi.fn());

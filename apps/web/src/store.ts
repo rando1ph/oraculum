@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Approval, ServerNotification, Snapshot, Thread, ThreadItem, Turn } from '../../../packages/shared/protocol';
+import type { Approval, NativeOperation, ServerNotification, Snapshot, Thread, ThreadItem, Turn } from '../../../packages/shared/protocol';
 
 export const itemKey = (turnId: string, itemId: string) => JSON.stringify([turnId, itemId]);
 export type ItemView = { turnId: string; item: ThreadItem; source: 'native' | 'live'; complete: boolean; progress?: string[] };
@@ -20,6 +20,13 @@ type State = {
   plan: string;
   sendBlocked: boolean;
   receipts: NonNullable<Snapshot['receipts']>;
+  nativeOperations: NativeOperation[];
+  nativeCapabilities?: Snapshot['nativeCapabilities'];
+  historyRevision: number;
+  historyReloading: boolean;
+  discardedTurns: string[];
+  nativeOperation: (operation: NativeOperation) => void;
+  invalidateHistory: (revision: number) => void;
   reset: () => void;
   snapshot: (value: Snapshot) => void;
   older: (value: Snapshot) => void;
@@ -27,7 +34,9 @@ type State = {
   approval: (request: Approval) => void;
 };
 const empty = () => ({ thread: undefined, items: {}, turns: {}, pending: [], events: [], notices: [],
-  activeTurn: undefined, lastTurnId: undefined, history: undefined, settings: undefined, sendBlocked: false, receipts: [], diffs: {}, plans: {}, planAfter: {}, plan: '' });
+  activeTurn: undefined, lastTurnId: undefined, history: undefined, settings: undefined, sendBlocked: false, receipts: [],
+  nativeOperations: [], nativeCapabilities: undefined, historyRevision: 0, historyReloading: false, discardedTurns: [],
+  diffs: {}, plans: {}, planAfter: {}, plan: '' });
 
 // Native pages define the order of their items. Keep observed-only records at
 // their nearest surviving native anchor instead of moving them to the end.
@@ -80,28 +89,49 @@ function nativeItems(thread: Thread, previous: State['items']): State['items'] {
 export const useSession = create<State>((set, get) => ({
   ...empty(),
   reset: () => set(empty()),
-  snapshot: ({ thread, pending, history, settings, sendBlocked, receipts }) => {
+  nativeOperation: operation => {
+    const state = get();
+    if (operation.threadId !== state.thread?.id) return;
+    const prior = state.nativeOperations.find(value => value.operationId === operation.operationId);
+    if (prior && ['completed', 'rejected'].includes(prior.state) && ['running', 'accepted', 'unknown'].includes(operation.state)) return;
+    set({ nativeOperations: [...state.nativeOperations.filter(value => value.operationId !== operation.operationId), operation] });
+  },
+  invalidateHistory: revision => {
+    const state = get();
+    if (revision <= state.historyRevision) return;
+    set({ items: {}, turns: {}, pending: [], receipts: [], diffs: {}, plans: {}, planAfter: {}, plan: '',
+      activeTurn: undefined, lastTurnId: undefined, history: undefined, historyRevision: revision,
+      historyReloading: true, sendBlocked: true,
+      discardedTurns: [...new Set([...state.discardedTurns, ...Object.keys(state.turns)])] });
+  },
+  snapshot: ({ thread, pending, history, settings, sendBlocked, receipts, nativeOperations, nativeCapabilities, historyRevision = 0 }) => {
     const state = get();
     const same = state.thread?.id === thread.id;
-    const previous = same ? state.items : {};
+    if (same && historyRevision < state.historyRevision) return;
+    const retain = same && historyRevision === state.historyRevision;
+    const previous = retain ? state.items : {};
     const items = nativeOrder(previous, nativeItems(thread, previous));
-    const turns = nativeOrder(same ? state.turns : {}, Object.fromEntries(thread.turns.map(turn =>
-      [turn.id, mergeTurn(same ? state.turns[turn.id] : undefined, turn)])));
+    const turns = nativeOrder(retain ? state.turns : {}, Object.fromEntries(thread.turns.map(turn =>
+      [turn.id, mergeTurn(retain ? state.turns[turn.id] : undefined, turn)])));
     const lastTurnId = Object.keys(turns).at(-1);
     // Retain live items internally; never persist them as native history.
-    set({ ...(same ? {} : empty()), thread, pending, items, history, settings, sendBlocked: !!sendBlocked, receipts: receipts ?? [],
-      turns, lastTurnId, plan: same && lastTurnId ? state.plans[lastTurnId] ?? '' : '',
+    const discarded = same ? [...new Set([...state.discardedTurns, ...(!retain ? Object.keys(state.turns) : [])])] : [];
+    set({ ...(retain ? {} : empty()), thread, pending, items, history, settings, sendBlocked: !!sendBlocked, receipts: receipts ?? [],
+      nativeOperations: nativeOperations ?? [], nativeCapabilities, historyRevision, historyReloading: false,
+      discardedTurns: discarded.filter(id => !(id in turns)),
+      turns, lastTurnId, plan: retain && lastTurnId ? state.plans[lastTurnId] ?? '' : '',
       activeTurn: thread.turns.find(turn => turns[turn.id].status === 'inProgress')?.id });
   },
   older: snapshot => {
     const state = get();
     if (snapshot.thread.id !== state.thread?.id) return;
+    if (state.historyReloading || (snapshot.historyRevision ?? 0) !== state.historyRevision) return;
     const incoming = nativeItems(snapshot.thread, state.items);
     const ordered = nativeOrder(state.items, incoming, 'after');
     set({ items: Object.fromEntries(Object.keys(ordered).map(key => [key, state.items[key] ?? ordered[key]])),
       turns: nativeOrder(state.turns, Object.fromEntries(snapshot.thread.turns.map(turn =>
         [turn.id, state.turns[turn.id] ?? turn])), 'after'),
-      history: snapshot.history });
+      history: snapshot.history, discardedTurns: state.discardedTurns.filter(id => !snapshot.thread.turns.some(turn => turn.id === id)) });
   },
   approval: request => {
     const threadId = get().thread?.id;
@@ -111,6 +141,12 @@ export const useSession = create<State>((set, get) => ({
   event: (event, skipDeltas = false) => {
     const state = get();
     if (!('threadId' in event.params) || event.params.threadId !== state.thread?.id) return;
+    if (event.method === 'thread/name/updated') {
+      set({ thread: { ...state.thread!, name: event.params.threadName ?? null } });
+      return;
+    }
+    const turnId = 'turnId' in event.params ? event.params.turnId : 'turn' in event.params ? event.params.turn.id : undefined;
+    if (state.historyReloading || (typeof turnId === 'string' && state.discardedTurns.includes(turnId))) return;
     const changes: Partial<State> = { events: [...state.events.slice(-99), event.method] };
     if (event.method === 'turn/started' || event.method === 'turn/completed') {
       const turn = mergeTurn(state.turns[event.params.turn.id], event.params.turn);
