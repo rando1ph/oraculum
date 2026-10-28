@@ -16,7 +16,9 @@
 
   .conversation { border: 0; border-radius: 0; box-shadow: none; }
   .resize-handle, .desktop-nav-toggle { display: none; }
-  .conversation-header { position: relative; min-height: 64px; height: auto; padding: 6px 12px; gap: 8px; background: linear-gradient(180deg, #061018, #000); }
+  /* Themes can create a header stacking context (e.g. backdrop-filter). Raise
+     the whole header above messages/composer, below Inspector (15)/Drawer (19). */
+  .conversation-header { position: relative; z-index: 12; min-height: 64px; height: auto; padding: 6px 12px; gap: 8px; background: linear-gradient(180deg, #061018, #000); }
   .mobile-brand { display: flex; width: 48px; min-width: 48px; height: 48px; min-height: 48px; padding: 0; }
   .mobile-brand .oracle-eye { width: 46px; height: 46px; }
   .session-title { flex: 1; max-width: none; padding: 0 2px; }
@@ -26,7 +28,7 @@
   .header-actions > .turn-state { display: inline; font-size: 10px; margin-inline: 2px; }
   .desktop-header-action, .header-actions .inspector-toggle { display: none; }
   .mobile-menu-toggle { display: inline-flex; }
-  .mobile-session-menu { display: grid; position: absolute; right: 12px; top: 60px; z-index: 12; min-width: 188px; padding: 6px; border: 1px solid var(--line-bright); border-radius: 10px; background: #06131d; box-shadow: 0 12px 36px #000c; }
+  .mobile-session-menu { display: grid; position: absolute; right: 12px; top: 60px; min-width: 188px; max-height: calc(var(--app-height, 100dvh) - 68px); overflow-y: auto; overscroll-behavior: contain; padding: 6px; border: 1px solid var(--line-bright); border-radius: 10px; background: #06131d; box-shadow: 0 12px 36px #000c; }
   .mobile-session-menu button { min-height: 48px; justify-content: flex-start; border: 0; background: transparent; font-size: 14px; }
   .header-actions .icon-button { width: 44px; min-width: 44px; height: 44px; min-height: 44px; }
   .connection-status { padding: 8px; }
