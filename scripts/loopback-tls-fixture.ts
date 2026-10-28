@@ -17,9 +17,13 @@ export async function loopbackTlsFixture(upstreamPort: number) {
   const server = createServer({ key: await readFile(join(dir, 'key.pem')), cert: await readFile(join(dir, 'cert.pem')) }, (req, res) => {
     const upstream = request({ hostname: '127.0.0.1', port: upstreamPort, path: req.url, method: req.method,
       headers: { ...req.headers, 'x-forwarded-proto': 'https' } }, reply => {
+      reply.on('error', () => res.destroy());
       res.writeHead(reply.statusCode!, reply.headers); reply.pipe(res);
     });
-    upstream.on('error', () => { res.writeHead(502); res.end(); });
+    upstream.on('error', () => { if (!res.headersSent) res.writeHead(502); res.end(); });
+    // Propagate a browser's cancel/revocation disconnect to the real HTTP stream.
+    // Otherwise a paused synthetic proxy can hide aborts and stall fixture teardown.
+    res.once('close', () => upstream.destroy()); req.once('aborted', () => upstream.destroy());
     req.pipe(upstream);
   });
   server.on('connection', socket => { sockets.add(socket); socket.on('close', () => sockets.delete(socket)); });

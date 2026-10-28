@@ -59,11 +59,11 @@ it('discovers real files; fully downloads PDF/Office/images/UTF-8 and empty text
     expect(response.headers['content-length']).toBe(String(data.length)); expect(response.headers['content-type']).toContain(file.mime);
     expect(response.headers['content-disposition']).toContain('attachment;'); expect(response.headers['content-disposition']).toContain(encodeURIComponent(name));
     expect(response.headers['x-oraculum-sha256']).toBe(createHash('sha256').update(data).digest('hex'));
-    expect(response.headers['x-content-type-options']).toBe('nosniff'); expect(response.headers['cache-control']).toBe('no-store');
+    expect(response.headers['x-content-type-options']).toBe('nosniff'); expect(response.headers['cache-control']).toBe('no-store, no-transform'); expect(response.headers['content-encoding']).toBe('identity');
     expect(response.headers['accept-ranges']).toBe('none'); expect(file.preview).toBe(name === 'large.txt' || /\.(docx|pptx|xlsx)$/.test(name) ? null : name.endsWith('.png') ? 'image' : name.endsWith('.pdf') ? 'pdf' : name.endsWith('.md') ? 'markdown' : 'text');
   }
   const list = (await f.post('list')).json(); expect(list.entries).toHaveLength(10); expect(JSON.stringify(list)).not.toContain(f.temp);
-});
+}, 15000); // Ten real filesystem/HTTP transfers share this one test's I/O budget.
 
 it('requires cookie, exact Origin, CSRF, Host, transport and entry path, preserving JSON/WS limits', async () => {
   const f = await fixture(), file = await f.select();
@@ -171,4 +171,19 @@ it('bounds concurrency and grant resources and frees an unconsumed destroyed str
   expect((await f.post('content/' + file.id)).statusCode).toBe(200);
   for (let n = 0; n < 47; n++) await f.select();
   expect((await f.post('select', { path: 'result.txt' })).statusCode).toBe(400);
+});
+
+it('sanitizes filesystem failures before the first streamed byte as well as during transfer', async () => {
+  const f = await fixture(), file = await f.select();
+  const { stream } = await f.service.downloadArtifact(file.id, new AbortController().signal, f.context);
+  await rename(f.cwd, f.cwd + '-old');
+  try { for await (const _chunk of stream) { throw new Error('No bytes may be read'); } throw new Error('Must fail'); }
+  catch (error) { expect((error as Error).message).toBe('文件不存在、已变化或不允许读取，请刷新后重新选择。'); }
+});
+
+it('rejects finite/expired legacy device authorizations independently of an unexpired file grant', async () => {
+  const f = await fixture(), file = await f.select();
+  f.trust.db.prepare('UPDATE devices SET expires_at=? WHERE id=?').run(Date.now() - 1, f.first.device.id);
+  expect((await f.post('content/' + file.id)).statusCode).toBe(401);
+  expect((await f.post('list')).statusCode).toBe(401);
 });

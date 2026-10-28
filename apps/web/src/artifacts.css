@@ -1,0 +1,43 @@
+@layer oraculum {
+  .artifacts { min-width: 0; padding: 16px; }
+  .inspector-tabs { min-width: 0; overflow-x: auto; }
+  .inspector-tabs button { flex-shrink: 0; padding-inline: 9px; }
+  .artifact-toolbar, .artifact-location, .artifact-transfer, .artifact-pdf-pages { display: flex; align-items: center; gap: 10px; justify-content: space-between; }
+  .artifact-toolbar h2 { margin: 0 0 4px; font-size: 16px; }
+  .artifact-toolbar small, .artifact-card small, .artifact-detail small { color: var(--muted); font-size: 11px; }
+  .artifact-location { justify-content: flex-start; margin: 18px 0 12px; min-width: 0; }
+  .artifact-location button { display: flex; gap: 4px; align-items: center; flex-shrink: 0; }
+  .artifact-location span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--muted); }
+  .artifact-list { display: grid; gap: 8px; }
+  .artifact-card { display: flex; align-items: center; gap: 10px; min-width: 0; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); padding: 11px 10px; }
+  .artifact-file-mark { color: var(--accent); flex-shrink: 0; }
+  .artifact-card-info { min-width: 0; flex: 1; display: grid; gap: 5px; }
+  .artifact-name { display: block; width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; border: 0; padding: 0; background: transparent; font-size: 13px; color: var(--foreground); }
+  .artifact-card-actions { display: grid; gap: 4px; flex-shrink: 0; }
+  .artifact-card-actions button { font-size: 11px; padding: 5px 9px; }
+  .artifact-detail { min-width: 0; border: 1px solid var(--line-bright); border-radius: var(--radius); padding: 12px; margin: 0 0 14px; background: var(--surface-raised); }
+  .artifact-detail header { display: grid; gap: 6px; overflow-wrap: anywhere; font-size: 14px; }
+  .artifact-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+  .artifact-actions a { display: flex; align-items: center; min-height: 40px; padding: 8px 12px; border: 1px solid var(--line-bright); border-radius: 8px; color: var(--accent); font-size: 12px; text-decoration: none; }
+  .artifact-image { display: block; width: 100%; max-height: 520px; object-fit: contain; border-radius: 6px; }
+  .artifact-text { max-height: 460px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-family: var(--font-mono); font-size: 12px; line-height: 1.6; }
+  .artifact-hint, .artifact-policy { font-size: 12px; color: var(--muted); line-height: 1.65; }
+  .artifact-policy { margin-top: 20px; font-size: 11px; }
+  .artifact-error { color: var(--danger); overflow-wrap: anywhere; font-size: 12px; }
+  .artifact-transfer { font-size: 12px; margin: 10px 0; flex-wrap: wrap; }
+  .artifact-transfer progress { flex: 1; min-width: 70px; height: 4px; accent-color: var(--accent); }
+  .artifact-pdf canvas { display: block; width: 100%; height: auto; background: white; }
+  .artifact-pdf-pages { font-size: 12px; margin-bottom: 10px; }
+  .artifact-detail .markdown { font-size: 13px; }
+  @media (max-width: 760px) {
+    .inspector-tabs { gap: 4px; }
+    .inspector-tabs button { padding-inline: 8px; font-size: 12px; }
+    .inspector-tabs button svg { display: none; }
+    .artifacts { padding: 14px; }
+    .artifact-card-actions button, .artifact-name, .artifact-actions a { min-height: 44px; }
+    .artifact-card-actions { display: flex; flex-wrap: wrap; }
+    .artifact-card { flex-wrap: wrap; }
+    .artifact-card-info { flex-basis: calc(100% - 34px); }
+    .artifact-card-actions { margin-left: 30px; }
+  }
+}

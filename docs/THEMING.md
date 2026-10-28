@@ -94,7 +94,11 @@ main.app-shell[data-theme-root][data-theme-id]
         .composer-submenu-header / .composer-choice-list（二级返回栏与纵向选项）
       .send-button / .stop-button
   section.inspector[data-theme-slot="inspector"]      桌面详情 / 手机全屏
-    .inspector-tabs                                 Diff / 输出 / 用量
+    .inspector-tabs                                 Diff / 输出 / 文件 / 用量
+    .artifacts[data-theme-slot="artifacts"]          当前项目成果
+      .artifact-card / .artifact-detail             真实文件卡片 / 已选择文件
+      .artifact-transfer / .artifact-error          传输进度 / 读取错误
+      .artifact-image / .artifact-text / .artifact-pdf 受限预览
     .session-usage / .token-split / .usage-details   会话用量 / 输入输出条 / 详细数据
     .diff-editor / .cm-editor / .cm-gutters
     .diff-added / .diff-removed / .diff-hunk
@@ -150,6 +154,8 @@ button.primary { border-radius: 999px; background: #235daf; color: white; }
 共享消息的 GFM 表格使用 `.markdown-table-scroll > table`：外层是可聚焦、带中文标签的横向滚动区域，内部保留原生 `table/thead/tbody/th/td` 语义和列对齐。宿主样式位于 `oraculum` layer，使用 `--line`、`--surface`、`--surface-raised` 与 `--accent`，可信主题可覆盖。主题应保留容器宽度约束、焦点提示及横向滚动，不将表格改为 `display:block`，也不要让宽表撑破消息卡片与 Composer。
 
 R1-B4 沿用 `.session-actions-dialog` / `.session-action-list`，在会话操作中加入原生重命名、分叉、审阅、上下文压缩与二次确认回退。新增 `.session-rename`、`.session-turn-label`、`.session-revert-selection` 供名称输入与历史选择覆盖；对话框保持可滚动、键盘焦点与手机触摸目标。`.native-operation-status` 的 `.unknown` / `.rejected` / `.completed` 使用既有状态 tokens。运行中 `.steer-button` 与停止按钮并列，`.steer-draft-status` 说明补充草稿所属运行；保留状态文字和“作为新消息”的明确操作，不能用主题隐藏未知结果或回退不撤销文件的提示。新增样式仍在 `oraculum` layer，Theme API v1 与四套内置主题格式不变。
+
+R1-B5-B 在既有 Inspector 增加「文件」，手机也可经会话菜单的「项目成果」进入。上述 `.artifact-*` hooks 使用既有表面/文字/边线/状态 tokens，样式在 `oraculum` layer；主题应保留进度、取消、错误、大小与系统保存/分享操作的可见性。已选择文件会移入焦点并回到预览位置，切换项目/线程或断开连接会释放预览。PDF 是只读 canvas，正文颜色由文档本身决定；不启用 PDF 脚本、表单或 HTML viewer。Theme API v1、Cookie/CSP、模型与权限机制不因该面板放宽。
 
 ## 相对资源与浏览器权限
 

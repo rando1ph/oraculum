@@ -62,6 +62,7 @@ class MainActivity : Activity() {
     private val cyan = Color.rgb(136, 220, 239)
     private val ink = Color.rgb(232, 240, 242)
     private var backCallback: OnBackInvokedCallback? = null
+    private val artifactDownloads by lazy { ArtifactDownloads(this) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -180,7 +181,7 @@ class MainActivity : Activity() {
                         !AttachmentPickerPolicy.acceptsRequest(params.acceptTypes.toList(),
                             params.mode in listOf(FileChooserParams.MODE_OPEN, FileChooserParams.MODE_OPEN_MULTIPLE), params.isCaptureEnabled)) return false
                     // Do not replace an outstanding Android activity/result pairing.
-                    if (pickerPending) return false
+                    if (pickerPending || artifactDownloads.busy) return false
                     pickerPending = true
                     pickerMultiple = params.mode == FileChooserParams.MODE_OPEN_MULTIPLE
                     imageCallback = callback
@@ -202,6 +203,14 @@ class MainActivity : Activity() {
             webViewClient = object : WebViewClient() {
                 override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                     if (view !== web) return true
+                    val artifact = ArtifactDownloadPolicy.action(request.url.toString())
+                    if (artifact != null) {
+                        if (request.isForMainFrame && request.hasGesture() && !request.isRedirect && !pageFailed && !pickerPending &&
+                            target.trusts(view.url.orEmpty())) artifactDownloads.begin(artifact, target, cookieManager(view).getCookie(target.url)) {
+                            view === web && entry == target && !pageFailed && target.trusts(view.url.orEmpty())
+                        }
+                        return true
+                    }
                     if (request.url.toString() == "oraculum://settings/server") {
                         if (request.isForMainFrame && request.hasGesture() && !request.isRedirect &&
                             target.trusts(view.url.orEmpty())) showServerSettings()
@@ -248,6 +257,7 @@ class MainActivity : Activity() {
 
                 override fun onPageStarted(view: WebView, url: String, favicon: android.graphics.Bitmap?) {
                     if (view !== web) return
+                    artifactDownloads.invalidate()
                     cancelImagePicker()
                     if (!target.trusts(url)) {
                         view.stopLoading()
@@ -322,6 +332,7 @@ class MainActivity : Activity() {
     @Deprecated("Activity result API used by the minimal Activity shell")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
+        if (artifactDownloads.activityResult(requestCode, resultCode, data)) return
         if (requestCode != imageRequest) return
         pickerPending = false
         val callback = imageCallback ?: return
@@ -439,6 +450,7 @@ class MainActivity : Activity() {
     }
 
     private fun destroyWebView() {
+        artifactDownloads.invalidate()
         cancelImagePicker()
         web?.let {
             cookieManager(it).flush()
@@ -455,6 +467,7 @@ class MainActivity : Activity() {
         settingsDialog?.dismiss()
         dismissSplash(immediate = true)
         destroyWebView()
+        artifactDownloads.close()
         super.onDestroy()
     }
 

@@ -59,6 +59,9 @@ export async function collectWebLicenses(destination = join(project, 'dist/runti
     if (dependency.noticeOnly) continue;
     const dependencies = { ...pkg.dependencies, ...pkg.optionalDependencies };
     for (const name of Object.keys(dependencies)) {
+      // Oraculum imports PDF.js's browser canvas API and worker only. Its optional
+      // Node native canvas backend is neither bundled nor shipped with the Web UI.
+      if (pkg.name === 'pdfjs-dist' && name === '@napi-rs/canvas') continue;
       queue.push({ name, parent: directory, optional: Object.hasOwn(pkg.optionalDependencies ?? {}, name) });
     }
     for (const name of Object.keys(pkg.peerDependencies ?? {})) {
@@ -69,7 +72,7 @@ export async function collectWebLicenses(destination = join(project, 'dist/runti
   }
   packages.sort((left, right) => `${left.name}@${left.version}`.localeCompare(`${right.name}@${right.version}`, 'en'));
   const manifest = { format: 1,
-    scope: 'Installed Web production dependency closure and available peers, including type-only and optional dependencies. Tailwind base CSS and Vite preload-helper notices are included without their build-tool dependency graphs.',
+    scope: 'Installed Web production dependency closure and available peers, including type-only and optional dependencies, except the unbundled PDF.js optional Node native canvas backend. Tailwind base CSS and Vite preload-helper notices are included without their build-tool dependency graphs.',
     entry: { name: entry.name, dependencies: entry.dependencies, emittedBuildAssets }, packages };
   await writeFile(join(destination, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n');
   console.log(`Web production dependency notices: ${packages.length} packages`);

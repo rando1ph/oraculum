@@ -203,7 +203,8 @@ export class ArtifactStore {
             yield bytes.subarray(0, bytesRead);
           }
           await reader.check(); live();
-        } finally { await done(); }
+        } catch { throw unavailable(); }
+        finally { await done(); }
       })());
       stream.once('close', () => { void done(); });
       // If the consumer disconnects before iteration starts, close still owns FDs.

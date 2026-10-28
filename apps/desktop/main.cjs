@@ -1,7 +1,8 @@
-const { app, BrowserWindow, session, Menu, dialog } = require('electron');
+const { app, BrowserWindow, session, Menu, dialog, shell } = require('electron');
 const { join, resolve } = require('node:path');
 const { prepareDesktopPaths } = require('./paths.cjs');
 const { configureRuntime, ensureBridge } = require('./runtime.cjs');
+const { allowedDownload } = require('./artifacts.cjs');
 configureRuntime(app);
 app.setName('神谕');
 app.setDesktopName('oraculum.desktop');
@@ -32,6 +33,22 @@ app.whenReady().then(async () => {
     webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true, webviewTag: false },
   });
   window.on('page-title-updated', event => event.preventDefault());
+  session.defaultSession.on('will-download', (event, item, contents) => {
+    if (contents !== window.webContents || !allowedDownload(item, url.origin, contents.getURL())) { event.preventDefault(); return; }
+    item.setSaveDialogOptions({ title: '保存成果文件', defaultPath: item.getFilename(),
+      filters: [{ name: '成果文件', extensions: [item.getFilename().split('.').at(-1)] }] });
+    item.once('done', async (_event, state) => {
+      if (window.isDestroyed()) return;
+      if (state === 'completed') {
+        const choice = await dialog.showMessageBox(window, { type: 'info', title: '成果已保存', message: item.getFilename(),
+          buttons: ['稍后', '打开文件'], defaultId: 0, cancelId: 0 });
+        if (choice.response === 1 && !window.isDestroyed()) {
+          const error = await shell.openPath(item.getSavePath());
+          if (error) dialog.showErrorBox('无法打开文件', '请在系统中安装对应阅读器，或从保存位置打开。');
+        }
+      } else if (state === 'interrupted') dialog.showErrorBox('文件未保存', '保存中断，请返回文件面板重试。');
+    });
+  });
   const splashFile = join(process.env.ORACULUM_RESOURCE_DIR || resolve(__dirname, '../..'), 'apps/desktop/splash.html');
   let splash;
   let connecting = false;

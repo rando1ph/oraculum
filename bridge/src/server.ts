@@ -216,7 +216,7 @@ export async function createServer(service: BridgeService, port: number, webRoot
         const { file, digest, stream } = await service.downloadArtifact(request.params.id, controller.signal, artifactContext(request));
         const cleanup = () => { connections.delete(cancel); request.raw.off('aborted', cancel); reply.raw.off('close', cancel); };
         stream.once('close', cleanup);
-        reply.header('Cache-Control', 'no-store').header('Content-Type', file.mime).header('Content-Length', file.size)
+        reply.header('Cache-Control', 'no-store, no-transform').header('Content-Encoding', 'identity').header('Content-Type', file.mime).header('Content-Length', file.size)
           .header('Content-Disposition', `attachment; filename="artifact.${file.name.split('.').at(-1)!.toLowerCase()}"; filename*=UTF-8''${encodeURIComponent(file.name).replace(/['()*]/g, c => '%' + c.charCodeAt(0).toString(16).toUpperCase())}`)
           .header('X-Oraculum-SHA256', digest).header('Accept-Ranges', 'none').header('Referrer-Policy', 'no-referrer');
         return reply.send(stream);

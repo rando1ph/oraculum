@@ -7,4 +7,6 @@
     <string name="brand_accessibility">ORACULUM · 神谕。意志为谕，万象将启。LET THE UNWRITTEN UNFOLD.</string>
     <string name="server_settings">服务器设置</string>
     <string name="connecting_recovery">正在连接服务器 · 可重试或更改服务器地址</string>
+    <string name="artifact_transfer_progress">%1$s\n%2$d / %3$d KB</string>
+    <string name="artifact_saving">正在保存 %1$s…</string>
 </resources>
