@@ -28,6 +28,7 @@ import { NativeUsage } from './usage';
 import { NativeOperations } from './native-operations';
 import { AttachmentStore, type AttachmentOwner } from './attachments';
 import { attachmentId } from '../../packages/shared/attachments';
+import { ArtifactStore, type ArtifactOwner } from './artifacts';
 import type { Readable } from 'node:stream';
 
 type RequestContext = { deviceId: string; isAuthorized?: () => boolean };
@@ -71,7 +72,7 @@ export class BridgeService extends EventEmitter {
   private liveNativeOperations = new Map<string, NativeOperation>();
   private nameRevisions = new Map<string, number>();
   constructor(readonly codex: Pick<Codex, 'request' | 'send'> & { on(event: string, listener: (...args: any[]) => void): unknown }, readonly cwd: string,
-    private receipts?: ReceiptStore, private projects?: ProjectDirectories, private permissionChoices?: ThreadPermissionStore, readonly attachments?: AttachmentStore) {
+    private receipts?: ReceiptStore, private projects?: ProjectDirectories, private permissionChoices?: ThreadPermissionStore, readonly attachments?: AttachmentStore, readonly artifacts?: ArtifactStore) {
     super();
     this.nativeOperations = receipts?.nativeOperations ?? new NativeOperations();
     this.usage = new NativeUsage((method, params) => codex.request(method, params), snapshot => this.emit('event', { type: 'accountLimits', snapshot } satisfies BridgeEvent));
@@ -262,6 +263,28 @@ export class BridgeService extends EventEmitter {
   async removeAttachment(params: Record<string, unknown>, context?: RequestContext) {
     const owner = this.attachmentOwner(params, context);
     return this.attachments!.remove(params.id, owner);
+  }
+  private artifactOwner(params: Record<string, unknown>, context?: RequestContext): ArtifactOwner {
+    if (!this.artifacts || !this.projects || !context?.deviceId || typeof params.cwd !== 'string' || typeof params.threadId !== 'string') throw new Error('请先选择已授权项目和会话。');
+    const { cwd, threadId } = params;
+    const validate = async () => {
+      this.assertAuthorized(context);
+      if (!this.threads.has(threadId) || this.threadCwd(threadId) !== cwd || !this.loaded.has(threadId) ||
+        this.deleted.has(threadId) || this.archived.has(threadId) || this.uncertainLifecycle.has(threadId) || this.lifecycle.has(threadId)) throw new Error('文件不属于有效的当前项目和会话。');
+      await this.projects!.resolve(cwd); this.assertAuthorized(context);
+    };
+    return { cwd, threadId, deviceId: context.deviceId, authorized: context.isAuthorized ?? (() => true), validate };
+  }
+  async listArtifacts(params: Record<string, unknown>, context?: RequestContext) {
+    return this.artifacts!.list(this.artifactOwner(params, context), params.path, params.cursor);
+  }
+  async selectArtifact(params: Record<string, unknown>, context?: RequestContext) {
+    return this.artifacts!.select(this.artifactOwner(params, context), params.path);
+  }
+  async downloadArtifact(id: string, signal: AbortSignal, context?: RequestContext) {
+    if (!this.artifacts || !context?.deviceId) throw new Error('成果下载不可用。');
+    const scope = this.artifacts.scope(id, context.deviceId);
+    return this.artifacts.download(this.artifactOwner(scope, context), id, signal);
   }
   sendStatus(operationId: string, deviceId: string) { return this.receipts?.sendStatus(operationId, deviceId) ?? 'unknown'; }
   private async dispatchRequest(method: string, params: Record<string, unknown>, context?: RequestContext): Promise<unknown> {

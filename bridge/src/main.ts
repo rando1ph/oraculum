@@ -11,6 +11,7 @@ import { ProjectDirectories } from './projects';
 import { Themes } from './themes';
 import { startupPaths } from './paths';
 import { AttachmentStore } from './attachments';
+import { ArtifactStore } from './artifacts';
 
 // Preflight path/config conflicts before creating state, a workspace or a child process.
 const paths = startupPaths();
@@ -41,7 +42,7 @@ try {
   trust = new TrustStore(paths.state);
   const projects = new ProjectDirectories(paths.workspaceRoot, paths.cwd, trust.db, paths.projectRoots);
   await projects.register(paths.cwd); // Only the explicit host-selected default is authorized at startup.
-  const service = new BridgeService(codex, paths.cwd, new ReceiptStore(trust.db), projects, new ThreadPermissionStore(trust.db), new AttachmentStore(trust.db));
+  const service = new BridgeService(codex, paths.cwd, new ReceiptStore(trust.db), projects, new ThreadPermissionStore(trust.db), new AttachmentStore(trust.db), new ArtifactStore(trust.db));
   app = await createServer(service, paths.port, paths.web, {
     trust, themes: new Themes({ installed: paths.themeInstalled, source: paths.themeSource, builtin: join(paths.resources, 'themes') }),
     remoteOrigin: paths.remoteOrigin, remoteBasePath: paths.remoteBasePath,

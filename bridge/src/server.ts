@@ -186,6 +186,45 @@ export async function createServer(service: BridgeService, port: number, webRoot
         catch (error) { return reply.code(400).send({ error: error instanceof Error && !('code' in error) ? error.message : '附件移除失败。' }); }
       });
     });
+    // Read-only output capabilities, separately authenticated from attachment input.
+    const artifactAuth = async (request: FastifyRequest, reply: FastifyReply) => {
+      const source = requestOrigin(request.headers);
+      if (request.raw.url?.includes('?')) return reply.code(400).send({ error: '文件请求不接受 URL 查询参数。' });
+      if (request.headers.origin !== source || request.headers['x-oraculum-artifact'] !== '1') return reply.code(403).send({ error: 'Origin and file CSRF header required' });
+      if (trust && !trust.authenticate(tokenFrom(request.headers, source), scope(source))) return reply.code(401).send({ error: '设备授权已失效，请重新配对。' });
+      if (!service.artifacts) return reply.code(503).send({ error: '成果文件暂不可用。' });
+    };
+    const artifactContext = (request: FastifyRequest) => {
+      const source = requestOrigin(request.headers), token = tokenFrom(request.headers, source);
+      return { deviceId: trust?.authenticate(token, scope(source))?.id ?? 'local-test',
+        isAuthorized: () => !closing && (!trust || !!trust.authenticate(token, scope(source))) };
+    };
+    for (const action of ['list', 'select'] as const) app.post(base + 'artifacts/' + action, { config, onRequest: artifactAuth }, async (request, reply) => {
+      try {
+        const body = request.body;
+        if (!body || typeof body !== 'object' || Array.isArray(body)) throw new Error();
+        return await (action === 'list' ? service.listArtifacts(body as Record<string, unknown>, artifactContext(request)) : service.selectArtifact(body as Record<string, unknown>, artifactContext(request)));
+      } catch { return reply.code(400).send({ error: '文件不存在、已变化或不允许读取，请刷新后重新选择。' }); }
+    });
+    app.post<{ Params: { id: string } }>(base + 'artifacts/content/:id', { config, onRequest: artifactAuth }, async (request, reply) => {
+      // No ranges: each attempt reauthenticates and verifies the whole selected version.
+      if (request.headers.range) return reply.code(416).send({ error: '请重新下载完整文件。' });
+      const controller = new AbortController(), cancel = () => controller.abort();
+      connections.add(cancel);
+      request.raw.once('aborted', cancel); reply.raw.once('close', cancel);
+      try {
+        const { file, digest, stream } = await service.downloadArtifact(request.params.id, controller.signal, artifactContext(request));
+        const cleanup = () => { connections.delete(cancel); request.raw.off('aborted', cancel); reply.raw.off('close', cancel); };
+        stream.once('close', cleanup);
+        reply.header('Cache-Control', 'no-store').header('Content-Type', file.mime).header('Content-Length', file.size)
+          .header('Content-Disposition', `attachment; filename="artifact.${file.name.split('.').at(-1)!.toLowerCase()}"; filename*=UTF-8''${encodeURIComponent(file.name).replace(/['()*]/g, c => '%' + c.charCodeAt(0).toString(16).toUpperCase())}`)
+          .header('X-Oraculum-SHA256', digest).header('Accept-Ranges', 'none').header('Referrer-Policy', 'no-referrer');
+        return reply.send(stream);
+      } catch {
+        connections.delete(cancel); request.raw.off('aborted', cancel); reply.raw.off('close', cancel);
+        return reply.code(400).send({ error: '下载未完成：文件或授权已变化，请刷新后重试。' });
+      }
+    });
     // Theme endpoints share the exact device trust and entry scope of the WS.
     // Installation takes a candidate directory name, never an arbitrary path.
     const themeAuth = async (request: FastifyRequest, reply: FastifyReply) => {
