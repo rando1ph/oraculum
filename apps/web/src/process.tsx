@@ -3,6 +3,9 @@ import type { Approval, ThreadItem, Turn } from '../../../packages/shared/protoc
 import { Item } from './content';
 import { Icon } from './icons';
 import type { ItemView } from './store';
+import type { AgentSummary } from '../../../packages/shared/subagents';
+import { buildAgents, type AgentNode } from './agent-tree';
+import { AgentTree } from './subagents';
 import './process.css';
 
 // Unknown message phases remain visible. Only the native commentary phase is
@@ -16,7 +19,7 @@ export function needsAttention(item: ThreadItem) {
     || (item.type === 'commandExecution' && item.exitCode != null && item.exitCode !== 0)
     || (item.type === 'mcpToolCall' && item.error != null)
     || (item.type === 'dynamicToolCall' && item.success === false)
-    || (item.type === 'collabAgentToolCall' && Object.values(item.agentsStates).some(agent => agent && ['errored', 'interrupted', 'notFound'].includes(agent.status)))
+    || (item.type === 'collabAgentToolCall' && Object.values(item.agentsStates ?? {}).some(agent => agent && ['errored', 'interrupted', 'notFound'].includes(agent.status)))
     || (item.type === 'imageGeneration' && item.failure != null)
     || (item.type === 'subAgentActivity' && item.kind === 'interrupted');
 }
@@ -36,15 +39,15 @@ export function formatElapsed(ms: number) {
   return [hours ? `${hours} 小时` : '', minutes ? `${minutes} 分` : '', `${seconds % 60} 秒`].filter(Boolean).join(' ');
 }
 
-export function processCounts(views: ItemView[]) {
+export function processCounts(views: ItemView[], agentIds?: string[]) {
   let commands = 0, tools = 0;
-  const files = new Set<string>(), agents = new Set<string>();
+  const files = new Set<string>(), agents = new Set<string>(agentIds ?? []);
   for (const { item } of views) {
     if (item.type === 'commandExecution') commands++;
     if (item.type === 'fileChange') for (const change of item.changes) files.add(change.path);
     if (['mcpToolCall', 'dynamicToolCall', 'webSearch'].includes(item.type)) tools++;
-    if (item.type === 'collabAgentToolCall') for (const id of item.receiverThreadIds) agents.add(id);
-    if (item.type === 'subAgentActivity') agents.add(item.agentThreadId);
+    if (!agentIds && item.type === 'collabAgentToolCall') for (const id of new Set([...item.receiverThreadIds ?? [], ...Object.keys(item.agentsStates ?? {})])) agents.add(id);
+    if (!agentIds && item.type === 'subAgentActivity') agents.add(item.agentThreadId);
   }
   return [commands ? `${commands} 条命令` : '', files.size ? `${files.size} 个文件` : '', tools ? `${tools} 次工具调用` : '', agents.size ? `${agents.size} 个子代理` : ''].filter(Boolean).join(' · ');
 }
@@ -65,6 +68,7 @@ export function hasTurnApproval(pending: Approval[], threadId: string | undefine
 }
 
 type Props = {
+  agents?: Record<string, AgentSummary>; showAgent?: (agent: AgentNode) => void;
   attachments?: import('../../../packages/shared/attachments').AttachmentDelivery;
   id: string; threadId?: string; turn?: Turn; views: ItemView[]; pending: boolean; connected: boolean; synced?: boolean;
   plan?: string; planAfter?: string; diff?: string; cwd?: string;
@@ -73,7 +77,7 @@ type Props = {
   onToggle: () => void;
 };
 
-export function TurnProcess({ id, threadId, turn, views, pending, connected, synced = true, plan, planAfter, diff, cwd, showDiff, showDetails, onToggle, attachments }: Props) {
+export function TurnProcess({ id, threadId, turn, views, pending, connected, synced = true, plan, planAfter, diff, cwd, showDiff, showDetails, onToggle, attachments, agents, showAgent }: Props) {
   // Device-local reading preference only, never native conversation content.
   const storageKey = `oraculum.process:${threadId}:${id}`;
   const [expanded, setExpanded] = useState(() => {
@@ -108,7 +112,11 @@ export function TurnProcess({ id, threadId, turn, views, pending, connected, syn
   const status = pending ? '待审批' : running ? (!connected ? '连接已断开' : synced ? '执行中' : '正在同步')
     : turn?.status === 'completed' ? '已完成' : turn?.status === 'failed' ? '执行失败' : turn?.status === 'interrupted' ? '已中断' : '执行记录';
   const label = `${status}${elapsed === undefined || (running && (!connected || !synced)) ? '' : ` · ${running ? '已运行' : '用时'} ${formatElapsed(elapsed)}`}`;
-  const counts = processCounts(views);
+  const agentNodes = buildAgents(views, threadId ?? '', agents);
+  const counts = processCounts(views, agentNodes.map(node => node.id));
+  const agentViews = views.filter(view => ['collabAgentToolCall', 'subAgentActivity'].includes(view.item.type));
+  const firstAgent = views.findIndex(view => view === agentViews[0]);
+  const agentAttention = agentViews.some(view => needsAttention(view.item)) || agentNodes.some(node => ['errored', 'interrupted', 'notFound'].includes(node.status));
   const firstRecord = views.findIndex(view => view.item.type !== 'userMessage');
   const beforeRecords = firstRecord < 0 ? views.length - 1 : firstRecord - 1;
   const planIndex = planAfter ? views.findIndex(view => view.item.id === planAfter) : beforeRecords;
@@ -134,10 +142,13 @@ export function TurnProcess({ id, threadId, turn, views, pending, connected, syn
       {extras(-1)}
       {views.map((view, index) => {
         const process = isProcessItem(view.item);
+        const agent = agentNodes.length > 0 && ['collabAgentToolCall', 'subAgentActivity'].includes(view.item.type);
+        if (agent && index !== firstAgent) return <Fragment key={view.item.id}>{extras(index)}</Fragment>;
         return <Fragment key={view.item.id}>
           {!running && index === firstRecord && summary}
-          <div className={process ? 'process-records' : undefined} hidden={process && !open && !needsAttention(view.item)} data-turn-id={id} data-item-id={view.item.id}>
-            <Item item={view.item} cwd={cwd} showDiff={showDiff} showDetails={item => showDetails(item, id)} live={running && !view.complete} progress={view.progress} attachments={view === views.find(value => value.item.type === 'userMessage') ? attachments : undefined}/>
+          <div className={process ? 'process-records' : undefined} hidden={process && !open && !(agent ? agentAttention : needsAttention(view.item))} data-turn-id={id} data-item-id={view.item.id}>
+            {agent ? <AgentTree nodes={agentNodes} root={threadId ?? ''} running={running || agentAttention} connected={connected} synced={synced} views={agentViews} showAgent={showAgent} showDiff={showDiff} showDetails={item => showDetails(item, id)}/>
+              : <Item item={view.item} cwd={cwd} showDiff={showDiff} showDetails={item => showDetails(item, id)} live={running && !view.complete} progress={view.progress} attachments={view === views.find(value => value.item.type === 'userMessage') ? attachments : undefined}/>}
           </div>
           {extras(index)}
         </Fragment>;

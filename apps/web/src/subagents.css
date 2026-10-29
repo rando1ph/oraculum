@@ -1,0 +1,39 @@
+@layer oraculum {
+  .subagent-tree { min-width: 0; }
+  .agent-tree-caption { color: var(--muted); font-size: 11px; margin-left: auto; }
+  .subagent-tree-body { padding: 0 12px 12px; }
+  .agent-tree-list { list-style: none; margin: 0; padding: 0; }
+  .agent-tree-list > li { position: relative; padding: 12px; margin-block: 9px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); overflow-wrap: anywhere; }
+  .agent-node-heading { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+  .agent-node-heading strong { color: var(--foreground); font-size: 13px; font-weight: 500; }
+  .agent-node-icon { color: var(--accent); }
+  .agent-node-state { margin-left: auto; color: var(--muted); font-size: 11px; }
+  [data-agent-state="running"] .agent-node-state, [data-agent-state="pendingInit"] .agent-node-state { color: var(--accent); }
+  [data-agent-state="completed"] .agent-node-state { color: var(--success); }
+  [data-agent-state="errored"] .agent-node-state, [data-agent-state="notFound"] .agent-node-state { color: var(--danger); }
+  [data-agent-state="interrupted"] .agent-node-state { color: var(--warning); }
+  .agent-node-meta { display: flex; gap: 8px; flex-wrap: wrap; color: var(--subtle); font-size: 10px; margin: 6px 0; }
+  .agent-node-preview { color: var(--muted); white-space: pre-wrap; font-size: 12px; line-height: 1.7; margin: 8px 0 0; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+  .agent-detail-button { min-height: 44px; margin-top: 7px; padding-inline: 0; border-color: transparent; background: transparent; color: var(--accent); font-size: 11px; }
+  .subagent-events { margin-top: 12px; font-size: 11px; color: var(--muted); }
+  .subagent-events > summary, .agent-task > summary, .agent-history-note > summary { min-height: 44px; align-content: center; }
+  .agent-stale { font-size: 12px; color: var(--warning); }
+  .agent-detail { min-width: 0; padding: 14px; overflow-wrap: anywhere; }
+  .agent-inspector-title { flex: 1; color: var(--foreground); margin: 0; font-size: 14px; }
+  .agent-detail-toolbar { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; margin-bottom: 18px; }
+  .agent-detail-toolbar button { min-height: 44px; }
+  .agent-detail h2 { font-size: 16px; margin: 12px 0; }
+  .agent-detail-meta { display: flex; flex-wrap: wrap; gap: 10px; color: var(--muted); font-size: 11px; }
+  .agent-visible-summary { padding: 12px; margin-block: 16px; border: 1px solid var(--line); background: var(--surface); border-radius: var(--radius); }
+  .agent-visible-summary p, .agent-task p { white-space: pre-wrap; line-height: 1.8; font-size: 12px; margin: 8px 0 0; }
+  .agent-history-note { color: var(--muted); font-size: 11px; margin-block: 8px; }
+  .agent-history-note p { line-height: 1.8; }
+  .agent-native-turn { border-top: 1px solid var(--line); padding-top: 12px; margin-top: 12px; }
+  .agent-transcript .message { margin-inline: 0; }
+  @media (max-width: 760px), (pointer: coarse) {
+    .subagent-tree-body { padding-inline: 8px; }
+    .agent-tree-list > li { padding: 10px; }
+    .agent-detail-button, .agent-detail-toolbar button, .subagent-events > summary, .agent-task > summary, .agent-history-note > summary { min-height: 48px; }
+    .agent-tree-caption { font-size: 10px; }
+  }
+}

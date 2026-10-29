@@ -1,9 +1,12 @@
 import { create } from 'zustand';
 import type { Approval, NativeOperation, ServerNotification, Snapshot, Thread, ThreadItem, Turn } from '../../../packages/shared/protocol';
+import type { AgentSummary } from '../../../packages/shared/subagents';
 
 export const itemKey = (turnId: string, itemId: string) => JSON.stringify([turnId, itemId]);
 export type ItemView = { turnId: string; item: ThreadItem; source: 'native' | 'live'; complete: boolean; progress?: string[] };
 type State = {
+  agents: Record<string, AgentSummary>;
+  subagent: (agent: AgentSummary, ancestors: string[]) => void;
   thread?: Thread;
   items: Record<string, ItemView>;
   turns: Record<string, Turn>;
@@ -34,7 +37,7 @@ type State = {
   event: (event: ServerNotification, skipDeltas?: boolean) => void;
   approval: (request: Approval) => void;
 };
-const empty = () => ({ thread: undefined, items: {}, turns: {}, pending: [], events: [], notices: [],
+const empty = () => ({ agents: {}, thread: undefined, items: {}, turns: {}, pending: [], events: [], notices: [],
   activeTurn: undefined, lastTurnId: undefined, history: undefined, settings: undefined, sendBlocked: false, receipts: [],
   attachments: [], nativeOperations: [], nativeCapabilities: undefined, historyRevision: 0, historyReloading: false, discardedTurns: [],
   diffs: {}, plans: {}, planAfter: {}, plan: '' });
@@ -72,6 +75,27 @@ function mergeTurn(previous: Turn | undefined, incoming: Turn): Turn {
   return merged;
 }
 
+function mergeAgents(previous: State['agents'], incoming: AgentSummary[]) {
+  const result = { ...previous };
+  for (const agent of incoming) {
+    const old = result[agent.id];
+    if (old?.generation === agent.generation && old.revision >= agent.revision) continue;
+    result[agent.id] = agent;
+  }
+  return result;
+}
+
+function mergeAgentItem(previous: ThreadItem | undefined, incoming: ThreadItem): ThreadItem {
+  if (previous?.type === 'collabAgentToolCall' && incoming.type === 'collabAgentToolCall') {
+    const agentsStates = { ...incoming.agentsStates };
+    for (const [id, state] of Object.entries(previous.agentsStates)) if (state && ['completed', 'errored', 'interrupted', 'shutdown', 'notFound'].includes(state.status) &&
+      agentsStates[id] && ['pendingInit', 'running'].includes(agentsStates[id]!.status)) agentsStates[id] = state;
+    return { ...incoming, agentsStates };
+  }
+  if (previous?.type === 'subAgentActivity' && incoming.type === 'subAgentActivity' && ['completed', 'interrupted'].includes(previous.kind) && incoming.kind === 'started') return previous;
+  return incoming;
+}
+
 function nativeItems(thread: Thread, previous: State['items']): State['items'] {
   const items: State['items'] = {};
   for (const turn of thread.turns) for (const item of turn.items) {
@@ -82,7 +106,7 @@ function nativeItems(thread: Thread, previous: State['items']): State['items'] {
       items[key] = prior;
       continue;
     }
-    items[key] = { ...prior, turnId: turn.id, item, source: 'native',
+    items[key] = { ...prior, turnId: turn.id, item: mergeAgentItem(prior?.item, item), source: 'native',
       complete: turn.status !== 'inProgress' || ('status' in item && item.status !== 'inProgress') };
   }
   return items;
@@ -90,6 +114,10 @@ function nativeItems(thread: Thread, previous: State['items']): State['items'] {
 export const useSession = create<State>((set, get) => ({
   ...empty(),
   reset: () => set(empty()),
+  subagent: (agent, ancestors) => {
+    if (!get().thread?.id || !ancestors.includes(get().thread!.id)) return;
+    set({ agents: mergeAgents(get().agents, [agent]) });
+  },
   nativeOperation: operation => {
     const state = get();
     if (operation.threadId !== state.thread?.id) return;
@@ -105,7 +133,7 @@ export const useSession = create<State>((set, get) => ({
       historyReloading: true, sendBlocked: true,
       discardedTurns: [...new Set([...state.discardedTurns, ...Object.keys(state.turns)])] });
   },
-  snapshot: ({ thread, pending, history, settings, sendBlocked, receipts, attachments, nativeOperations, nativeCapabilities, historyRevision = 0 }) => {
+  snapshot: ({ thread, pending, history, settings, sendBlocked, receipts, attachments, nativeOperations, nativeCapabilities, agents, historyRevision = 0 }) => {
     const state = get();
     const same = state.thread?.id === thread.id;
     if (same && historyRevision < state.historyRevision) return;
@@ -118,6 +146,7 @@ export const useSession = create<State>((set, get) => ({
     // Retain live items internally; never persist them as native history.
     const discarded = same ? [...new Set([...state.discardedTurns, ...(!retain ? Object.keys(state.turns) : [])])] : [];
     set({ ...(retain ? {} : empty()), thread, pending, items, history, settings, sendBlocked: !!sendBlocked, receipts: receipts ?? [],
+      agents: mergeAgents(retain ? state.agents : {}, agents ?? []),
       nativeOperations: nativeOperations ?? [], nativeCapabilities, historyRevision, historyReloading: false,
       attachments: [...(retain ? state.attachments.filter(prior => !attachments?.some(value => value.operationId === prior.operationId)) : []), ...(attachments ?? [])],
       discardedTurns: discarded.filter(id => !(id in turns)),
@@ -131,6 +160,7 @@ export const useSession = create<State>((set, get) => ({
     const incoming = nativeItems(snapshot.thread, state.items);
     const ordered = nativeOrder(state.items, incoming, 'after');
     set({ items: Object.fromEntries(Object.keys(ordered).map(key => [key, state.items[key] ?? ordered[key]])),
+      agents: mergeAgents(state.agents, snapshot.agents ?? []),
       attachments: [...state.attachments.filter(prior => !snapshot.attachments?.some(value => value.operationId === prior.operationId)), ...(snapshot.attachments ?? [])],
       turns: nativeOrder(state.turns, Object.fromEntries(snapshot.thread.turns.map(turn =>
         [turn.id, state.turns[turn.id] ?? turn])), 'after'),
@@ -191,7 +221,7 @@ export const useSession = create<State>((set, get) => ({
       const key = itemKey(turnId, item.id);
       const view = state.items[key];
       if (event.method === 'item/completed' || (!view?.complete && !(skipDeltas && view))) {
-        changes.items = { ...state.items, [key]: { ...view, turnId, item, source: 'live', complete: event.method === 'item/completed' } };
+        changes.items = { ...state.items, [key]: { ...view, turnId, item: mergeAgentItem(view?.item, item), source: 'live', complete: event.method === 'item/completed' } };
       }
     }
     if (!skipDeltas && 'itemId' in event.params && 'turnId' in event.params && typeof event.params.turnId === 'string') {

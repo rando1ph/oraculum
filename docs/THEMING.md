@@ -157,9 +157,11 @@ R1-B4 沿用 `.session-actions-dialog` / `.session-action-list`，在会话操�
 
 R1-B5-B 在既有 Inspector 增加「文件」，手机也可经会话菜单的「项目成果」进入。上述 `.artifact-*` hooks 使用既有表面/文字/边线/状态 tokens，样式在 `oraculum` layer；主题应保留进度、取消、错误、大小与系统保存/分享操作的可见性。已选择文件会移入焦点并回到预览位置，切换项目/线程或断开连接会释放预览。PDF 是只读 canvas，正文颜色由文档本身决定；不启用 PDF 脚本、表单或 HTML viewer。Theme API v1、Cookie/CSP、模型与权限机制不因该面板放宽。
 
-## 相对资源与浏览器权限
-
 R1-B6 在现有设置中增加可展开的 `.extension-settings`，包含 `.extension-group[data-extension-kind="skills"/"mcp"/"apps"/"plugins"]`、`.extension-list` 与 `.extension-entry`。列表只读、按需加载并限制滚动高度，使用已有表面、文字、边线和圆角 tokens；保留加载、断线、部分失败与刷新操作，不能通过主题将认证状态未知改成失败。Theme API v1 与四套内置主题格式不变。
+
+R1-B6 复用 `.turn-process` 的折叠，在原子代理活动位置显示 `.subagent-tree` / `.agent-tree-list`；行上的 `[data-agent-id]`、`[data-agent-state]`、`[data-depth]` 表示实际原生身份与状态。`.agent-node-state`、`.agent-stale`、`.agent-detail-button` 不应被装饰遮挡；嵌套只使用有限缩进，完整父子关系另有文字。`.agent-detail` 使用既有 Inspector（手机全屏），该详情的标题为 `.agent-inspector-title`；保留返回、刷新、历史范围及未知/降级文案。全部使用现有 tokens 和 `oraculum` layer，不修改 Theme API v1、原生权限或 Harness。
+
+## 相对资源与浏览器权限
 
 ```css
 @font-face {

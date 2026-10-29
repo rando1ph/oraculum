@@ -21,6 +21,8 @@ import { ResizeHandle, useLayout } from './layout';
 import { SessionGate, checkSession } from './auth';
 import { ThemeSettings, useTheme } from './themes';
 import { ExtensionSettings } from './extensions';
+import { AgentDetailPanel } from './subagents';
+import { buildAgents } from './agent-tree';
 import { NativeRequest } from './native-request';
 import { PermissionDetails, permissionModes } from './permissions';
 import { acknowledgedComposerDraft, actualComposerValues, composerOverrides, confirmedComposerDraft, parseComposerDraft, reconcileComposerDraft, type ComposerDraft } from './composer-settings';
@@ -35,7 +37,7 @@ import './native-controls.css';
 
 const Artifacts = lazy(() => import('./artifacts').then(module => ({ default: module.Artifacts })));
 const Diff = lazy(() => import('./diff').then(module => ({ default: module.Diff })));
-type Inspected = { kind: 'diff'; path: string; diff: string } | { kind: 'item'; id: string; turnId: string } | { kind: 'usage' | 'emptyDiff' | 'artifacts' };
+type Inspected = { kind: 'diff'; path: string; diff: string } | { kind: 'item'; id: string; turnId: string } | { kind: 'agent'; id: string } | { kind: 'usage' | 'emptyDiff' | 'artifacts' };
 const readSaved = (key: string) => { try { return localStorage.getItem(key); } catch { return null; } };
 const save = (key: string, value: string) => { try { localStorage.setItem(key, value); } catch { /* Storage is optional. */ } };
 // Android server profiles survive WebView recreation; tab-scoped desktop drafts stay unchanged.
@@ -118,6 +120,7 @@ function App() {
   const scrollPositions = useRef(new Map<string, ReadingPosition>());
   const readingRestore = useRef<number | null>(null);
   const overlayPosition = useRef<{ id: string; top: number } | null>(null);
+  const agentReading = useRef<{ id: string; position: ReadingPosition } | null>(null);
   const composing = useRef(false);
   const dialog = useRef<HTMLDialogElement>(null);
   const report = (value: unknown) => setError(value instanceof Error ? value.message : String(value));
@@ -356,6 +359,7 @@ function App() {
   }
   function apply(message: BridgeEvent, restoring = false) {
     const state = useSession.getState();
+    if (message.type === 'subagentChanged') { state.subagent(message.agent, message.displayThreadIds); return; }
     if (message.type === 'attachmentsChanged' && message.cwd === state.thread?.cwd && message.threadId === state.thread.id) {
       useSession.setState({ attachments: [...state.attachments.filter(prior => !message.deliveries.some(value => value.operationId === prior.operationId)), ...message.deliveries] });
       return;
@@ -590,6 +594,13 @@ function App() {
   }, [composerMenu, modelMenuLevel]);
   const overlay = mobile && (drawer || settings || browsing || menu || !!composerMenu || !!actionTarget || layout.inspector);
   useLayoutEffect(() => {
+    if (layout.inspector || !agentReading.current) return;
+    const saved = agentReading.current; agentReading.current = null;
+    if (saved.id === selected.current && scroller.current) {
+      placeReading(scroller.current, saved.position); follow.current = saved.position.bottom; setAtBottom(saved.position.bottom);
+    }
+  }, [layout.inspector]);
+  useLayoutEffect(() => {
     if (overlay && !overlayPosition.current && scroller.current) {
       overlayPosition.current = { id: selected.current, top: scroller.current.scrollTop };
       follow.current = false;
@@ -744,6 +755,8 @@ function App() {
   const files = items.flatMap(view => view.item.type === 'fileChange' ? view.item.changes : []);
   const tools = items.filter(view => ['commandExecution', 'mcpToolCall'].includes(view.item.type));
   const inspectedItem = inspected?.kind === 'item' ? items.find(view => view.item.id === inspected.id && view.turnId === inspected.turnId)?.item : undefined;
+  const viewingAgent = inspected?.kind === 'agent';
+  const inspectedAgent = inspected?.kind === 'agent' ? buildAgents(items, session.thread?.id ?? '', session.agents).find(agent => agent.id === inspected.id) : undefined;
   const viewingUsage = !inspected || inspected.kind === 'usage';
   const viewingArtifacts = inspected?.kind === 'artifacts';
   const title = session.thread?.name || session.thread?.preview.slice(0, 48) || '新会话';
@@ -846,6 +859,7 @@ function App() {
               pending={hasTurnApproval(session.pending, session.thread?.id, group.id, session.activeTurn)}
               connected={connected} synced={synced} plan={session.plans[group.id]} planAfter={session.planAfter[group.id]} diff={session.diffs[group.id]} cwd={session.thread?.cwd}
               attachments={session.attachments.find(delivery => delivery.turnId === group.id)}
+              agents={session.agents} showAgent={agent => { if (scroller.current) agentReading.current = { id: selected.current, position: captureReading(scroller.current) }; follow.current = false; setInspected({ kind: 'agent', id: agent.id }); setLayout(l => ({ ...l, inspector: true })); }}
               showDiff={openDiff} showDetails={openItem} onToggle={() => { follow.current = false; }}/>) }
           </div>
           <section aria-label="待审批" className="approvals">
@@ -904,24 +918,24 @@ function App() {
         </div>}
       </form>
     </section>
-    {layout.inspector && <section data-theme-slot="inspector" className="inspector" inert={browsing || settings || (mobile && drawer)} aria-label={viewingArtifacts ? '项目成果面板' : viewingUsage ? '会话用量面板' : inspected?.kind === 'item' ? '工具详情面板' : '文件 Diff 面板'}>
+    {layout.inspector && <section data-theme-slot="inspector" className="inspector" inert={browsing || settings || (mobile && drawer)} aria-label={viewingAgent ? '子代理详情面板' : viewingArtifacts ? '项目成果面板' : viewingUsage ? '会话用量面板' : inspected?.kind === 'item' ? '工具详情面板' : '文件 Diff 面板'}>
       <ResizeHandle side="inspector" value={layout.inspectorWidth} onChange={inspectorWidth => setLayout(l => ({ ...l, inspectorWidth }))}/>
       <header className="inspector-header">
         <button className="icon-button mobile-detail-back" aria-label="返回会话" onClick={() => setLayout(l => ({ ...l, inspector: false }))}><Icon name="back"/></button>
-        <div className="inspector-tabs" role="group" aria-label="检查器视图">
-          <button className={!viewingUsage && !viewingArtifacts && inspected?.kind !== 'item' ? 'active' : ''} aria-pressed={!viewingUsage && !viewingArtifacts && inspected?.kind !== 'item'}
+        {viewingAgent ? <h2 className="agent-inspector-title">子代理详情</h2> : <div className="inspector-tabs" role="group" aria-label="检查器视图">
+          <button className={!viewingAgent && !viewingUsage && !viewingArtifacts && inspected?.kind !== 'item' ? 'active' : ''} aria-pressed={!viewingAgent && !viewingUsage && !viewingArtifacts && inspected?.kind !== 'item'}
             onClick={() => { if (files[0]) openDiff(files[0].path, files[0].diff); else setInspected({ kind: 'emptyDiff' }); }}><Icon name="file" size={15}/>Diff</button>
           <button className={inspected?.kind === 'item' ? 'active' : ''} aria-pressed={inspected?.kind === 'item'} disabled={!tools.length}
             onClick={() => { const view = tools.at(-1)!; openItem(view.item, view.turnId); }}><Icon name="terminal" size={15}/>输出</button>
           <button className={viewingArtifacts ? 'active' : ''} aria-pressed={viewingArtifacts} onClick={() => setInspected({ kind: 'artifacts' })}><Icon name="folder" size={15}/>文件</button>
           <button className={viewingUsage ? 'active' : ''} aria-pressed={viewingUsage} onClick={openUsage}><Icon name="usage" size={15}/>用量</button>
-        </div>
+        </div>}
         <button className="icon-button" aria-label="关闭面板" title="关闭面板" onClick={() => setLayout(l => ({ ...l, inspector: false }))}><Icon name="close"/></button>
       </header>
       <div className="inspector-scroll">
-        {viewingArtifacts ? <Suspense fallback={<p>正在加载项目成果…</p>}><Artifacts key={`${config?.cwd}:${session.thread?.id}`} scope={{ cwd: config?.cwd ?? '', threadId: session.thread?.id ?? '' }} enabled={connected && synced && !switching && !!session.thread && session.thread.cwd === config?.cwd && projectAvailable}/></Suspense> : viewingUsage ? <SessionUsage thread={session.thread && !switching ? usage.threads[usageKey(session.thread.cwd, session.thread.id)] : undefined} selected={!!session.thread && !switching} connected={usage.connected} refreshing={usageRefreshing} onRefresh={() => void refreshUsage()}/> : inspected?.kind === 'diff' ? <><div className="inspector-file"><Icon name="file"/><h2 title={inspected.path}>{displayPath(inspected.path, session.thread?.cwd)}</h2></div><small className="inspector-caption">Codex 原生差异 · 只读</small><Suspense fallback={<p>正在加载 Diff…</p>}><Diff text={inspected.diff} label={`Diff ${inspected.path}`}/></Suspense></> : inspectedItem ? <><div className="inspector-file"><Icon name="terminal"/><h2>{inspectedItem.type === 'commandExecution' ? '命令输出' : '工具详情'}</h2></div><ItemDetail item={inspectedItem}/></> : <div className="inspector-empty"><OracleEye/><h2>{brandCopy.inspectorTitle}</h2><p>{brandCopy.inspectorDescription}</p></div>}
-        {!viewingUsage && !viewingArtifacts && !!files.length && <details className="inspector-list" open><summary>变更文件 <span>{files.length}</span></summary>{files.map((file, index) => <button key={`${file.path}:${index}`} onClick={() => openDiff(file.path, file.diff)} className={inspected?.kind === 'diff' && inspected.path === file.path ? 'selected' : ''}><Icon name="file" size={14}/><span title={file.path}>{displayPath(file.path, session.thread?.cwd)}</span></button>)}</details>}
-        {!viewingUsage && !viewingArtifacts && !!tools.length && <details className="inspector-list"><summary>工具记录 <span>{tools.length}</span></summary>{tools.map(view => <button key={`${view.turnId}:${view.item.id}`} onClick={() => openItem(view.item, view.turnId)}><Icon name="terminal" size={14}/><span>{view.item.type === 'commandExecution' ? view.item.command : view.item.type}</span></button>)}</details>}
+        {viewingAgent ? inspectedAgent ? <AgentDetailPanel key={`${session.thread?.id}:${inspectedAgent.id}`} agent={inspectedAgent} client={client.current} root={session.thread?.id ?? ''} cwd={session.thread?.cwd ?? ''} connected={connected} synced={synced && !switching} onClose={() => setLayout(l => ({ ...l, inspector: false }))} showDiff={openDiff}/> : <p>当前父任务中没有可用的子代理记录。</p> : viewingArtifacts ? <Suspense fallback={<p>正在加载项目成果…</p>}><Artifacts key={`${config?.cwd}:${session.thread?.id}`} scope={{ cwd: config?.cwd ?? '', threadId: session.thread?.id ?? '' }} enabled={connected && synced && !switching && !!session.thread && session.thread.cwd === config?.cwd && projectAvailable}/></Suspense> : viewingUsage ? <SessionUsage thread={session.thread && !switching ? usage.threads[usageKey(session.thread.cwd, session.thread.id)] : undefined} selected={!!session.thread && !switching} connected={usage.connected} refreshing={usageRefreshing} onRefresh={() => void refreshUsage()}/> : inspected?.kind === 'diff' ? <><div className="inspector-file"><Icon name="file"/><h2 title={inspected.path}>{displayPath(inspected.path, session.thread?.cwd)}</h2></div><small className="inspector-caption">Codex 原生差异 · 只读</small><Suspense fallback={<p>正在加载 Diff…</p>}><Diff text={inspected.diff} label={`Diff ${inspected.path}`}/></Suspense></> : inspectedItem ? <><div className="inspector-file"><Icon name="terminal"/><h2>{inspectedItem.type === 'commandExecution' ? '命令输出' : '工具详情'}</h2></div><ItemDetail item={inspectedItem}/></> : <div className="inspector-empty"><OracleEye/><h2>{brandCopy.inspectorTitle}</h2><p>{brandCopy.inspectorDescription}</p></div>}
+        {!viewingAgent && !viewingUsage && !viewingArtifacts && !!files.length && <details className="inspector-list" open><summary>变更文件 <span>{files.length}</span></summary>{files.map((file, index) => <button key={`${file.path}:${index}`} onClick={() => openDiff(file.path, file.diff)} className={inspected?.kind === 'diff' && inspected.path === file.path ? 'selected' : ''}><Icon name="file" size={14}/><span title={file.path}>{displayPath(file.path, session.thread?.cwd)}</span></button>)}</details>}
+        {!viewingAgent && !viewingUsage && !viewingArtifacts && !!tools.length && <details className="inspector-list"><summary>工具记录 <span>{tools.length}</span></summary>{tools.map(view => <button key={`${view.turnId}:${view.item.id}`} onClick={() => openItem(view.item, view.turnId)}><Icon name="terminal" size={14}/><span>{view.item.type === 'commandExecution' ? view.item.command : view.item.type}</span></button>)}</details>}
       </div>
       <footer className="mobile-detail-footer"><button onClick={() => setLayout(l => ({ ...l, inspector: false }))}><Icon name="back"/>返回会话</button></footer>
     </section>}

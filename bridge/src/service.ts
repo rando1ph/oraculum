@@ -27,6 +27,8 @@ import type { ThreadPermissionStore } from './thread-permissions';
 import { NativeUsage } from './usage';
 import { NativeOperations } from './native-operations';
 import { readExtensions } from './extensions';
+import { AgentSummaries, internalAgent } from './subagents';
+import type { AgentDetail } from '../../packages/shared/subagents';
 import { AttachmentStore, type AttachmentOwner } from './attachments';
 import { attachmentId } from '../../packages/shared/attachments';
 import { ArtifactStore, type ArtifactOwner } from './artifacts';
@@ -42,6 +44,7 @@ const forwardedNotifications = new Set(['thread/status/changed', 'thread/setting
   'item/reasoning/summaryPartAdded', 'item/reasoning/summaryTextDelta', 'item/reasoning/textDelta', 'serverRequest/resolved', 'error']);
 
 export class BridgeService extends EventEmitter {
+  private agents = new AgentSummaries();
   private usage: NativeUsage;
   readonly threads = new Set<string>();
   readonly pending = new Map<RpcId, Approval>();
@@ -104,6 +107,7 @@ export class BridgeService extends EventEmitter {
           (!knownParent || knownParent === thread.parentThreadId)) {
           this.track(thread.id, cwd);
           this.threadParents.set(thread.id, thread.parentThreadId);
+          if (!internalAgent(thread)) this.publishAgent(this.agents.register(thread, thread.parentThreadId));
         } else {
           this.emit('event', { type: 'notice', threadId: this.displayThread(thread.parentThreadId),
             message: '原生子会话与已授权父会话的项目归属不一致，其交互未获授权。' } satisfies BridgeEvent);
@@ -140,6 +144,16 @@ export class BridgeService extends EventEmitter {
     if (message.method === 'account/updated') { this.usage.invalidate(); return; }
     if (message.method === 'account/rateLimits/updated') { this.usage.update(params); return; }
     if (!threadId || !this.threads.has(threadId) || this.deleted.has(threadId)) return;
+    if ((message.method === 'item/started' || message.method === 'item/completed') && params.item) {
+      this.agents.observeReferences(threadId, [params.item as import('../../packages/shared/protocol').ThreadItem]);
+    }
+    if ((message.method === 'turn/started' || message.method === 'turn/completed') && Array.isArray((params.turn as { items?: unknown } | undefined)?.items)) {
+      this.agents.observeReferences(threadId, (params.turn as import('../../packages/shared/protocol').Turn).items);
+    }
+    if (this.threadParents.has(threadId)) {
+      const agent = this.agents.observe(threadId, message);
+      if (agent) this.publishAgent(agent);
+    }
     if (message.method === 'thread/tokenUsage/updated') {
       const active = this.activeTurns.get(threadId);
       if (active && params.turnId !== active) return;
@@ -289,6 +303,7 @@ export class BridgeService extends EventEmitter {
   }
   sendStatus(operationId: string, deviceId: string) { return this.receipts?.sendStatus(operationId, deviceId) ?? 'unknown'; }
   private async dispatchRequest(method: string, params: Record<string, unknown>, context?: RequestContext): Promise<unknown> {
+    if (method === 'bridge/agent') return this.readAgent(params, context);
     if (method === 'bridge/extensions') {
       const cwd = await this.projectCwd(params.cwd);
       const id = params.threadId;
@@ -400,6 +415,7 @@ export class BridgeService extends EventEmitter {
       const result = fresh ? { thread } : await readHistory(this.codex, thread, typeof params.cursor === 'string' ? params.cursor : undefined);
       if (historyRevision !== this.historyRevision(threadId)) throw new Error('原生历史已变化，请重新查询会话。');
       for (const turn of result.thread.turns) {
+        this.agents.observeReferences(threadId, turn.items);
         this.receipts?.observe(cwd, threadId, turn);
         this.observeNativeTurn(threadId, turn);
       }
@@ -412,6 +428,7 @@ export class BridgeService extends EventEmitter {
         }
       }
       return { ...result, pending: [...this.pending.values()].filter(r => r.params.threadId === threadId || this.descendsFrom(r.params.threadId, threadId)),
+        agents: [...this.agents.values.values()].filter(agent => this.descendsFrom(agent.id, threadId)),
         attachments: await this.attachments?.deliveries(cwd, threadId, result.thread.turns.map(turn => turn.id)),
         settings: this.settings.get(threadId),
         sendBlocked: this.unknownSends.has(threadId) || !!this.receipts?.blocked(cwd, threadId) || this.nativeSendBlocked(threadId),
@@ -863,6 +880,61 @@ export class BridgeService extends EventEmitter {
   }
   private projectCwd(value: unknown) {
     return this.projects ? this.projects.resolve(value) : Promise.resolve(this.cwd);
+  }
+  private publishAgent(agent: import('../../packages/shared/subagents').AgentSummary) {
+    this.emit('event', { type: 'subagentChanged', agent, displayThreadIds: this.ancestorThreads(agent.id) } satisfies BridgeEvent);
+  }
+  private async readAgent(params: Record<string, unknown>, context?: RequestContext): Promise<AgentDetail> {
+    const root = params.threadId, id = params.agentId;
+    if (typeof root !== 'string' || typeof id !== 'string' || id === root || id.length > 200) throw new Error('子会话归属无效。');
+    const cwd = this.threadCwd(root), revision = this.historyRevision(root);
+    const check = () => {
+      this.assertAuthorized(context);
+      if (!this.threads.has(root) || !this.loaded.has(root) || params.cwd !== cwd || this.deleted.has(root) || this.archived.has(root) || this.uncertainLifecycle.has(root) || this.historyRevision(root) !== revision) throw new Error('父会话或项目状态已变化，请重新查询。');
+    };
+    check();
+    // A renderer-supplied ID is never enough. Only an already owned descendant
+    // or a participant actually observed in this parent's native items is read.
+    if (!this.descendsFrom(id, root) && !this.agents.references.get(root)?.has(id)) throw new Error('子会话不在已授权父任务中。');
+    if (params.cursor !== undefined && (typeof params.cursor !== 'string' || params.cursor.length > 4000)) throw new Error('无效的原生分页游标。');
+    try {
+      await this.projects?.resolve(cwd); check();
+      const chain: { thread: Thread; parent: string; revision: number }[] = [];
+      const seen = new Set([root]);
+      let current = id;
+      for (let depth = 0; ; depth++) {
+        if (depth >= 16 || seen.has(current)) throw new Error('子会话层级无法核实。');
+        seen.add(current);
+        const agentRevision = this.agents.values.get(current)?.revision ?? 0;
+        const { thread } = await this.codex.request<ThreadReadResponse>('thread/read', { threadId: current }); check();
+        const parent = this.nativeParent(thread);
+        if (thread.id !== current || thread.cwd !== cwd || !parent || internalAgent(thread) || this.deleted.has(current) || this.archived.has(current) ||
+          this.threadProjects.has(current) && this.threadCwd(current) !== cwd || this.threadParents.has(current) && this.threadParents.get(current) !== parent) throw new Error('子会话项目或父子关系不一致。');
+        chain.push({ thread, parent, revision: agentRevision });
+        if (parent === root) break;
+        if (!this.descendsFrom(parent, root) && !this.agents.references.get(root)?.has(parent)) throw new Error('中间父会话未经核实。');
+        current = parent;
+      }
+      const leaf = chain[0];
+      const result = await readHistory(this.codex, leaf.thread, typeof params.cursor === 'string' ? params.cursor : undefined); check();
+      if (result.thread.id !== id || result.thread.cwd !== cwd || this.nativeParent(result.thread) !== leaf.parent) throw new Error('原生详情归属已变化。');
+      for (const entry of chain) if (this.deleted.has(entry.thread.id) || this.archived.has(entry.thread.id) || this.uncertainLifecycle.has(entry.thread.id) ||
+        this.threadParents.has(entry.thread.id) && this.threadParents.get(entry.thread.id) !== entry.parent) throw new Error('子会话状态已变化。');
+      // Commit ownership only after the entire native chain and read agree.
+      // Reuse P0's existing parent map; never resume or start a child thread.
+      for (const entry of [...chain].reverse()) {
+        const unchanged = (this.agents.values.get(entry.thread.id)?.revision ?? 0) === entry.revision;
+        this.track(entry.thread.id, cwd); this.threadParents.set(entry.thread.id, entry.parent);
+        const registered = this.agents.register(entry.thread, entry.parent);
+        if (unchanged && entry.thread.id === id && !params.cursor) this.agents.hydrate(result.thread, registered.revision);
+        this.agents.observeReferences(entry.thread.id, (entry.thread.id === id ? result.thread : entry.thread).turns.flatMap(turn => turn.items));
+        this.publishAgent(this.agents.values.get(entry.thread.id)!);
+      }
+      return { status: 'ready', message: result.history?.warning ?? '', agent: this.agents.values.get(id), turns: result.thread.turns, nextCursor: result.history?.nextCursor ?? null };
+    } catch {
+      check();
+      return { status: 'unavailable', message: '子会话详情暂不可用；可查看父任务中的原生活动摘要。' };
+    }
   }
   private threadCwd(threadId: string) {
     return this.threadProjects.get(threadId) ?? this.cwd;
