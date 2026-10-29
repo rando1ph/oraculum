@@ -312,6 +312,10 @@ export class BridgeService extends EventEmitter {
   }
   sendStatus(operationId: string, deviceId: string) { return this.receipts?.sendStatus(operationId, deviceId) ?? 'unknown'; }
   private async dispatchRequest(method: string, params: Record<string, unknown>, context?: RequestContext): Promise<unknown> {
+    if (method === 'bridge/ping') return { connected: true };
+    if (method === 'bridge/notifications') {
+      const feed = await this.notificationFeed(); this.assertAuthorized(context); return feed;
+    }
     if (method === 'bridge/agent') return this.readAgent(params, context);
     if (method === 'bridge/extensions') {
       const cwd = await this.projectCwd(params.cwd);

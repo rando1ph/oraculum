@@ -21,7 +21,7 @@ data class ServerEntry private constructor(val origin: String, val basePath: Str
     fun usesDefaultProfile(defaultProfileEntry: String): Boolean = url == defaultProfileEntry
 
     companion object {
-        const val DEBUG_ORIGIN = "http://127.0.0.1:17860"
+        val DEBUG_ORIGIN = "http://127.0.0.1:${BuildConfig.ORACULUM_DEBUG_PORT}"
 
         fun parse(originInput: String, pathInput: String, debug: Boolean): ServerEntry {
             val uri = runCatching { URI(originInput.trim()) }

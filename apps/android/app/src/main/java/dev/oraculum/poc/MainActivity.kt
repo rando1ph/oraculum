@@ -2,13 +2,17 @@ package dev.oraculum.poc
 
 import android.app.Activity
 import android.app.AlertDialog
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.graphics.Color
 import android.media.AudioManager
 import android.net.http.SslError
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.text.InputType
 import android.view.View
 import android.view.KeyEvent
@@ -63,6 +67,12 @@ class MainActivity : Activity() {
     private val ink = Color.rgb(232, 240, 242)
     private var backCallback: OnBackInvokedCallback? = null
     private val artifactDownloads by lazy { ArtifactDownloads(this) }
+    private val noticeHandler = Handler(Looper.getMainLooper())
+    private var notificationConnection = ""
+    private var pendingNotice: String? = null
+    private val noticeSync = object : Runnable {
+        override fun run() { syncNotifications(); noticeHandler.postDelayed(this, 2000) }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -117,6 +127,56 @@ class MainActivity : Activity() {
             onBackInvokedDispatcher.registerOnBackInvokedCallback(OnBackInvokedDispatcher.PRIORITY_DEFAULT, backCallback!!)
         }
         loadWebView()
+        receiveNotice(intent)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (pageFailed) loadWebView()
+        noticeHandler.removeCallbacks(noticeSync); noticeHandler.post(noticeSync)
+        web?.takeIf { entry?.trusts(it.url.orEmpty()) == true && !pageFailed }?.evaluateJavascript(
+            "window.dispatchEvent(new Event('oraculum-resume'))", null)
+        deliverNotice()
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent); setIntent(intent); receiveNotice(intent)
+    }
+
+    private fun receiveNotice(intent: Intent?) {
+        if (intent?.action != TaskNotificationService.OPEN_NOTICE || intent.getStringExtra("noticeEntry") != entry?.url) return
+        val id = intent.data?.schemeSpecificPart.orEmpty()
+        if (TaskNotificationService.noticeId(id)) { pendingNotice = id; deliverNotice() }
+    }
+
+    private fun deliverNotice() {
+        val view = web ?: return
+        val id = pendingNotice ?: return
+        if (pageFailed || entry?.trusts(view.url.orEmpty()) != true) return
+        view.evaluateJavascript("location.hash = " + org.json.JSONObject.quote("notice=$id")) { pendingNotice = null }
+    }
+
+    private fun syncNotifications() {
+        val target = entry ?: return
+        val view = web ?: return
+        if (pageFailed || !target.trusts(view.url.orEmpty())) return
+        val manager = getSystemService(android.app.NotificationManager::class.java)
+        if (!manager.areNotificationsEnabled() || manager.getNotificationChannel("tasks")?.importance == android.app.NotificationManager.IMPORTANCE_NONE ||
+            (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED)) {
+            stopService(Intent(this, TaskNotificationService::class.java)); notificationConnection = ""; return
+        }
+        val name = if (target.origin.startsWith("http:")) "oraculum_local" else "__Secure-oraculum_session"
+        val values = cookieManager(view).getCookie(target.url).orEmpty().split(';').map { it.trim() }.filter { it.startsWith("$name=") }
+        if (values.size != 1) {
+            if (notificationConnection.isNotEmpty()) stopService(Intent(this, TaskNotificationService::class.java))
+            notificationConnection = ""; return
+        }
+        val key = target.url + "\n" + values.single()
+        if (key == notificationConnection) return
+        val intent = Intent(this, TaskNotificationService::class.java).apply {
+            putExtra("origin", target.origin); putExtra("basePath", target.basePath); putExtra("cookie", values.single())
+        }
+        runCatching { startForegroundService(intent) }.onSuccess { notificationConnection = key }
     }
 
     private fun loadEntry(): ServerEntry? {
@@ -139,6 +199,7 @@ class MainActivity : Activity() {
     }
 
     private fun loadWebView() {
+        stopService(Intent(this, TaskNotificationService::class.java)); notificationConnection = ""
         destroyWebView()
         val target = entry ?: run { showRecovery("请设置可信的 HTTPS 服务器地址"); return }
         if (!profileSupported(target)) {
@@ -172,8 +233,8 @@ class MainActivity : Activity() {
             settings.setGeolocationEnabled(false)
             settings.userAgentString += " OraculumAndroid/1"
             cookieManager(this).setAcceptThirdPartyCookies(this, false)
-            // User-selected attachments are the only file capability. No JS/OS bridge,
-            // broad storage permission, camera capture or credential API.
+            // User-selected attachments are the only file capability. The page
+            // receives no JS/OS bridge, broad storage or credential API.
             webChromeClient = object : WebChromeClient() {
                 override fun onShowFileChooser(view: WebView, callback: ValueCallback<Array<Uri>>,
                     params: FileChooserParams): Boolean {
@@ -216,6 +277,12 @@ class MainActivity : Activity() {
                             target.trusts(view.url.orEmpty())) showServerSettings()
                         return true
                     }
+                    if (request.url.toString() == "oraculum://settings/notifications") {
+                        if (request.isForMainFrame && request.hasGesture() && !request.isRedirect && target.trusts(view.url.orEmpty())) {
+                            startActivity(Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, packageName))
+                        }
+                        return true
+                    }
                     return !target.trusts(request.url.toString())
                 }
 
@@ -248,6 +315,11 @@ class MainActivity : Activity() {
                     if (!pageFailed && target.trusts(url) && view.title == "Oraculum · 神谕") {
                         recovery.visibility = View.GONE
                         dismissSplash()
+                        if (Build.VERSION.SDK_INT >= 33 && !preferences.getBoolean("notificationPermissionAsked", false)) {
+                            preferences.edit().putBoolean("notificationPermissionAsked", true).apply()
+                            requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 7000)
+                        }
+                        deliverNotice()
                         if (preferences.getString("themeRecoveryEntry", null) == target.url) {
                             preferences.edit().remove("themeRecoveryEntry").apply()
                         }
@@ -445,6 +517,7 @@ class MainActivity : Activity() {
     }
 
     override fun onPause() {
+        noticeHandler.removeCallbacks(noticeSync)
         web?.let { cookieManager(it).flush() }
         super.onPause()
     }
@@ -463,6 +536,7 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
+        noticeHandler.removeCallbacksAndMessages(null)
         if (Build.VERSION.SDK_INT >= 33) backCallback?.let { onBackInvokedDispatcher.unregisterOnBackInvokedCallback(it) }
         settingsDialog?.dismiss()
         dismissSplash(immediate = true)

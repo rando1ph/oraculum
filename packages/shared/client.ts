@@ -52,7 +52,12 @@ export class BridgeClient {
       socket.onerror = () => { clearTimeout(timer); reject(new Error('无法连接 Bridge')); };
     });
   }
-  request<T>(method: string, params: object, requestId?: string): Promise<T> {
+  async probe(): Promise<void> {
+    const socket = this.socket;
+    try { await this.request('bridge/ping', {}, undefined, 5000); }
+    catch (error) { if (socket && this.socket === socket) socket.close(); throw error; }
+  }
+  request<T>(method: string, params: object, requestId?: string, timeoutMs = 65_000): Promise<T> {
     if (this.socket?.readyState !== WebSocket.OPEN) return Promise.reject(new Error('连接已断开；请重新连接并查询状态'));
     const id = requestId ?? crypto.randomUUID();
     if (this.pending.has(id)) return Promise.reject(new Error('请求仍在等待确认，不能重复发送'));
@@ -60,7 +65,7 @@ export class BridgeClient {
       const timer = setTimeout(() => {
         this.pending.delete(id);
         reject(new Error('响应超时，执行结果未知；请查询状态，勿重复发送'));
-      }, 65_000);
+      }, timeoutMs);
       this.pending.set(id, { resolve: value => resolve(value as T), reject, timer });
       try { this.socket!.send(JSON.stringify({ id, method, params: operationMethods.has(method) ? { ...params, operationId: id } : params })); }
       catch {
@@ -77,8 +82,10 @@ export class BridgeClient {
     this.pending.clear();
   }
   close() {
-    this.socket?.close();
+    const socket = this.socket;
     this.socket = undefined;
+    socket?.close();
     this.rejectPending();
+    if (socket) this.onConnection(false);
   }
 }

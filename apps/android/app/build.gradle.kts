@@ -15,6 +15,8 @@ require(Regex("^[0-9]+\\.[0-9]+\\.[0-9]+(?:-[A-Za-z0-9.-]+)?$").matches(releaseN
     "Invalid release.json Android version"
 }
 val configuredOrigin = providers.gradleProperty("oraculumOrigin").orNull.orEmpty()
+val debugPort = providers.gradleProperty("oraculumDebugPort").getOrElse("17860").toInt()
+require(debugPort in 1024..65535) { "Invalid Debug loopback port" }
 val rawBasePath = providers.gradleProperty("oraculumBasePath").getOrElse("/")
 require(rawBasePath.startsWith("/") && Regex("^/[A-Za-z0-9._~/-]*$").matches(rawBasePath) &&
     !rawBasePath.contains("//") && rawBasePath.split('/').none { it == "." || it == ".." }) {
@@ -37,6 +39,7 @@ android {
     defaultConfig {
         buildConfigField("String", "ORACULUM_ORIGIN", "\"${configuredOrigin.trimEnd('/')}\"")
         buildConfigField("String", "ORACULUM_BASE_PATH", "\"$configuredBasePath\"")
+        buildConfigField("int", "ORACULUM_DEBUG_PORT", debugPort.toString())
         applicationId = "dev.oraculum.poc"
         minSdk = 26
         targetSdk = 35
@@ -44,6 +47,11 @@ android {
         versionName = releaseName
     }
     buildTypes {
+        getByName("debug") {
+            applicationIdSuffix = ".debug"
+            versionNameSuffix = "-debug"
+            resValue("string", "app_name", "神谕 Debug")
+        }
         getByName("release") {
             isDebuggable = false
             // Preserve the approved original PNG bytes for package verification.

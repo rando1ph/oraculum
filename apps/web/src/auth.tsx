@@ -4,7 +4,10 @@ import { androidShell } from './mobile';
 import { useSession } from './store';
 
 export async function checkSession() {
-  const response = await fetch(appUrl('auth/session'), { cache: 'no-store' });
+  const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 5000);
+  let response: Response;
+  try { response = await fetch(appUrl('auth/session'), { cache: 'no-store', signal: controller.signal }); }
+  finally { clearTimeout(timer); }
   if (response.status === 401) {
     window.dispatchEvent(new Event('oraculum-auth-required'));
     return false;
@@ -32,6 +35,19 @@ export function SessionGate({ children }: { children: ReactNode }) {
     void check();
     return () => window.removeEventListener('oraculum-auth-required', expired);
   }, []);
+  useEffect(() => {
+    if (allowed) return;
+    // Opening an already-paired native shell while offline must recover when
+    // connectivity returns, without repeatedly hiding the pairing form.
+    let disposed = false;
+    const retry = () => {
+      if (document.hidden) return;
+      void checkSession().then(value => { if (!disposed && value) { setAllowed(true); setLoading(false); setError(''); } }).catch(() => {});
+    };
+    const timer = setInterval(retry, 5000);
+    window.addEventListener('online', retry); window.addEventListener('oraculum-resume', retry);
+    return () => { disposed = true; clearInterval(timer); window.removeEventListener('online', retry); window.removeEventListener('oraculum-resume', retry); };
+  }, [allowed]);
   useEffect(() => {
     if (!allowed) return;
     // An open WebSocket does not renew browser cookies. Refresh while visible

@@ -25,7 +25,7 @@ class ServerEntryTest {
     }
 
     @Test fun permitsOnlyTheExistingDebugAdbRoot() {
-        assertEquals("http://127.0.0.1:17860/", entry(ServerEntry.DEBUG_ORIGIN, debug = true).url)
+        assertEquals(ServerEntry.DEBUG_ORIGIN + "/", entry(ServerEntry.DEBUG_ORIGIN, debug = true).url)
         assertThrows(IllegalArgumentException::class.java) { entry(ServerEntry.DEBUG_ORIGIN) }
         listOf("http://localhost:17860", "http://127.0.0.1:17861", "http://127.0.0.2:17860")
             .forEach { raw -> assertThrows(raw, IllegalArgumentException::class.java) { entry(raw, debug = true) } }

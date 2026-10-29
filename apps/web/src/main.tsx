@@ -31,6 +31,7 @@ import { steerDeliveryBlocked, steerOperationBlocked } from './native-controls';
 import { SessionUsage, WeeklyQuota } from './usage';
 import { usageKey, useUsage } from './usage-store';
 import type { UsageSnapshot } from '../../../packages/shared/usage';
+import type { NoticeFeed } from '../../../packages/shared/notifications';
 import './style.css';
 import './mobile.css';
 import './native-controls.css';
@@ -40,8 +41,9 @@ const Diff = lazy(() => import('./diff').then(module => ({ default: module.Diff 
 type Inspected = { kind: 'diff'; path: string; diff: string } | { kind: 'item'; id: string; turnId: string } | { kind: 'agent'; id: string } | { kind: 'usage' | 'emptyDiff' | 'artifacts' };
 const readSaved = (key: string) => { try { return localStorage.getItem(key); } catch { return null; } };
 const save = (key: string, value: string) => { try { localStorage.setItem(key, value); } catch { /* Storage is optional. */ } };
-// Android server profiles survive WebView recreation; tab-scoped desktop drafts stay unchanged.
-const readingStorage = () => androidShell ? localStorage : sessionStorage;
+// Native shells keep drafts/reading state across window recreation. Browser
+// tabs retain their independent drafts; existing session drafts migrate on read.
+const readingStorage = () => androidShell || /Electron\//.test(navigator.userAgent) ? localStorage : sessionStorage;
 function App() {
   const theme = useTheme();
   const session = useSession();
@@ -100,6 +102,8 @@ function App() {
   const epoch = useRef(0);
   const connectionEpoch = useRef(0);
   const connectingNow = useRef(false);
+  const connectionLive = useRef(false);
+  const pendingNotice = useRef('');
   const projectEpoch = useRef(0);
   const listEpoch = useRef(0);
   const archivedView = useRef(false);
@@ -200,7 +204,7 @@ function App() {
       const stored = readingStorage().getItem(draftKey());
       if (stored !== null) return stored;
       const previous = sessionStorage.getItem(draftKey()) ?? '';
-      if (androidShell) localStorage.setItem(draftKey(), previous);
+      if (readingStorage() !== sessionStorage) localStorage.setItem(draftKey(), previous);
       return previous;
     } catch { return ''; }
   }
@@ -507,10 +511,43 @@ function App() {
     if (ticket !== connectionEpoch.current) return;
     setModels(allModels);
     const saved = readSaved('oraculum.project');
-    await selectProject(directory.projects.some(p => p.cwd === saved && p.available !== false) ? saved! : settings.cwd);
-    } finally { connectingNow.current = false; setConnecting(false); }
+    if (workspace.current && selected.current && directory.projects.some(p => p.cwd === workspace.current && p.available !== false)) {
+      const current = await client.current!.request<LocalConfig>('bridge/config', { cwd: workspace.current });
+      if (ticket !== connectionEpoch.current) return;
+      setConfig(current); await listThreads();
+      try { await refresh(); }
+      catch (error) {
+        if (!connectionLive.current) throw error;
+        // The selected thread may have been archived/deleted while offline.
+        // Re-list through the normal project path, preserving its saved draft.
+        await selectProject(current.cwd);
+      }
+    } else await selectProject(directory.projects.some(p => p.cwd === saved && p.available !== false) ? saved! : settings.cwd);
+    } catch (error) { client.current?.close(); throw error; }
+    finally { connectingNow.current = false; setConnecting(false); }
+    if (pendingNotice.current) void openNotification().catch(report);
+  }
+  async function openNotification() {
+    if (!connectionLive.current || connectingNow.current || !pendingNotice.current) return;
+    const id = pendingNotice.current; pendingNotice.current = '';
+    const feed = await client.current!.request<NoticeFeed>('bridge/notifications', {});
+    const target = feed.notices.find(notice => notice.id === id && notice.expiresAt > feed.generatedAt);
+    if (!target) { setError('此提醒已处理或已过期，请查看当前会话状态。'); return; }
+    if (target.cwd !== workspace.current) await selectProject(target.cwd, false);
+    await refresh(target.threadId);
+    setDrawer(false); setMenu(false);
   }
   useEffect(() => {
+    let disposed = false, attempts = 0, probing = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const retry = () => {
+      if (disposed || timer) return;
+      timer = setTimeout(() => {
+        timer = undefined;
+        if (disposed || connectingNow.current) { retry(); return; }
+        void connect().then(() => { attempts = 0; }).catch(report).finally(() => { if (!connectionLive.current) retry(); });
+      }, Math.min(30_000, 1000 * 2 ** Math.min(attempts++, 5)));
+    };
     client.current = new BridgeClient(message => {
       if (message.type === 'accountLimits') { useUsage.getState().limits(message.snapshot); return; }
       if (message.type === 'threadUsage') { useUsage.getState().thread(message.snapshot); return; }
@@ -528,7 +565,7 @@ function App() {
       }
       if (message.type === 'nativeOperationChanged') cacheNativeOperation(message.operation);
       if (message.type === 'nativeCapabilitiesChanged') { useSession.setState({ nativeCapabilities: message.capabilities }); return; }
-      if (message.type === 'unavailable') { useUsage.getState().connect(false); ++epoch.current; readingRestore.current = null; buffer.current = null; useSession.setState({ pending: [] }); setError(message.message); setSynced(false); setLoadingHistory(false); return; }
+      if (message.type === 'unavailable') { useUsage.getState().connect(false); ++epoch.current; readingRestore.current = null; buffer.current = null; useSession.setState({ pending: [] }); setError(message.message); setSynced(false); setLoadingHistory(false); client.current?.close(); return; }
       if (buffer.current) buffer.current.push(message);
       else {
         apply(message);
@@ -538,11 +575,42 @@ function App() {
       }
     }, value => {
       useUsage.getState().connect(value);
+      connectionLive.current = value;
+      if (value) { clearTimeout(timer); timer = undefined; }
       setConnected(value);
-      if (!value) { ++epoch.current; ++listEpoch.current; setListing(false); setSynced(false); void checkSession().catch(() => {}); }
+      if (!value) { rememberScroll(); ++epoch.current; ++listEpoch.current; readingRestore.current = null; buffer.current = null; setListing(false); setSynced(false); void checkSession().catch(() => {}); retry(); }
     });
-    void connect().catch(report);
-    return () => { ++epoch.current; ++connectionEpoch.current; ++registryEpoch.current; client.current?.close(); };
+    const probe = async (reconcile = false) => {
+      if (disposed || document.visibilityState === 'hidden' || connectingNow.current || probing) return;
+      if (!connectionLive.current) {
+        clearTimeout(timer); timer = undefined; attempts = 0;
+        void connect().catch(report).finally(() => { if (!connectionLive.current) retry(); }); return;
+      }
+      probing = true;
+      try {
+        await client.current!.probe();
+        if (reconcile && !disposed) { await refresh(); await listThreads(); if (pendingNotice.current) await openNotification(); }
+      } catch (error) { if (!disposed) report(error); }
+      finally { probing = false; }
+    };
+    const wake = () => { void probe(true); };
+    const notice = () => {
+      const match = /^#notice=([a-f0-9-]{36})$/.exec(location.hash);
+      if (!match) return;
+      pendingNotice.current = match[1]; history.replaceState(null, '', location.pathname + location.search);
+      void openNotification().catch(report);
+    };
+    window.addEventListener('online', wake); window.addEventListener('focus', wake);
+    window.addEventListener('oraculum-resume', wake); document.addEventListener('visibilitychange', wake);
+    window.addEventListener('hashchange', notice); notice();
+    const heartbeat = setInterval(() => { void probe(); }, 20_000);
+    void connect().catch(report).finally(() => { if (!connectionLive.current) retry(); });
+    return () => {
+      disposed = true; clearTimeout(timer); clearInterval(heartbeat);
+      window.removeEventListener('online', wake); window.removeEventListener('focus', wake);
+      window.removeEventListener('oraculum-resume', wake); document.removeEventListener('visibilitychange', wake); window.removeEventListener('hashchange', notice);
+      ++epoch.current; ++connectionEpoch.current; ++registryEpoch.current; client.current?.close();
+    };
   }, []);
   useEffect(() => {
     const observer = new ResizeObserver(() => { if (follow.current && scroller.current) scroller.current.scrollTop = scroller.current.scrollHeight; });
@@ -950,6 +1018,7 @@ function App() {
       <h3>界面与阅读</h3><label className="reading-size">正文大小 <span>{readingSize}%</span><input aria-label="正文大小" type="range" min="100" max="150" step="10" value={readingSize} onChange={event => setReadingSize(Number(event.target.value))}/></label>
       {!mobile && <button onClick={() => setLayout({ navigation: true, inspector: false, navigationWidth: 264, inspectorWidth: 420 })}>恢复面板默认布局</button>}
       <h3>连接</h3><p className="path">{connectionLabel} · {location.origin}{new URL('.', location.href).pathname}</p><button disabled={connecting || sending || approving} onClick={() => void connect().catch(report)}><Icon name="refresh" size={15}/>重新连接</button>
+      {androidShell && <a className="server-settings-link" href="oraculum://settings/notifications">系统通知设置</a>}
       {androidShell && <a className="server-settings-link" href="oraculum://settings/server"><Icon name="settings"/>服务器地址</a>}
       <h3>工作目录</h3><p className="path">{config?.cwd}</p><p>从导航浏览 Ubuntu 主机文件夹并添加已有项目。</p>
       <p>可发送图片和 PDF、Office、CSV、TXT、Markdown 文档。图片直接交给 Codex；文档上传到当前主机项目，由原生工具读取并遵循已有审批。每批最多 6 个、单个 20 MB、合计 50 MB。</p>

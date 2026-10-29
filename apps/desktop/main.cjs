@@ -1,8 +1,9 @@
-const { app, BrowserWindow, session, Menu, dialog, shell } = require('electron');
+const { app, BrowserWindow, session, Menu, dialog, shell, Notification, nativeImage } = require('electron');
 const { join, resolve } = require('node:path');
 const { prepareDesktopPaths } = require('./paths.cjs');
 const { configureRuntime, ensureBridge } = require('./runtime.cjs');
 const { allowedDownload } = require('./artifacts.cjs');
+const { startNotifications } = require('./notifications.cjs');
 configureRuntime(app);
 app.setName('神谕');
 app.setDesktopName('oraculum.desktop');
@@ -32,6 +33,9 @@ app.whenReady().then(async () => {
     show: false, icon: paths.icon, backgroundColor: '#000000', title: '神谕',
     webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true, webviewTag: false },
   });
+  const noticeIcon = nativeImage.createFromPath(paths.icon).resize({ width: 64, height: 64 });
+  const stopNotifications = startNotifications({ window, origin: url.origin, icon: noticeIcon, userData: paths.userData, Notification });
+  window.on('closed', stopNotifications);
   window.on('page-title-updated', event => event.preventDefault());
   session.defaultSession.on('will-download', (event, item, contents) => {
     if (contents !== window.webContents || !allowedDownload(item, url.origin, contents.getURL())) { event.preventDefault(); return; }

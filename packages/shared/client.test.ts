@@ -20,6 +20,22 @@ beforeEach(() => {
   vi.stubGlobal('location', { href: 'http://127.0.0.1:17860/' });
 });
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
+it('detects a silent transport failure with a bounded read-only probe, without replaying mutations', async () => {
+  const changed = vi.fn(), client = new BridgeClient(vi.fn(), changed);
+  const connected = client.connect(); const socket = Socket.instances[0]; socket.open(); await connected;
+  const probe = client.probe(); const rejection = expect(probe).rejects.toThrow('未知');
+  expect(JSON.parse(socket.sent[0])).toMatchObject({ method: 'bridge/ping', params: {} });
+  await vi.advanceTimersByTimeAsync(5000); await rejection;
+  expect(socket.readyState).toBe(3); expect(changed).toHaveBeenLastCalledWith(false);
+  expect(socket.sent).toHaveLength(1); client.close();
+});
+it('keeps a live transport open after a successful probe', async () => {
+  const client = new BridgeClient(vi.fn(), vi.fn());
+  const connected = client.connect(); const socket = Socket.instances[0]; socket.open(); await connected;
+  const probe = client.probe(), id = JSON.parse(socket.sent[0]).id;
+  socket.onmessage!({ data: JSON.stringify({ id, result: { connected: true } }) }); await probe;
+  await vi.advanceTimersByTimeAsync(5001); expect(socket.readyState).toBe(1); client.close();
+});
 it.each(['thread/name/set', 'thread/fork', 'thread/revert', 'turn/steer', 'review/start', 'thread/compact/start'])('correlates %s once and never retries it after a disconnect', async method => {
   const client = new BridgeClient(vi.fn(), vi.fn());
   const connected = client.connect(); const socket = Socket.instances[0]; socket.open(); await connected;
