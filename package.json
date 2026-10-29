@@ -46,6 +46,8 @@
     "test:attachments:ui": "tsx scripts/attachments-ui-contract.ts",
     "test:attachments:native": "tsx scripts/attachments-native.ts",
     "test:artifacts:ui": "tsx scripts/artifacts-ui-contract.ts",
+    "test:extensions:ui": "tsx scripts/extensions-agents-ui-contract.ts",
+    "test:extensions:native": "tsx scripts/extensions-native.ts",
     "test:trust:ui": "tsx scripts/trust-ui-contract.ts",
     "test:messages:live": "tsx scripts/messages-live.ts",
     "test:native:elicitation": "tsx scripts/native-elicitation.ts",

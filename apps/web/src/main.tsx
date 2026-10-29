@@ -20,6 +20,7 @@ import { displayPath } from './paths';
 import { ResizeHandle, useLayout } from './layout';
 import { SessionGate, checkSession } from './auth';
 import { ThemeSettings, useTheme } from './themes';
+import { ExtensionSettings } from './extensions';
 import { NativeRequest } from './native-request';
 import { PermissionDetails, permissionModes } from './permissions';
 import { acknowledgedComposerDraft, actualComposerValues, composerOverrides, confirmedComposerDraft, parseComposerDraft, reconcileComposerDraft, type ComposerDraft } from './composer-settings';
@@ -931,6 +932,7 @@ function App() {
       {settings && <IdentitySettings/>}
       <PermissionDetails settings={session.settings} synced={connected && synced} hasThread={!!session.thread}/>
       <ThemeSettings theme={theme} open={settings}/>
+      {settings && <ExtensionSettings client={client.current} cwd={config?.cwd ?? ''} threadId={synced ? session.thread?.id : undefined} connected={connected}/>}
       <h3>界面与阅读</h3><label className="reading-size">正文大小 <span>{readingSize}%</span><input aria-label="正文大小" type="range" min="100" max="150" step="10" value={readingSize} onChange={event => setReadingSize(Number(event.target.value))}/></label>
       {!mobile && <button onClick={() => setLayout({ navigation: true, inspector: false, navigationWidth: 264, inspectorWidth: 420 })}>恢复面板默认布局</button>}
       <h3>连接</h3><p className="path">{connectionLabel} · {location.origin}{new URL('.', location.href).pathname}</p><button disabled={connecting || sending || approving} onClick={() => void connect().catch(report)}><Icon name="refresh" size={15}/>重新连接</button>

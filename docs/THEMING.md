@@ -159,6 +159,8 @@ R1-B5-B 在既有 Inspector 增加「文件」，手机也可经会话菜单的�
 
 ## 相对资源与浏览器权限
 
+R1-B6 在现有设置中增加可展开的 `.extension-settings`，包含 `.extension-group[data-extension-kind="skills"/"mcp"/"apps"/"plugins"]`、`.extension-list` 与 `.extension-entry`。列表只读、按需加载并限制滚动高度，使用已有表面、文字、边线和圆角 tokens；保留加载、断线、部分失败与刷新操作，不能通过主题将认证状态未知改成失败。Theme API v1 与四套内置主题格式不变。
+
 ```css
 @font-face {
   font-family: "My Mono";

@@ -26,6 +26,7 @@ import { permissionMode, threadPermissions, turnPermissions } from './permission
 import type { ThreadPermissionStore } from './thread-permissions';
 import { NativeUsage } from './usage';
 import { NativeOperations } from './native-operations';
+import { readExtensions } from './extensions';
 import { AttachmentStore, type AttachmentOwner } from './attachments';
 import { attachmentId } from '../../packages/shared/attachments';
 import { ArtifactStore, type ArtifactOwner } from './artifacts';
@@ -288,6 +289,15 @@ export class BridgeService extends EventEmitter {
   }
   sendStatus(operationId: string, deviceId: string) { return this.receipts?.sendStatus(operationId, deviceId) ?? 'unknown'; }
   private async dispatchRequest(method: string, params: Record<string, unknown>, context?: RequestContext): Promise<unknown> {
+    if (method === 'bridge/extensions') {
+      const cwd = await this.projectCwd(params.cwd);
+      const id = params.threadId;
+      if (id !== undefined && (typeof id !== 'string' || !this.threads.has(id) || !this.loaded.has(id) || this.threadCwd(id) !== cwd || this.deleted.has(id))) throw new Error('Thread is outside the selected workspace');
+      this.assertAuthorized(context);
+      const result = await readExtensions((method, params) => this.codex.request(method, params), cwd, typeof id === 'string' ? id : undefined);
+      this.assertAuthorized(context);
+      return result;
+    }
     if (method === 'bridge/accountUsage') return this.usage.readActivity();
     if (method === 'bridge/usage') {
       const id = params.threadId;

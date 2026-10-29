@@ -1,0 +1,27 @@
+@layer oraculum {
+  .extension-settings { margin-top: 22px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); min-width: 0; }
+  .extension-settings > summary { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 12px; min-height: 48px; color: var(--foreground); font-size: 13px; }
+  .extension-settings > summary small { margin-left: auto; }
+  .extension-content { padding: 0 12px 12px; min-width: 0; }
+  .extension-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--muted); font-size: 11px; }
+  .extension-toolbar button { min-height: 44px; }
+  .extension-content > p { margin: 9px 0; }
+  .extension-group { border-top: 1px solid var(--line); }
+  .extension-group > summary { display: flex; justify-content: space-between; align-items: center; min-height: 48px; gap: 12px; color: var(--foreground); font-size: 13px; }
+  .extension-group > summary::before { content: '›'; color: var(--muted); }
+  .extension-group[open] > summary::before { transform: rotate(90deg); }
+  .extension-group > summary > span { flex: 1; }
+  .extension-list { list-style: none; margin: 0; padding: 0; max-height: 300px; overflow-y: auto; overscroll-behavior: contain; }
+  .extension-entry { padding: 12px 0; border-top: 1px solid var(--line); overflow-wrap: anywhere; }
+  .extension-name { color: var(--foreground); font-size: 13px; font-weight: 500; }
+  .extension-badges { display: flex; flex-wrap: wrap; gap: 5px; margin: 7px 0; color: var(--muted); font-size: 10px; }
+  .extension-badges span { border: 1px solid var(--line); padding: 2px 6px; border-radius: 4px; }
+  .extension-entry p { margin: 5px 0; }
+  .extension-entry small { display: block; line-height: 1.7; }
+  .extension-content .extension-note, .extension-content .extension-notice { font-size: 11px; margin: 8px 0; }
+  @media (max-width: 760px), (pointer: coarse) {
+    .extension-toolbar button { min-height: 48px; }
+    .extension-settings > summary small { flex-basis: 100%; margin-left: 25px; }
+    .extension-list { max-height: 42dvh; }
+  }
+}
