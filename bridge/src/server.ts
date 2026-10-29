@@ -139,6 +139,14 @@ export async function createServer(service: BridgeService, port: number, webRoot
         return reply.code(401).send({ error: 'Invalid or expired pairing code' });
       }
     });
+    app.get(base + 'notifications', { config }, async (request, reply) => {
+      const source = requestOrigin(request.headers), token = tokenFrom(request.headers, source);
+      if (request.headers.origin !== source || request.headers['x-oraculum-notifications'] !== '1') return reply.code(403).send({ error: 'Notification origin and header required' });
+      if (trust && !trust.authenticate(token, scope(source))) return reply.code(401).send({ error: 'Device authentication required' });
+      const feed = await service.notificationFeed();
+      if (trust && !trust.authenticate(token, scope(source))) return reply.code(401).send({ error: 'Device authentication required' });
+      return feed;
+    });
     app.post(base + 'auth/logout', { config }, async (request, reply) => {
       const source = requestOrigin(request.headers);
       if (request.headers.origin !== source) return reply.code(403).send({ error: 'Origin required' });

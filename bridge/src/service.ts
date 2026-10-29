@@ -33,6 +33,7 @@ import { AttachmentStore, type AttachmentOwner } from './attachments';
 import { attachmentId } from '../../packages/shared/attachments';
 import { ArtifactStore, type ArtifactOwner } from './artifacts';
 import type { Readable } from 'node:stream';
+import { TaskNotifications } from './notifications';
 
 type RequestContext = { deviceId: string; isAuthorized?: () => boolean };
 const nativeMethods = new Set<NativeOperationMethod>(['thread/name/set', 'thread/fork', 'thread/revert', 'turn/steer', 'review/start', 'thread/compact/start']);
@@ -44,6 +45,7 @@ const forwardedNotifications = new Set(['thread/status/changed', 'thread/setting
   'item/reasoning/summaryPartAdded', 'item/reasoning/summaryTextDelta', 'item/reasoning/textDelta', 'serverRequest/resolved', 'error']);
 
 export class BridgeService extends EventEmitter {
+  private notifications = new TaskNotifications(id => this.threadCwd(id), id => this.displayThread(id));
   private agents = new AgentSummaries();
   private usage: NativeUsage;
   readonly threads = new Set<string>();
@@ -78,6 +80,7 @@ export class BridgeService extends EventEmitter {
   constructor(readonly codex: Pick<Codex, 'request' | 'send'> & { on(event: string, listener: (...args: any[]) => void): unknown }, readonly cwd: string,
     private receipts?: ReceiptStore, private projects?: ProjectDirectories, private permissionChoices?: ThreadPermissionStore, readonly attachments?: AttachmentStore, readonly artifacts?: ArtifactStore) {
     super();
+    this.on('event', (event: BridgeEvent) => this.notifications.observe(event));
     this.nativeOperations = receipts?.nativeOperations ?? new NativeOperations();
     this.usage = new NativeUsage((method, params) => codex.request(method, params), snapshot => this.emit('event', { type: 'accountLimits', snapshot } satisfies BridgeEvent));
     codex.on('message', (message: WireMessage) => this.receive(message));
@@ -91,6 +94,12 @@ export class BridgeService extends EventEmitter {
       }
       this.emit('event', { type: 'unavailable', message } satisfies BridgeEvent);
     });
+  }
+  async notificationFeed() {
+    const allowed = this.projects ? new Set((await this.projects.list()).projects.filter(p => p.available !== false).map(p => p.cwd)) : new Set([this.cwd]);
+    const feed = this.notifications.feed(this.pending.values());
+    feed.notices = feed.notices.filter(n => allowed.has(n.cwd) && !this.deleted.has(n.threadId) && !this.archived.has(n.threadId));
+    return feed;
   }
   private receive(message: WireMessage) {
     const params = message.params ?? {};
