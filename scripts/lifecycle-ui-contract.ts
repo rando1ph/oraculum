@@ -136,10 +136,12 @@ try {
   releaseSnapshot!(); releaseSnapshot = undefined;
   await expect(desktop.getByLabel('消息', { exact: true })).toHaveValue('');
   await expect(desktop.getByRole('button', { name: '发送', exact: true })).toBeDisabled();
-  expect(await desktop.evaluate(key => sessionStorage.getItem(key), `oraculum.draft:${cwd}:stale-snapshot`)).toBe('归档前保留的草稿');
+  // B7 native shells persist reading/drafts across relaunches in localStorage.
+  expect(await desktop.evaluate(key => localStorage.getItem(key), `oraculum.draft:${cwd}:stale-snapshot`)).toBe('归档前保留的草稿');
+  await desktop.reload(); await ready(desktop);
   await service.dispatch('thread/unarchive', { threadId: 'stale-snapshot', cwd });
   await select(desktop, 'stale-snapshot'); await expect(desktop.getByLabel('消息', { exact: true })).toHaveValue('归档前保留的草稿');
-  checks.push('lifecycle event bypasses pending snapshot buffer; stale snapshot cannot revive selected thread or composer; unsent draft survives restore');
+  checks.push('lifecycle event bypasses pending snapshot buffer; stale snapshot cannot revive selected thread or composer; unsent draft survives reload and restore');
   expect(errors).toEqual([]);
 } catch (error) {
   failure = String(error);
