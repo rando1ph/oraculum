@@ -9,12 +9,15 @@ import { fileURLToPath } from 'node:url';
 
 const project = fileURLToPath(new URL('../', import.meta.url));
 const args = process.argv.slice(2);
-let unsigned = false, expectedCertificate = process.env.ORACULUM_RELEASE_CERT_SHA256, selected;
+let unsigned = false, expectedGit, expectedCertificate = process.env.ORACULUM_RELEASE_CERT_SHA256, selected;
 for (let index = 0; index < args.length; index++) {
   if (args[index] === '--unsigned') unsigned = true;
   else if (args[index] === '--expected-cert') expectedCertificate = args[++index];
+  else if (args[index] === '--expected-git') {
+    expectedGit = args[++index]; assert.match(expectedGit ?? '', /^[a-f0-9]{40}$/, 'Expected source commit must be a full Git SHA');
+  }
   else if (!args[index].startsWith('-') && !selected) selected = args[index];
-  else throw new Error('Usage: verify-apk.mjs [APK] [--unsigned | --expected-cert SHA256]');
+  else throw new Error('Usage: verify-apk.mjs [APK] [--unsigned | --expected-cert SHA256] [--expected-git GIT_SHA]');
 }
 const release = JSON.parse(await readFile(join(project, 'release.json'), 'utf8'));
 const artifact = resolve(selected ?? join(project, `apps/android/app/build/outputs/apk/release/app-release${unsigned ? '-unsigned' : ''}.apk`));
@@ -38,6 +41,7 @@ try {
   assert.equal(report.build.format, 1); assert.match(report.build.sourceGit, /^[a-f0-9]{40}$/);
   assert.equal(typeof report.build.sourceDirty, 'boolean');
   assert.equal(report.build.version, release.version); assert.equal(report.build.versionCode, release.androidVersionCode);
+  if (expectedGit) { assert.equal(report.build.sourceGit, expectedGit); assert.equal(report.build.sourceDirty, false, 'Final APK requires clean committed source'); }
   if (!unsigned) assert.equal(report.build.sourceDirty, false, 'Signed release must be built from a clean source tree');
   report.verificationGit = run('git', ['-C', project, 'rev-parse', 'HEAD']).trim();
   const noticesRoot = 'assets/third-party/';
@@ -81,6 +85,16 @@ try {
   assert.doesNotMatch(manifest, /:debuggable\([^)]*\)=true/);
   for (const flag of ['allowBackup', 'fullBackupContent', 'usesCleartextTraffic']) assert.match(manifest, new RegExp(`:${flag}\\([^)]*\\)=false`));
   assert.match(manifest, /:networkSecurityConfig\([^)]*\)=@/); assert.match(manifest, /:dataExtractionRules\([^)]*\)=@/);
+  const permissions = [...manifest.matchAll(/E: uses-permission[^\n]*\n\s*A: [^\n]*:name\([^)]*\)="([^"]+)"/g)].map(match => match[1]).sort();
+  assert.deepEqual(permissions, ['INTERNET', 'POST_NOTIFICATIONS', 'FOREGROUND_SERVICE', 'FOREGROUND_SERVICE_REMOTE_MESSAGING'].map(name => 'android.permission.' + name).sort());
+  const component = name => manifest.split(/(?=          E: )/).find(section => section.includes(`="dev.oraculum.poc.${name}"`));
+  const service = component('TaskNotificationService'), provider = component('ArtifactFileProvider');
+  assert.ok(service && provider, 'Missing native task notification service or artifact provider');
+  for (const section of [service, provider]) assert.match(section, /:exported\([^)]*\)=false/);
+  assert.match(service, /:foregroundServiceType\([^)]*\)=0x0*200\b/);
+  assert.match(provider, /:authorities\([^)]*\)="dev.oraculum.poc.artifacts"/);
+  report.permissions = permissions;
+  pass('Exact native permissions, private remoteMessaging service and private artifact provider');
   const resources = run(join(buildTools, 'aapt2'), ['dump', 'resources', artifact]);
   const resourceLines = resources.split('\n');
   const resourceFile = name => {

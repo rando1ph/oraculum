@@ -10,6 +10,7 @@ const root = fileURLToPath(new URL('../', import.meta.url));
 const output = join(root, 'dist/runtime');
 const cache = join(root, '.local/build-cache');
 const nodeVersion = '24.21.0';
+const release = JSON.parse(await readFile(join(root, 'release.json'), 'utf8'));
 const archive = `node-v${nodeVersion}-linux-x64.tar.xz`;
 const sha256 = 'fd8e59d5a511510f6a298afb548f18c7d2b1be404d8b4a27d94fbe49f56cb2d6';
 if (process.platform !== 'linux' || process.arch !== 'x64') throw new Error('This release target is Linux amd64');
@@ -66,5 +67,7 @@ async function audit(directory) {
 }
 await audit(output);
 await writeFile(join(output, 'build.json'), JSON.stringify({ nodeVersion, nodeArchiveSha256: sha256,
-  git: execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim() }, null, 2) + '\n');
+  version: release.version,
+  git: execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim(),
+  sourceDirty: execFileSync('git', ['status', '--porcelain'], { cwd: root, encoding: 'utf8' }).trim().length > 0 }, null, 2) + '\n');
 console.log(`Standalone runtime: ${output}`);

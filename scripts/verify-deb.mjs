@@ -15,6 +15,9 @@ import { fileURLToPath } from 'node:url';
 const project = fileURLToPath(new URL('../', import.meta.url));
 const release = JSON.parse(await readFile(join(project, 'release.json'), 'utf8'));
 const artifact = resolve(process.argv[2] || join(project, `dist/desktop/out/make/deb/x64/oraculum_${release.version}_amd64.deb`));
+const expectedGit = process.argv[3];
+if (expectedGit) assert.match(expectedGit, /^[a-f0-9]{40}$/, 'Expected source commit must be a full Git SHA');
+assert.ok(process.argv.length <= 4, 'Usage: verify-deb.mjs [DEB [EXPECTED_GIT]]');
 const scratch = await mkdtemp(join(tmpdir(), 'oraculum-deb-check-'));
 const extracted = join(scratch, 'package'), control = join(scratch, 'control');
 const evidenceDirectory = join(project, '.local/evidence/phase4b/deb');
@@ -89,6 +92,8 @@ try {
   assert.ok(entries.some(entry => /^(?:usr\/share\/icons\/.*|usr\/share\/pixmaps)\/oraculum\.png$/.test(entry.name)), 'Application icon missing');
   const metadata = JSON.parse(await readFile(join(runtime, 'build.json'), 'utf8'));
   assert.match(metadata.git, /^[a-f0-9]{40}$/); assert.match(metadata.nodeVersion, /^24\./);
+  assert.equal(metadata.version, release.version); assert.equal(typeof metadata.sourceDirty, 'boolean');
+  if (expectedGit) { assert.equal(metadata.git, expectedGit); assert.equal(metadata.sourceDirty, false, 'Final DEB requires clean committed source'); }
   report.build = metadata;
   const unit = await readFile(join(runtime, 'oraculum-bridge.service'), 'utf8');
   assert.match(unit, /^ExecStart=\/usr\/lib\/oraculum\/resources\/runtime\/bin\/oraculum-bridge$/m);
@@ -267,7 +272,10 @@ console.log(JSON.stringify({id:m.id,result}));});`, { mode: 0o700 });
         const prefix = `${base}themes/${id}/`;
         assert.ok(path.startsWith(prefix + 'assets/'), 'Theme assets must use the configured Base Path');
         const asset = await request(path, authenticated); assert.equal(asset.status, 200, `Packaged theme asset unavailable: ${path}`);
-        const source = await readFile(join(runtime, 'themes', id, path.slice(prefix.length)));
+        // Bundles add revision query parameters for cache invalidation. They are
+        // part of the HTTP URL, not the packaged filesystem path.
+        const resourcePath = decodeURIComponent(new URL(path, 'https://release.oraculum.invalid').pathname.slice(prefix.length));
+        const source = await readFile(join(runtime, 'themes', id, resourcePath));
         const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
         assert.equal(sha256(asset.bytes), sha256(source));
         assets.push({ path, sha256: sha256(asset.bytes) });
