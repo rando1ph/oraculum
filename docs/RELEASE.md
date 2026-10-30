@@ -4,6 +4,9 @@ Phase 4 authorization and product decisions remain in the Notion Project/Task.
 Building does not authorize installation, service registration/start, migration,
 Android replacement, or changes to other services.
 
+The current R1-B8 `0.1.2` artifact identity, regression evidence, crash investigation,
+manual signing command and upgrade guide are in [the release handoff](R1_B8_RELEASE.md).
+
 ## Production runtime
 
 `pnpm build:runtime` builds the Web UI and a standalone Linux amd64 tree under
@@ -215,6 +218,7 @@ An existing same-version artifact is verified and preserved; different source
 requires a version increment. See [Android signing](https://developer.android.com/studio/publish/app-signing)
 and [apksigner](https://developer.android.com/tools/apksigner).
 
-This dedicated release certificate cannot replace the existing Debug install as
-a normal same-ID update. Device installation, Debug removal, actual upgrade and
-private WebView state migration remain Phase 4C work with separate authorization.
+Inspect the actual installed APK certificate before attempting an update. A
+different certificate cannot qualify as a normal same-ID update; versionName or
+the debuggable flag alone does not establish compatibility. Device installation,
+actual upgrade and private WebView state migration remain user acceptance work.
