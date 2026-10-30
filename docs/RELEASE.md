@@ -99,6 +99,34 @@ records a verification block. Inspect the captured error to distinguish host
 restrictions from package defects. Root:root 4755 metadata inside a DEB alone cannot
 prove an extracted or installed process has a working OS sandbox. Never change
 host ownership, AppArmor or kernel policy to make this build check pass.
+
+If an already installed root:root 4755 helper is byte-identical, the optional
+`--sandbox-helper /absolute/path/to/chrome-sandbox` check can reference it from
+the disposable extraction. It checks the bytes and permissions first and changes
+only a temporary symlink. No installation or host file change occurs. Kernel
+`NSpid` nesting supplies PID namespace evidence when non-dumpable sandbox processes
+deny `/proc` namespace readlinks; seccomp, NoNewPrivs and zero capabilities remain
+mandatory. This result is conditional on the existing helper, not an install test.
+
+Run GUI contracts on a private display, not the active desktop:
+
+```sh
+bash scripts/isolated-ui.sh pnpm test:artifacts:ui
+bash scripts/isolated-ui.sh node scripts/package-sandbox-check.mjs <deb> --sandbox-helper <existing-identical-root-helper>
+bash scripts/isolated-ui.sh node scripts/package-ui-contract.mjs <deb> --sandbox-helper <existing-identical-root-helper>
+```
+
+The wrapper requires Xvfb/xvfb-run (system installation or a local extraction at
+`.local/test-display/root/usr/bin`; `ORACULUM_XVFB_BIN` selects another extraction),
+`xauth`, `dbus-run-session` and a systemd user session. It has no desktop fallback.
+It uses software rendering, private Xauthority/D-Bus without service activation,
+and a disposable scope capped at two CPUs and 6 GiB memory. Run heavy builds and
+GUI suites sequentially. Source Electron contracts use Playwright's existing
+sandbox defaults and do not prove the OS sandbox. Packaged contracts explicitly
+request it and reuse authenticated attachment/artifact/extension fixtures against
+the actual release Electron, Web and themes. Their native RPC replies and Bridge
+service are controlled fixtures; compiled standalone Bridge validation is separate.
+
 `ORACULUM_TEST_CODEX_BIN=/absolute/official/codex node scripts/runtime-contract.mjs`
 uses the actual installed official CLI with a disposable CODEX_HOME, only for
 read-only initialization. This does not verify the user's full native config or

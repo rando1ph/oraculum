@@ -2,7 +2,7 @@
 // Codex responses are synthetic. No installed packages, user data, ADB or tokens.
 import { _electron as electron, chromium, expect, type Browser, type ElectronApplication, type Page } from '@playwright/test';
 import { EventEmitter } from 'node:events';
-import { createRequire } from 'node:module';
+import { uiDesktop, uiResource } from './ui-target';
 import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -64,9 +64,8 @@ const codex = { on: bus.on.bind(bus), send: () => {}, request: async <T>(method:
 } };
 const service = new BridgeService(codex, cwd, receipts, projects, undefined, new AttachmentStore(trust.db));
 const port = 17904, origin = `http://127.0.0.1:${port}`, proxy = await loopbackTlsFixture(port);
-const server = await createServer(service, port, resolve('apps/web/dist'), { trust, remoteOrigin: proxy.origin, remoteBasePath: '/console/',
-  themes: new Themes({ source: resolve('themes'), builtin: resolve('themes'), installed: join(temporary, 'themes') }) });
-const require = createRequire(resolve('apps/desktop/package.json'));
+const server = await createServer(service, port, uiResource('apps/web/dist'), { trust, remoteOrigin: proxy.origin, remoteBasePath: '/console/',
+  themes: new Themes({ source: uiResource('themes'), builtin: uiResource('themes'), installed: join(temporary, 'themes') }) });
 const env = Object.fromEntries(Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined)); delete env.ELECTRON_RUN_AS_NODE;
 Object.assign(env, { ORACULUM_URL: origin, ORACULUM_USER_DATA_DIR: join(temporary, 'electron-profile') });
 let app: ElectronApplication | undefined, browser: Browser | undefined, desktop: Page | undefined, phone: Page | undefined, failure: string | undefined;
@@ -103,7 +102,7 @@ async function geometry(page: Page) {
 }
 try {
   await server.listen({ host: '127.0.0.1', port });
-  app = await electron.launch({ executablePath: require('electron'), args: [resolve('apps/desktop/main.cjs')], env });
+  app = await electron.launch(uiDesktop(env));
   await expect.poll(() => app!.windows().some(page => page.url().startsWith(origin)), { timeout: 15000 }).toBe(true);
   desktop = app.windows().find(page => page.url().startsWith(origin))!; desktop.on('pageerror', error => errors.push(error.message));
   await desktop.setViewportSize({ width: 1440, height: 960 }); await pair(desktop, '附件输入 · 桌面合成验收');
