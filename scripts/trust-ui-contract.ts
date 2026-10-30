@@ -23,6 +23,7 @@ const cwd = join(dir, 'fixture-project');
 const calls: string[] = [];
 const service = Object.assign(new EventEmitter(), { dispatch: async (method: string) => {
   calls.push(method);
+  if (method === 'bridge/ping') return { connected: true };
   if (method === 'bridge/usage') return { account: { source: 'codex-app-server', revision: 0, observedAt: now,
     generation: 0, status: 'unavailable', buckets: [] }, thread: null };
   if (method === 'bridge/config') return { cwd, model: null, effort: null, provider: null, approvalPolicy: null,
@@ -71,7 +72,7 @@ try {
   await expect.poll(() => checks).toBeGreaterThan(foreground);
   await expect.poll(async () => ((await context.cookies()).find(cookie => cookie.name === 'oraculum_local')?.expires ?? 0) - Date.now() / 1000).toBeGreaterThan(364 * 86400);
   await expect(page.locator('.app-shell')).toHaveAttribute('data-continuity', 'preserved');
-  expect(calls.filter(method => !['bridge/config', 'bridge/projects', 'model/list', 'thread/list', 'bridge/usage'].includes(method))).toEqual([]);
+  expect(calls.filter(method => !['bridge/config', 'bridge/projects', 'model/list', 'thread/list', 'bridge/usage', 'bridge/ping'].includes(method))).toEqual([]);
 
   await context.clearCookies();
   await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
@@ -80,8 +81,12 @@ try {
   expect(trust.list()[0].revoked).toBe(0);
   expect(errors).toEqual([]);
   console.log('PASS isolated Chromium: year cookie, HttpOnly, cross-day trust, daily and foreground renewal, view continuity, cleared-cookie re-pair; simulated Codex only');
-} catch {
+} catch (error) {
   // Assertions may contain synthetic credentials; never serialize those values.
+  // A source location identifies a stale assertion without printing its values.
+  const location = error instanceof Error ? error.stack?.split('\n').find(line => /trust-ui-contract\.ts:\d+/.test(line))?.trim() : undefined;
+  if (location) console.error(location);
+  console.error('Observed fixture RPC methods:', [...new Set(calls)].filter(method => /^[A-Za-z/]+$/.test(method)).join(', '));
   console.error('FAIL isolated trust browser contract; inspect locally without exporting credentials');
   process.exitCode = 1;
 } finally {
