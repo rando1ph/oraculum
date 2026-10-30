@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Local-terminal-only key custody and release launcher. Never run via agent PTY."""
+import argparse
 import hashlib
 import json
 import os
@@ -59,7 +60,7 @@ def store_hash(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def validate_config():
+def validate_config(check_backup=False):
     private_path(KEY_DIR, directory=True)
     private_path(CONFIG)
     config = json.loads(CONFIG.read_text())
@@ -69,10 +70,15 @@ def validate_config():
     primary, backup = Path(config["keystore"]), Path(config["backup"])
     require(primary == KEY_DIR / "oraculum-release.jks", "Unexpected primary release key path")
     private_path(primary.parent, directory=True)
-    private_path(backup.parent, directory=True)
-    require(primary != backup and not backup.is_relative_to(KEY_DIR), "Backup must be independent from the primary key directory")
-    require(store_hash(primary) == store_hash(backup), "Primary and backup differ; stop and inspect locally")
-    require((primary.stat().st_dev, primary.stat().st_ino) != (backup.stat().st_dev, backup.stat().st_ino), "Backup must be a separate file")
+    store_hash(primary)
+    require(backup.is_absolute() and primary != backup and not backup.is_relative_to(KEY_DIR), "Backup must be independent from the primary key directory")
+    # The initial backup attestation remains mandatory. Daily signing uses only
+    # the primary; the stored public fingerprint pins the final APK certificate.
+    # Never stat/resolve/read offline media unless explicitly checking the backup.
+    if check_backup:
+        private_path(backup.parent, directory=True)
+        require(store_hash(primary) == store_hash(backup), "Primary and backup differ; stop and inspect locally")
+        require((primary.stat().st_dev, primary.stat().st_ino) != (backup.stat().st_dev, backup.stat().st_ino), "Backup must be a separate file")
     return config
 
 
@@ -126,31 +132,50 @@ def initialize(resume=False):
     print("Release key and verified backup prepared. No app was installed.")
 
 
-def release():
+def release(apk=None):
     config = validate_config()
     require(not subprocess.check_output(["git", "status", "--porcelain"], cwd=ROOT, text=True).strip(), "Commit the reviewed source before producing the release artifact")
     metadata = json.loads((ROOT / "release.json").read_text())
     target = ROOT / "dist/android" / f"oraculum-{metadata['version']}-{metadata['androidVersionCode']}.apk"
+    environment = tool_environment()
+    if apk is None and not os.path.lexists(target):
+        subprocess.run(["bash", "scripts/android-release-build.sh", "--unsigned"], cwd=ROOT, env=environment, check=True)
+    source = Path(apk).resolve(strict=True) if apk is not None else ROOT / "apps/android/app/build/outputs/apk/release/app-release-unsigned.apk"
+    if apk is None and os.path.lexists(target):
+        # Preserve the original idempotent, current-HEAD behavior for rebuilds.
+        source = target
+    with zipfile.ZipFile(source) as archive:
+        embedded = json.loads(archive.read("assets/oraculum-build.json"))
+    require(embedded["sourceDirty"] is False and embedded["version"] == metadata["version"] and
+            embedded["versionCode"] == metadata["androidVersionCode"], "APK must be a clean build of the selected release version")
+    source_git = embedded["sourceGit"]
+    require(isinstance(source_git, str) and len(source_git) == 40 and all(c in "0123456789abcdef" for c in source_git), "Invalid APK source commit")
+    subprocess.run(["git", "cat-file", "-e", source_git + "^{commit}"], cwd=ROOT, check=True)
+    if apk is None:
+        current_git = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
+        require(source_git == current_git, "Existing version belongs to another source commit; use the reviewed --apk or increment the release version")
     if os.path.lexists(target):
         require(target.is_file() and not target.is_symlink(), "Existing artifact path preserved; inspect it locally")
         subprocess.run(["node", "scripts/verify-apk.mjs", str(target), "--expected-cert", config["certificateSha256"]], cwd=ROOT, env=tool_environment(), check=True)
         with zipfile.ZipFile(target) as archive:
-            embedded = json.loads(archive.read("assets/oraculum-build.json"))
-        current_git = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
-        require(embedded["sourceGit"] == current_git, "Existing version belongs to another source commit; increment the release version instead of overwriting")
+            signed_identity = json.loads(archive.read("assets/oraculum-build.json"))
+        require(signed_identity == embedded, "Existing signed version belongs to a different build; preserved without overwriting")
         print(f"Existing signed release APK verified: {target}")
         return
-    environment = tool_environment()
-    subprocess.run(["bash", "scripts/android-release-build.sh", "--unsigned"], cwd=ROOT, env=environment, check=True)
-    source = ROOT / "apps/android/app/build/outputs/apk/release/app-release-unsigned.apk"
     target.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix=".signed-", dir=target.parent) as temporary:
+        unsigned = Path(temporary) / "input-unsigned.apk"
+        shutil.copyfile(source, unsigned)
+        # Check the exact private copy being signed; no Gradle rebuild with --apk.
+        subprocess.run(["node", "scripts/verify-apk.mjs", str(unsigned), "--unsigned"], cwd=ROOT, env=environment, check=True)
+        with zipfile.ZipFile(unsigned) as archive:
+            require(json.loads(archive.read("assets/oraculum-build.json")) == embedded, "Unsigned input changed during preparation")
         candidate = Path(temporary) / target.name
         # No password flags/env/files: apksigner defaults to Console.readPassword.
         # Explicit --out leaves the aligned unsigned input unchanged.
         subprocess.run([str(TOOLS / "android-sdk/build-tools/35.0.0/apksigner"), "sign",
                         "--ks", config["keystore"], "--ks-key-alias", config["alias"], "--ks-type", "JKS",
-                        "--v4-signing-enabled", "false", "--out", str(candidate), str(source)],
+                        "--v4-signing-enabled", "false", "--out", str(candidate), str(unsigned)],
                        env=environment, check=True)
         subprocess.run(["node", "scripts/verify-apk.mjs", str(candidate), "--expected-cert", config["certificateSha256"]], cwd=ROOT, env=environment, check=True)
         with candidate.open("rb") as completed:
@@ -162,14 +187,21 @@ def release():
 
 if __name__ == "__main__":
     try:
+        parser = argparse.ArgumentParser(description=__doc__)
+        parser.add_argument("command", choices=["init", "resume", "release", "verify-backup"])
+        parser.add_argument("--apk", type=Path, help="Sign an already reviewed unsigned Release APK without rebuilding (release only)")
+        args = parser.parse_args()
+        require(args.apk is None or args.command == "release", "--apk is only valid with release")
         require(sys.stdin.isatty() and sys.stdout.isatty(), "Run in your own local terminal, never a captured agent terminal or pipe")
-        require(len(sys.argv) == 2 and sys.argv[1] in {"init", "resume", "release"}, "Usage: python3 scripts/android-signing.py init|resume|release")
         os.umask(0o077)
-        if sys.argv[1] == "release":
-            release()
+        if args.command == "release":
+            release(args.apk)
+        elif args.command == "verify-backup":
+            validate_config(check_backup=True)
+            print("Primary and offline backup byte comparison passed. No key or configuration changed.")
         else:
-            initialize(resume=sys.argv[1] == "resume")
-    except (RuntimeError, OSError, ValueError, subprocess.CalledProcessError, KeyboardInterrupt, EOFError, StopIteration) as error:
+            initialize(resume=args.command == "resume")
+    except (RuntimeError, OSError, ValueError, KeyError, zipfile.BadZipFile, subprocess.CalledProcessError, KeyboardInterrupt, EOFError, StopIteration) as error:
         # Do not print subprocess argv/env, exception data, or private key contents.
         print(str(error) if isinstance(error, RuntimeError) else "Local signing stopped; existing keys are preserved. Inspect the terminal error above.", file=sys.stderr)
         sys.exit(1)

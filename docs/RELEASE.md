@@ -123,18 +123,35 @@ shell tracing disabled; never use a captured agent terminal for them:
 
 ```sh
 cd ~/Projects/Oraculum
-python3 scripts/android-signing.py init
 python3 scripts/android-signing.py release
 ```
 
-The first command creates a dedicated JKS (RSA 3072, alias `oraculum-release`) in
+For an existing reviewed unsigned APK, avoid rebuilding it by passing
+`--apk /absolute/path/to/oraculum-<version>-<code>-unsigned.apk` to `release`.
+The launcher verifies a private copy, requires clean embedded build identity and
+a known source commit, signs using the existing primary JKS, pins the resulting
+certificate to the saved public SHA-256 and publishes only after verification.
+It preserves both the input and any existing signed output. The selected version
+must match `release.json`; the `--apk` path deliberately identifies the reviewed
+build even if later documentation commits moved HEAD. Check its published SHA-256
+before running this command. No signing password enters the launcher or Gradle.
+
+Daily signing does **not** access the offline backup. It retains the original
+`backupVerified` attestation and checks primary key/configuration ownership,
+permissions and path safety. To explicitly compare the original backup later,
+attach its media and run `python3 scripts/android-signing.py verify-backup`.
+This read-only comparison changes neither key nor configuration and asks for no
+password. It does not replace the initial private-key/certificate verification.
+
+Only for first-time key setup, `python3 scripts/android-signing.py init` creates
+a dedicated JKS (RSA 3072, alias `oraculum-release`) in
 `~/.local/share/oraculum-signing`, with directory/file permissions 0700/0600.
 It refuses any existing key, including dangling links. Supply an absolute private
 backup directory on media you control and can keep offline; a cloud-synced folder
 is unsuitable. It copies without overwriting, verifies both private keys can
 unlock/sign and have the same certificate, and asks you to confirm offline
 custody. This confirmation is a user attestation; software cannot prove how media
-will be stored. Keep the backup available through signing, then store it offline.
+will be stored. The verified backup can then remain offline during daily signing.
 Only paths, alias, backup-verification status and public certificate SHA-256 enter
 the external `release-signing.json`; no passwords are saved.
 
@@ -144,7 +161,7 @@ completes its backup/configuration without generating or overwriting a key.
 If a partial or different backup already exists, preserve it and choose a fresh
 private backup directory. Existing configuration is never replaced automatically.
 
-The release command requires a clean committed tree. Gradle builds and verifies
+The release command requires a clean committed tree. Without `--apk`, Gradle builds and verifies
 an aligned unsigned APK with no signing configuration or password inputs, then
 SDK 35 `apksigner` signs it in a separate process, reading passwords directly from
 the user's real terminal without echo. No password enters Python, command
