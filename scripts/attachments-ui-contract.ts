@@ -76,6 +76,17 @@ const starts = () => calls.filter(call => call.method === 'turn/start').length;
 async function pair(page: Page, name: string) {
   await page.getByLabel('设备名称', { exact: true }).fill(name); await page.getByLabel('配对码', { exact: true }).fill(trust.createPairing().code);
   await page.getByRole('button', { name: '配对并连接', exact: true }).click(); await ready(page);
+  // A fresh profile picks the first available project in the user's locale.
+  // Select this fixture's project explicitly before looking up its threads.
+  await nav(page);
+  const project = page.getByLabel('项目目录', { exact: true });
+  if (await project.inputValue() !== cwd) {
+    if (await project.isVisible()) await project.selectOption(cwd);
+    else await page.locator(`.project-group-heading[title=${JSON.stringify(cwd)}]`).click();
+    await ready(page);
+  }
+  await expect(project).toHaveValue(cwd);
+  if (await page.locator('.app-shell').evaluate(element => element.classList.contains('drawer-open'))) await page.locator('.nav-close').click();
 }
 async function nav(page: Page) { const button = page.getByRole('button', { name: '打开导航', exact: true }); if (await button.isVisible() && !await page.locator('.app-shell').evaluate(el => el.classList.contains('drawer-open'))) await button.click(); }
 async function select(page: Page, id: string) { await nav(page); await page.locator(`.session-link[data-thread-id="${id}"]`).click(); await ready(page); }

@@ -78,6 +78,16 @@ const ready = (page: Page) => expect(page.locator('.connection-status')).toConta
 async function pair(page: Page, name: string) {
   await page.getByLabel('设备名称', { exact: true }).fill(name); await page.getByLabel('配对码', { exact: true }).fill(trust.createPairing().code);
   await page.getByRole('button', { name: '配对并连接', exact: true }).click(); await ready(page);
+  // Project list order is locale-dependent, not an assertion of this fixture.
+  await nav(page);
+  const project = page.getByLabel('项目目录', { exact: true });
+  if (await project.inputValue() !== cwd) {
+    if (await project.isVisible()) await project.selectOption(cwd);
+    else await page.locator(`.project-group-heading[title=${JSON.stringify(cwd)}]`).click();
+    await ready(page);
+  }
+  await expect(project).toHaveValue(cwd);
+  if (await page.locator('.app-shell').evaluate(element => element.classList.contains('drawer-open'))) await page.locator('.nav-close').click();
 }
 async function nav(page: Page) { const button = page.getByRole('button', { name: '打开导航', exact: true }); if (await button.isVisible() && !await page.locator('.app-shell').evaluate(el => el.classList.contains('drawer-open'))) await button.click(); }
 async function closePanel(page: Page) { if (await page.locator('.inspector').isVisible()) await page.locator('.inspector').getByRole('button', { name: '关闭面板', exact: true }).click(); }
