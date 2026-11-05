@@ -10,7 +10,12 @@ if (installation) {
   const manifest = JSON.parse(readFileSync(join(installation, 'resources/app/package.json'), 'utf8'));
   if (manifest.main !== 'main.cjs' || manifest.devDependencies) throw new Error('Expected a packaged desktop shell');
 }
-export const uiResource = (path: string) => resolve(installation ? join(installation, 'resources/runtime') : '.', path);
+export const uiResource = (path: string) => {
+  if (!installation) return resolve('.', path);
+  const resources = process.env.ORACULUM_TEST_BRIDGE_RESOURCE_DIR;
+  if (!resources || !isAbsolute(resources)) throw new Error('Packaged Desktop contracts require an explicit extracted Bridge resource directory');
+  return resolve(resources, path);
+};
 export function uiDesktop(environment: Record<string, string>) {
   if (installation) {
     const home = join(installation, 'test-home');

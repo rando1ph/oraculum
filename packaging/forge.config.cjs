@@ -12,18 +12,16 @@ async function normalizePermissions(path) {
 }
 module.exports = {
   packagerConfig: {
-    name: 'oraculum', executableName: 'oraculum', appVersion: release.version,
+    name: 'oraculum', executableName: 'oraculum', appVersion: release.components.desktop.version,
     asar: false, prune: false,
     icon: join(root, 'design/reference/02_Brand_OracleEye_App_Icon.png'),
   },
   hooks: {
     postPackage: async (_config, { outputPaths }) => {
       for (const path of outputPaths) {
-        // Packager's extraResource copy resolves pnpm links to build-host paths.
-        // Keep the already-audited runtime's relative links byte-for-byte.
-        await cp(join(root, 'dist/runtime'), join(path, 'resources/runtime'), {
-          recursive: true, verbatimSymlinks: true,
-        });
+        // Desktop owns only its shell resources. Bridge, shared Web UI and Node
+        // are independently installed and never copied into this DEB.
+        await cp(join(root, 'dist/desktop-resources'), join(path, 'resources/desktop'), { recursive: true });
         await normalizePermissions(path);
       }
     },

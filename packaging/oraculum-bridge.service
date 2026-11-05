@@ -5,7 +5,7 @@ StartLimitBurst=3
 
 [Service]
 Type=simple
-ExecStart=/usr/lib/oraculum/resources/runtime/bin/oraculum-bridge
+ExecStart=/usr/lib/oraculum-bridge/bin/oraculum-bridge
 WorkingDirectory=%h
 UMask=0077
 Restart=on-failure
@@ -13,7 +13,8 @@ RestartSec=3
 TimeoutStopSec=15
 KillMode=control-group
 # Do not constrain native Codex tools or replace its own permissions/configuration.
-# Registration/start/enable and data selection are explicit Phase 4C operations.
+# Package installation never starts/enables a service. Registration, legacy entry
+# migration, start/enable and data selection are explicit deployment operations.
 
 [Install]
 WantedBy=default.target

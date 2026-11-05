@@ -10,10 +10,10 @@ import { lstat, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
-const [input, flag, helperInput] = process.argv.slice(2);
-assert.ok(input && flag === '--sandbox-helper' && helperInput && process.argv.length === 5,
-  'Usage: package-ui-contract.mjs DEB --sandbox-helper ROOT_OWNED_IDENTICAL_HELPER');
-const artifact = resolve(input), helper = resolve(helperInput);
+const [input, bridgeInput, flag, helperInput] = process.argv.slice(2);
+assert.ok(input && bridgeInput && flag === '--sandbox-helper' && helperInput && process.argv.length === 6,
+  'Usage: package-ui-contract.mjs DESKTOP_DEB BRIDGE_DEB --sandbox-helper ROOT_OWNED_IDENTICAL_HELPER');
+const artifact = resolve(input), bridgeArtifact = resolve(bridgeInput), helper = resolve(helperInput);
 const scratch = await mkdtemp(join(tmpdir(), 'oraculum-release-ui-'));
 await mkdir(resolve('.local/evidence/r1-b8'), { recursive: true });
 const output = await mkdtemp(resolve('.local/evidence/r1-b8/package-ui-'));
@@ -25,7 +25,12 @@ try {
   execFileSync('dpkg-deb', ['--extract', artifact, scratch], { timeout: 120_000 });
   const installation = join(scratch, 'usr/lib/oraculum');
   await mkdir(join(installation, 'test-home'), { mode: 0o700 });
-  report.build = JSON.parse(await readFile(join(installation, 'resources/runtime/build.json'), 'utf8'));
+  report.build = JSON.parse(await readFile(join(installation, 'resources/desktop/build.json'), 'utf8'));
+  const bridge = join(scratch, 'bridge-package');
+  execFileSync('dpkg-deb', ['--extract', bridgeArtifact, bridge], { timeout: 120_000 });
+  const bridgeResources = join(bridge, 'usr/lib/oraculum-bridge');
+  report.bridge = { artifact: bridgeArtifact, sha256: createHash('sha256').update(await readFile(bridgeArtifact)).digest('hex'),
+    build: JSON.parse(await readFile(join(bridgeResources, 'build.json'), 'utf8')) };
   const packagedHelper = join(installation, 'chrome-sandbox'), stat = await lstat(helper);
   assert.ok(stat.isFile() && !stat.isSymbolicLink());
   assert.equal(stat.uid, 0); assert.equal(stat.gid, 0); assert.equal(stat.mode & 0o7777, 0o4755);
@@ -38,7 +43,8 @@ try {
   for (const suite of ['attachments', 'artifacts', 'extensions']) {
     const started = Date.now(), log = join(output, suite + '.log');
     const child = spawn('pnpm', [`test:${suite}:ui`], { env: { ...process.env,
-      ORACULUM_TEST_DESKTOP_DIR: installation, ORACULUM_MANAGE_SERVICE: '0' }, stdio: ['ignore', 'pipe', 'pipe'] });
+      ORACULUM_TEST_DESKTOP_DIR: installation, ORACULUM_TEST_BRIDGE_RESOURCE_DIR: bridgeResources,
+      ORACULUM_MANAGE_SERVICE: '0' }, stdio: ['ignore', 'pipe', 'pipe'] });
     const stream = createWriteStream(log); child.stdout.pipe(stream, { end: false }); child.stderr.pipe(stream, { end: false });
     const [code, signal] = await once(child, 'close'); stream.end(); await once(stream, 'finish');
     report.suites.push({ suite, code, signal, seconds: (Date.now() - started) / 1000, log });

@@ -1,4 +1,12 @@
 {
   "version": "0.1.2",
-  "androidVersionCode": 4
+  "androidVersionCode": 4,
+  "components": {
+    "bridge": {
+      "version": "0.2.0"
+    },
+    "desktop": {
+      "version": "0.2.0"
+    }
+  }
 }

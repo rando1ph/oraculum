@@ -20,12 +20,15 @@ function fixture() {
   const home = join(root, 'other-user'), config = join(root, 'xdg-config');
   const resources = join(root, 'usr/lib/oraculum/resources');
   const icon = join(resources, 'design/reference/02_Brand_OracleEye_App_Icon.png');
+  const splash = join(resources, 'apps/desktop/splash.html');
   mkdirSync(home, { mode: 0o700 });
   mkdirSync(config, { mode: 0o700 });
   mkdirSync(dirname(icon), { recursive: true });
   writeFileSync(icon, 'isolated icon fixture');
+  mkdirSync(dirname(splash), { recursive: true });
+  writeFileSync(splash, '<!doctype html><title>Desktop splash</title>');
   const env: NodeJS.ProcessEnv = { HOME: home, XDG_CONFIG_HOME: config, ORACULUM_RESOURCE_DIR: resources };
-  return { root, home, config, resources, icon, env };
+  return { root, home, config, resources, icon, splash, env };
 }
 
 function start(env: NodeJS.ProcessEnv) {
@@ -193,5 +196,18 @@ describe('Desktop startup paths', () => {
     const link = join(root, 'icon-link.png'); symlinkSync(custom, link);
     expect(() => desktopPaths({ ...env, ORACULUM_DESKTOP_ICON: link })).toThrow(/icon/i);
     expect(() => desktopPaths({ ...env, ORACULUM_DESKTOP_ICON: root })).toThrow(/icon/i);
+  });
+
+  it('keeps splash independent of Bridge resources and refuses a missing splash before creating a profile', () => {
+    const { root, splash, env } = fixture();
+    env.ORACULUM_USER_DATA_DIR = join(root, 'selected-profile');
+    expect(prepareDesktopPaths(env)).toHaveProperty('splash', splash);
+    const profileStat = lstatSync(env.ORACULUM_USER_DATA_DIR);
+    rmSync(splash);
+    expect(() => prepareDesktopPaths(env)).toThrow(/splash/);
+    expect(lstatSync(env.ORACULUM_USER_DATA_DIR).ino).toBe(profileStat.ino);
+    const fresh = join(root, 'never-created');
+    expect(() => prepareDesktopPaths({ ...env, ORACULUM_USER_DATA_DIR: fresh })).toThrow(/splash/);
+    expect(existsSync(fresh)).toBe(false);
   });
 });

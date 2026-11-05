@@ -11,6 +11,9 @@ const output = join(root, 'dist/runtime');
 const cache = join(root, '.local/build-cache');
 const nodeVersion = '24.21.0';
 const release = JSON.parse(await readFile(join(root, 'release.json'), 'utf8'));
+const version = release.components.bridge.version;
+// Debian payload permissions must not depend on the developer's umask.
+process.umask(0o022);
 const archive = `node-v${nodeVersion}-linux-x64.tar.xz`;
 const sha256 = 'fd8e59d5a511510f6a298afb548f18c7d2b1be404d8b4a27d94fbe49f56cb2d6';
 if (process.platform !== 'linux' || process.arch !== 'x64') throw new Error('This release target is Linux amd64');
@@ -29,7 +32,7 @@ await rm(join(output, 'node/lib'), { recursive: true, force: true });
 await rm(join(output, 'node/include'), { recursive: true, force: true });
 await rm(join(output, 'node/share'), { recursive: true, force: true });
 for (const entry of await readdir(join(output, 'node/bin'))) if (entry !== 'node') await rm(join(output, 'node/bin', entry));
-await build({ entryPoints: { main: 'bridge/src/main.ts', trust: 'bridge/src/trust.ts' }, absWorkingDir: root,
+await build({ entryPoints: { main: 'bridge/src/main.ts', trust: 'bridge/src/trust.ts', preflight: 'bridge/src/preflight.ts' }, absWorkingDir: root,
   outdir: join(output, 'bridge'), outExtension: { '.js': '.mjs' }, bundle: true, platform: 'node',
   target: 'node24', format: 'esm', packages: 'external', sourcemap: false });
 const deps = join(root, 'dist/bridge-deps');
@@ -44,13 +47,8 @@ for (const file of ['.modules.yaml', '.pnpm-workspace-state-v1.json']) await rm(
 for (const item of ['apps/web/dist', 'themes']) await cp(join(root, item), join(output, item), { recursive: true });
 await collectWebLicenses(join(output, 'licenses/web'));
 await cp(join(root, 'packaging/licenses'), join(output, 'licenses/bridge'), { recursive: true });
-await mkdir(join(output, 'apps/desktop'), { recursive: true });
-for (const file of ['splash.html', 'splash.css', 'splash.js']) await cp(join(root, 'apps/desktop', file), join(output, 'apps/desktop', file));
-await mkdir(join(output, 'design/reference'), { recursive: true });
-for (const name of ['01_Brand_OracleEye_Full_Logo.png', '02_Brand_OracleEye_App_Icon.png', '03_Brand_OracleEye_Simplified_Icon.png']) {
-  await cp(join(root, 'design/reference', name), join(output, 'design/reference', name));
-}
-for (const file of ['runtime-config.cjs', 'launch-bridge.cjs', 'oraculum-bridge.service']) await cp(join(root, 'packaging', file), join(output, file));
+await cp(join(root, 'docs/THEME-ASSETS.md'), join(output, 'licenses/THEME-ASSETS.md'));
+for (const file of ['runtime-config.cjs', 'launch-bridge.cjs']) await cp(join(root, 'packaging', file), join(output, file));
 await mkdir(join(output, 'bin'), { recursive: true });
 await cp(join(root, 'packaging/oraculum-bridge'), join(output, 'bin/oraculum-bridge'));
 await chmod(join(output, 'bin/oraculum-bridge'), 0o755);
@@ -67,7 +65,8 @@ async function audit(directory) {
 }
 await audit(output);
 await writeFile(join(output, 'build.json'), JSON.stringify({ nodeVersion, nodeArchiveSha256: sha256,
-  version: release.version,
+  component: 'bridge', packageName: 'oraculum-bridge', architecture: 'amd64', version,
+  protocolVersion: 1, stateSchemaVersion: 1, schemaMin: 0, schemaMax: 1,
   git: execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim(),
   sourceDirty: execFileSync('git', ['status', '--porcelain'], { cwd: root, encoding: 'utf8' }).trim().length > 0 }, null, 2) + '\n');
 console.log(`Standalone runtime: ${output}`);

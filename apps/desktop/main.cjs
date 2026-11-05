@@ -1,5 +1,4 @@
 const { app, BrowserWindow, session, Menu, dialog, shell, Notification, nativeImage } = require('electron');
-const { join, resolve } = require('node:path');
 const { prepareDesktopPaths } = require('./paths.cjs');
 const { configureRuntime, ensureBridge } = require('./runtime.cjs');
 const { allowedDownload } = require('./artifacts.cjs');
@@ -53,10 +52,9 @@ app.whenReady().then(async () => {
       } else if (state === 'interrupted') dialog.showErrorBox('文件未保存', '保存中断，请返回文件面板重试。');
     });
   });
-  const splashFile = join(process.env.ORACULUM_RESOURCE_DIR || resolve(__dirname, '../..'), 'apps/desktop/splash.html');
   let splash;
   let connecting = false;
-  const showSplash = async (failed = false) => {
+  const showSplash = async (failure) => {
     if (!splash || splash.isDestroyed()) {
       splash = new BrowserWindow({ width: 880, height: 720, minWidth: 360, minHeight: 480,
         show: false, autoHideMenuBar: true, backgroundColor: '#000000', title: '神谕', icon: paths.icon,
@@ -71,7 +69,7 @@ app.whenReady().then(async () => {
       splash.on('closed', () => { if (!window.isDestroyed() && !window.isVisible()) app.quit(); });
     }
     try {
-      await splash.loadFile(splashFile, { query: failed ? { state: 'error' } : {} });
+      await splash.loadFile(paths.splash, { query: failure ? { state: 'error', reason: failure.code || 'bridge-unavailable' } : {} });
     } catch {
       if (window.isDestroyed()) return;
       dialog.showErrorBox('神谕', '本地启动资源无法加载。请核对安装包资源完整性后重新启动。');
@@ -121,10 +119,10 @@ app.whenReady().then(async () => {
       if (app.isPackaged) await ensureBridge(app, url);
       await window.loadURL(target);
       handoff();
-    } catch {
+    } catch (error) {
       if (window.isDestroyed()) return;
       window.hide();
-      await showSplash(true);
+      await showSplash(error);
     } finally { connecting = false; }
   };
   await showSplash();

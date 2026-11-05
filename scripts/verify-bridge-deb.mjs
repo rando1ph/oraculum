@@ -1,0 +1,299 @@
+// Package inspection and disposable extraction only. Never install a DEB or
+// register/start a user service; the only child Bridge uses a simulated CLI.
+import assert from 'node:assert/strict';
+import { createReadStream } from 'node:fs';
+import { access, lstat, mkdir, mkdtemp, readFile, readdir, readlink, realpath, rm, writeFile } from 'node:fs/promises';
+import { execFileSync, spawn } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { once } from 'node:events';
+import { createServer } from 'node:net';
+import { request as httpRequest } from 'node:http';
+import { tmpdir } from 'node:os';
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const project = fileURLToPath(new URL('../', import.meta.url));
+const release = JSON.parse(await readFile(join(project, 'release.json'), 'utf8'));
+const artifact = resolve(process.argv[2] || join(project, `dist/bridge/oraculum-bridge_${release.components.bridge.version}_amd64.deb`));
+const expectedGit = process.argv[3];
+if (expectedGit) assert.match(expectedGit, /^[a-f0-9]{40}$/, 'Expected source commit must be a full Git SHA');
+assert.ok(process.argv.length <= 4, 'Usage: verify-bridge-deb.mjs [DEB [EXPECTED_GIT]]');
+const scratch = await mkdtemp(join(tmpdir(), 'oraculum-bridge-deb-check-'));
+const extracted = join(scratch, 'package'), control = join(scratch, 'control');
+const evidenceDirectory = join(project, '.local/evidence/stage-b/bridge-deb');
+await mkdir(evidenceDirectory, { recursive: true });
+const evidence = join(evidenceDirectory, `${basename(artifact)}.json`);
+const report = { artifact, date: new Date().toISOString(), installed: false, realCodex: false, osSandboxVerified: false, checks: [] };
+const run = (command, args) => execFileSync(command, args, { encoding: 'utf8', maxBuffer: 32 * 1024 * 1024, timeout: 120_000 });
+const pass = name => { report.checks.push(name); console.log(`PASS ${name}`); };
+let child;
+try {
+  const hash = createHash('sha256'); for await (const chunk of createReadStream(artifact)) hash.update(chunk);
+  report.sha256 = hash.digest('hex');
+  report.package = run('dpkg-deb', ['--field', artifact, 'Package']).trim();
+  report.version = run('dpkg-deb', ['--field', artifact, 'Version']).trim();
+  report.architecture = run('dpkg-deb', ['--field', artifact, 'Architecture']).trim();
+  report.depends = run('dpkg-deb', ['--field', artifact, 'Depends']).trim();
+  assert.equal(report.package, 'oraculum-bridge'); assert.equal(report.version, release.components.bridge.version); assert.equal(report.architecture, 'amd64');
+  assert.ok(report.depends.length, 'A Bridge package must declare its private Node host library dependencies');
+  assert.match(report.depends, /(?:^|,\s*)libc6 \(>= 2\.31\)(?:,|$)/);
+  assert.match(report.depends, /(?:^|,\s*)libgcc-s1(?:,|$)/);
+  assert.match(report.depends, /(?:^|,\s*)libstdc\+\+6 \(>= 8\)(?:,|$)/);
+  const listing = run('dpkg-deb', ['--contents', artifact]);
+  const entries = listing.trim().split('\n').map(line => {
+    const match = /^(\S+)\s+(\S+)\s+\d+\s+\S+\s+\S+\s+(.+)$/.exec(line);
+    assert.ok(match, 'Unexpected dpkg package listing format');
+    const [name, link] = match[3].split(' -> ');
+    assert.ok(name.startsWith('./') && !name.split('/').includes('..'), 'Non-canonical package path');
+    assert.equal(match[2], 'root/root', `Unexpected archive owner for ${name}`);
+    assert.ok(!/[\x00-\x1f\x7f]/.test(name), 'Control character in package path');
+    return { mode: match[1], name: name.slice(2).replace(/\/$/, ''), link };
+  });
+  const writableEntries = [];
+  for (const entry of entries) {
+    assert.ok(entry.name === '' || entry.name === 'usr' || entry.name.startsWith('usr/'), 'Package writes outside /usr');
+    if (entry.link && isAbsolute(entry.link)) {
+      assert.fail(`Absolute package link: ${entry.name} -> ${entry.link}`);
+    }
+    // Unix symlink permissions are not applied to the target; validate their
+    // containment and target below, and enforce file/directory permissions here.
+    if (!entry.link && (entry.mode[5] === 'w' || entry.mode[8] === 'w')) writableEntries.push(entry.name || '/');
+    assert.ok(!/[sS]/.test(entry.mode), 'Unexpected setuid/setgid executable');
+  }
+  report.writableEntries = writableEntries;
+  pass('Independent Debian identity, private Node host dependencies, root ownership and safe permissions');
+
+  run('dpkg-deb', ['--extract', artifact, extracted]);
+  run('dpkg-deb', ['--control', artifact, control]);
+  const runtime = join(extracted, 'usr/lib/oraculum-bridge');
+  const required = ['node/bin/node', 'node/LICENSE', 'bridge/main.mjs', 'bridge/trust.mjs', 'bridge/preflight.mjs',
+    'bin/oraculum-bridge', 'runtime-config.cjs', 'launch-bridge.cjs', 'apps/web/dist/index.html',
+    'protocol.lock.json', 'build.json', 'themes/minimal-light/theme.css', 'licenses/THEME-ASSETS.md'];
+  for (const name of required) assert.ok((await lstat(join(runtime, name))).isFile(), `Missing package resource ${name}`);
+  assert.ok(!entries.some(entry => entry.name.startsWith('usr/lib/oraculum/')), 'Bridge must not overlap the legacy Desktop installation');
+  assert.ok(!entries.some(entry => entry.name.includes('/apps/desktop/') || entry.name.includes('/design/reference/')), 'Desktop-only splash/icon resources do not belong to Bridge');
+  const launcher = join(extracted, 'usr/bin/oraculum-bridge');
+  assert.ok((await lstat(launcher)).isSymbolicLink(), 'Expected the package-managed /usr/bin entry');
+  const launcherTarget = await readlink(launcher);
+  assert.equal(launcherTarget, '../lib/oraculum-bridge/bin/oraculum-bridge');
+  assert.equal(resolve(dirname(launcher), launcherTarget), join(runtime, 'bin/oraculum-bridge'));
+  const metadata = JSON.parse(await readFile(join(runtime, 'build.json'), 'utf8'));
+  assert.match(metadata.git, /^[a-f0-9]{40}$/); assert.match(metadata.nodeVersion, /^24\./);
+  assert.equal(metadata.component, 'bridge'); assert.equal(metadata.packageName, 'oraculum-bridge');
+  assert.equal(metadata.architecture, 'amd64'); assert.equal(metadata.version, release.components.bridge.version);
+  assert.equal(metadata.protocolVersion, 1); assert.equal(metadata.stateSchemaVersion, 1);
+  assert.equal(metadata.schemaMin, 0); assert.equal(metadata.schemaMax, 1); assert.equal(typeof metadata.sourceDirty, 'boolean');
+  if (expectedGit) { assert.equal(metadata.git, expectedGit); assert.equal(metadata.sourceDirty, false, 'Final DEB requires clean committed source'); }
+  report.build = metadata;
+  const unitFile = 'usr/lib/systemd/user/oraculum-bridge.service';
+  const unit = await readFile(join(extracted, unitFile), 'utf8');
+  assert.match(unit, /^ExecStart=\/usr\/lib\/oraculum-bridge\/bin\/oraculum-bridge$/m);
+  for (const expected of ['UMask=0077', 'Restart=on-failure', 'TimeoutStopSec=15', 'KillMode=control-group']) assert.ok(unit.includes(expected));
+  assert.equal(entries.filter(entry => /(?:lib|share)\/systemd\/user\//.test(entry.name)).length, 1);
+  for (const name of ['preinst', 'postinst', 'prerm', 'postrm', 'triggers', 'conffiles']) {
+    assert.ok(!(await readdir(control)).includes(name), `Bridge DEB must not activate services or own user configuration: ${name}`);
+  }
+  pass('Nonconflicting independent runtime tree, portable launcher, complete Web/Bridge/Node/themes and inert package-owned user unit');
+
+  const firstPartyText = [];
+  for (const entry of entries) {
+    const name = entry.name;
+    assert.ok(!/(?:^|\/)(?:\.git|\.local|\.cache|\.gradle|\.env(?:\.[^/]*)?|\.npmrc|\.modules\.yaml|\.pnpm-workspace-state-v1\.json)(?:\/|$)/.test(name), `Private/build metadata in package: ${name}`);
+    assert.ok(!/\.(?:jks|keystore|sqlite(?:-[a-z]+)?|pem|key|hprof|log)$/i.test(name) && !/(?:^|\/)(?:runtime\.json|auth\.json|config\.toml|pairing\.txt|id_rsa|id_ed25519)$/.test(name), `Sensitive state or credential-shaped file: ${name}`);
+    const thirdParty = name.includes('/node_modules/');
+    if (thirdParty) {
+      assert.ok(!/\/node_modules\/(?:tsx|typescript|vitest|electron|pnpm|@playwright|@electron-forge)(?:\/|$)/.test(name), `Development dependency in package: ${name}`);
+    } else if (name.startsWith('usr/lib/oraculum-bridge/')) {
+      assert.ok(!/\/(?:src|scripts|test-results|playwright-report|\.local)\//.test(name) && !/\.(?:tsx?|map)$/.test(name), `Project development source in package: ${name}`);
+      if (/\.(?:cjs|mjs|js|html|css|service)$/.test(name) || name.endsWith('/bin/oraculum-bridge')) firstPartyText.push(name);
+    }
+    if (entry.link) {
+      const target = isAbsolute(entry.link) ? resolve(extracted, '.' + entry.link) : resolve(dirname(join(extracted, name)), entry.link);
+      const offset = relative(extracted, target);
+      assert.ok(offset && offset !== '..' && !offset.startsWith('..' + sep) && !isAbsolute(offset), `Escaping package link: ${name}`);
+      await access(target);
+      if (!isAbsolute(entry.link)) {
+        const actual = relative(extracted, await realpath(join(extracted, name)));
+        assert.ok(actual !== '..' && !actual.startsWith('..' + sep) && !isAbsolute(actual), `Escaping resolved package link: ${name}`);
+      }
+    }
+  }
+  for (const name of firstPartyText) {
+    const text = await readFile(join(extracted, name), 'utf8');
+    assert.ok(!text.includes('--no-sandbox'), `Forbidden release sandbox override in ${name}`);
+    assert.ok(!text.includes(project.replace(/\/$/, '')), `Build-host repository path embedded in ${name}`);
+    assert.ok(!/-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/.test(text), `Private-key-shaped text in ${name}`);
+  }
+  for (const name of await readdir(control)) if (['preinst', 'postinst', 'prerm', 'postrm'].includes(name)) {
+    const text = await readFile(join(control, name), 'utf8');
+    assert.ok(!/\b(?:systemctl|loginctl|ssh|curl|wget|useradd|groupadd)\b/.test(text), `Unexpected system/service/network action in ${name}`);
+  }
+  pass('Package whitelist, self-contained symlinks, no user data/secrets/dev tools or release sandbox override');
+
+  const readLicenseManifest = async area => {
+    const directory = join(runtime, 'licenses', area);
+    const manifest = JSON.parse(await readFile(join(directory, 'manifest.json'), 'utf8'));
+    assert.equal(manifest.format, 1); assert.ok(Array.isArray(manifest.packages) && manifest.packages.length);
+    const identities = new Set();
+    for (const pkg of manifest.packages) {
+      assert.ok(typeof pkg.name === 'string' && typeof pkg.version === 'string' && typeof pkg.license === 'string');
+      const identity = `${pkg.name}@${pkg.version}`;
+      assert.ok(!identities.has(identity), `Duplicate ${area} notice manifest package: ${identity}`); identities.add(identity);
+      assert.ok(Array.isArray(pkg.notices) && pkg.notices.length, `Missing ${area} notices for ${identity}`);
+      for (const notice of pkg.notices) {
+        assert.ok(typeof notice.path === 'string' && !isAbsolute(notice.path) && !notice.path.split('/').includes('..') && !/[\\\x00-\x1f]/.test(notice.path));
+        assert.match(notice.sha256, /^[a-f0-9]{64}$/);
+        const path = join(directory, notice.path);
+        assert.ok((await lstat(path)).isFile(), `Missing packaged ${area} notice: ${notice.path}`);
+        const bytes = await readFile(path); assert.ok(bytes.length);
+        assert.equal(createHash('sha256').update(bytes).digest('hex'), notice.sha256, `Changed ${area} license notice: ${notice.path}`);
+      }
+    }
+    return manifest;
+  };
+  const webLicenses = await readLicenseManifest('web'), bridgeLicenses = await readLicenseManifest('bridge');
+  const webManifest = JSON.parse(await readFile(join(project, 'apps/web/package.json'), 'utf8'));
+  assert.equal(webLicenses.entry.name, webManifest.name); assert.deepEqual(webLicenses.entry.dependencies, webManifest.dependencies);
+  assert.deepEqual(webLicenses.entry.emittedBuildAssets, { tailwindcss: webManifest.devDependencies.tailwindcss, vite: webManifest.devDependencies.vite });
+  for (const [name, version] of Object.entries({ ...webLicenses.entry.dependencies, ...webLicenses.entry.emittedBuildAssets })) {
+    assert.ok(webLicenses.packages.some(pkg => pkg.name === name && pkg.version === version), `Missing Web entry notice: ${name}@${version}`);
+  }
+  assert.deepEqual(bridgeLicenses, JSON.parse(await readFile(join(project, 'packaging/licenses/manifest.json'), 'utf8')));
+  report.webLicensePackages = webLicenses.packages.length;
+  report.bridgeSupplementalLicenses = bridgeLicenses;
+  pass(`Hashed Web dependency/emitted-asset notices (${webLicenses.packages.length}) and explicit Bridge supplemental license provenance`);
+  const dependencyLicenses = [], missingLicenses = [];
+  const virtualStore = join(runtime, 'node_modules/.pnpm');
+  for (const entry of await readdir(virtualStore, { withFileTypes: true })) {
+    if (!entry.isDirectory() || entry.name === 'node_modules') continue;
+    const modules = join(virtualStore, entry.name, 'node_modules');
+    for (const candidate of await readdir(modules, { withFileTypes: true })) {
+      if (!candidate.isDirectory()) continue;
+      const packageRoots = candidate.name.startsWith('@')
+        ? (await readdir(join(modules, candidate.name), { withFileTypes: true })).filter(item => item.isDirectory()).map(item => join(modules, candidate.name, item.name))
+        : [join(modules, candidate.name)];
+      for (const packageRoot of packageRoots) {
+        const pkg = JSON.parse(await readFile(join(packageRoot, 'package.json'), 'utf8'));
+        const licenses = (await readdir(packageRoot)).filter(name => /^(?:licen[cs]e|copying|notice)(?:[._-].*)?$/i.test(name));
+        const supplement = bridgeLicenses.packages.find(candidate => candidate.name === pkg.name && candidate.version === pkg.version && candidate.license === pkg.license);
+        if (!licenses.length && supplement) licenses.push(...supplement.notices.map(notice => `licenses/bridge/${notice.path}`));
+        if (!licenses.length) missingLicenses.push(`${pkg.name}@${pkg.version}`);
+        dependencyLicenses.push({ name: pkg.name, version: pkg.version, license: pkg.license, files: licenses });
+      }
+    }
+  }
+  assert.ok(dependencyLicenses.length > 0);
+  assert.match(await readFile(join(runtime, 'themes/hong-kong-rain/theme.css'), 'utf8'), /Bitstream/);
+  report.dependencyLicenses = dependencyLicenses;
+  report.missingDependencyLicenses = missingLicenses;
+  if (missingLicenses.length) console.error(`Missing dependency license notices: ${missingLicenses.join(', ')}`);
+  else pass(`Node, theme font and ${dependencyLicenses.length} production dependency license notices`);
+
+  const privateNode = join(runtime, 'node/bin/node');
+  assert.equal(run(privateNode, ['--version']).trim(), `v${metadata.nodeVersion}`);
+  assert.equal(run(privateNode, ['-e', "const {DatabaseSync}=require('node:sqlite');const d=new DatabaseSync(':memory:');console.log(d.prepare('SELECT 7 AS n').get().n);d.close()"]).trim(), '7');
+  for (const binary of [privateNode]) {
+    const libraries = run('ldd', [binary]); assert.ok(!libraries.includes('not found'), 'Host library dependency unresolved');
+  }
+  const fixtureHome = join(scratch, 'home'), unrelated = join(scratch, 'unrelated'), themeSource = join(scratch, 'theme-sources');
+  await mkdir(join(fixtureHome, '.local/bin'), { recursive: true }); await mkdir(unrelated);
+  await mkdir(themeSource);
+  const fixture = join(fixtureHome, '.local/bin/codex'), calls = join(scratch, 'native-calls');
+  await writeFile(fixture, `#!${privateNode}\nif(process.argv[2]==='--version'){console.log('codex-cli 9.9.9-deb-fixture');process.exit(0)}
+require('node:readline').createInterface({input:process.stdin}).on('line',line=>{const m=JSON.parse(line);if(m.id===undefined)return;
+require('node:fs').appendFileSync(process.env.FIXTURE_CALLS,m.method+'\\n');
+const result=m.method==='initialize'?{userAgent:'fixture'}:m.method==='config/read'?{config:{model:null,model_provider:null,model_reasoning_effort:null}}:{data:[],nextCursor:null};
+console.log(JSON.stringify({id:m.id,result}));});`, { mode: 0o700 });
+  const probe = createServer(); probe.listen(0, '127.0.0.1'); await once(probe, 'listening');
+  const port = probe.address().port; await new Promise(accept => probe.close(accept));
+  const env = { HOME: fixtureHome, PATH: '/usr/bin:/bin', XDG_CONFIG_HOME: join(fixtureHome, 'config'),
+    XDG_STATE_HOME: join(fixtureHome, 'state'), XDG_DATA_HOME: join(fixtureHome, 'data'),
+    ORACULUM_INIT_STATE: '1', ORACULUM_PORT: String(port), FIXTURE_CALLS: calls,
+    ORACULUM_THEME_SOURCE_DIR: themeSource, ORACULUM_REMOTE_ORIGIN: 'https://release.oraculum.invalid',
+    ORACULUM_REMOTE_BASE_PATH: '/release-check/' };
+  child = spawn(launcher, { cwd: unrelated, env, stdio: ['ignore', 'pipe', 'pipe'] });
+  let output = ''; child.stdout.on('data', data => { output += data; }); child.stderr.on('data', data => { output += data; });
+  const exited = once(child, 'exit');
+  const deadline = Date.now() + 15_000;
+  while (!output.includes('codex-cli 9.9.9-deb-fixture') && child.exitCode === null && Date.now() < deadline) await new Promise(accept => setTimeout(accept, 100));
+  assert.match(output, /codex-cli 9.9.9-deb-fixture/, 'Extracted runtime did not initialize its disposable fixture');
+  const health = await fetch(`http://127.0.0.1:${port}/health`); assert.equal(health.status, 200);
+  const healthBody = await health.json(); assert.equal(healthBody.protocol, 1); assert.equal(healthBody.mode, 'authenticated');
+  assert.match(await (await fetch(`http://127.0.0.1:${port}/`)).text(), /Oraculum · 神谕/);
+  // Exercise the packaged production launcher, not a separately constructed Themes.
+  // Pairing and state belong exclusively to this disposable HOME; no real CLI turns.
+  const request = (path, headers, body) => new Promise((accept, reject) => {
+    const req = httpRequest({ hostname: '127.0.0.1', port, path,
+      method: body ? 'POST' : 'GET', headers: { ...headers, ...(body ? { 'Content-Type': 'application/json' } : {}) } }, async response => {
+      try {
+        const chunks = []; for await (const chunk of response) chunks.push(chunk);
+        accept({ status: response.statusCode, headers: response.headers, bytes: Buffer.concat(chunks) });
+      } catch (error) { reject(error); }
+    });
+    req.on('error', reject); req.setTimeout(5_000, () => req.destroy(new Error('Package fixture request timed out')));
+    req.end(body ? JSON.stringify(body) : undefined);
+  });
+  const builtinIds = ['hong-kong-neon', 'old-terminal', 'minimal-light'];
+  report.themeEntries = [];
+  for (const [base, headers] of [
+    ['/', { Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}` }],
+    ['/release-check/', { Host: 'release.oraculum.invalid', Origin: 'https://release.oraculum.invalid', 'X-Forwarded-Proto': 'https' }],
+  ]) {
+    assert.equal((await request(base + 'themes', headers)).status, 401, 'Themes must require device trust');
+    execFileSync(join(runtime, 'bin/oraculum-bridge'), ['trust', 'pair'], { cwd: unrelated, env, stdio: 'pipe', timeout: 10_000 });
+    const code = (await readFile(join(fixtureHome, 'state/oraculum/pairing.txt'), 'utf8')).trim();
+    const paired = await request(base + 'auth/pair', headers, { code, label: 'Disposable package fixture' });
+    assert.equal(paired.status, 200);
+    const authenticated = { ...headers, Cookie: paired.headers['set-cookie'][0].split(';')[0] };
+    const response = await request(base + 'themes', authenticated);
+    assert.equal(response.status, 200);
+    const catalog = JSON.parse(response.bytes);
+    assert.deepEqual(catalog.installed.map(entry => entry.directory).sort(), [...builtinIds].sort(), 'Production launcher must expose all three built-in themes');
+    assert.ok(catalog.installed.every(entry => entry.builtin && entry.manifest && !entry.error));
+    assert.deepEqual(catalog.sources, [], 'Built-ins must work independently of the empty user theme source');
+    const entry = { base, bundles: [] }; report.themeEntries.push(entry);
+    for (const id of builtinIds) {
+      const response = await request(`${base}themes/${id}/bundle`, authenticated);
+      assert.equal(response.status, 200, `Packaged theme bundle unavailable: ${base}${id}`);
+      const bundle = JSON.parse(response.bytes);
+      assert.equal(bundle.manifest.id, id); assert.ok(bundle.css.length); assert.match(bundle.revision, /^[a-f0-9]{64}$/);
+      const assets = [];
+      for (const path of bundle.assets) {
+        const prefix = `${base}themes/${id}/`;
+        assert.ok(path.startsWith(prefix + 'assets/'), 'Theme assets must use the configured Base Path');
+        const asset = await request(path, authenticated); assert.equal(asset.status, 200, `Packaged theme asset unavailable: ${path}`);
+        // Bundles add revision query parameters for cache invalidation. They are
+        // part of the HTTP URL, not the packaged filesystem path.
+        const resourcePath = decodeURIComponent(new URL(path, 'https://release.oraculum.invalid').pathname.slice(prefix.length));
+        const source = await readFile(join(runtime, 'themes', id, resourcePath));
+        const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
+        assert.equal(sha256(asset.bytes), sha256(source));
+        assets.push({ path, sha256: sha256(asset.bytes) });
+      }
+      entry.bundles.push({ id, version: bundle.manifest.version, revision: bundle.revision, assets });
+    }
+  }
+  pass('Production Bridge launcher exposes three built-in themes, bundles and byte-exact assets at root and remote subpath with device trust');
+  child.kill('SIGTERM'); assert.equal((await exited)[0], 0); child = undefined;
+  const databaseFile = join(fixtureHome, 'state/oraculum/trust.sqlite');
+  const beforePreflight = createHash('sha256').update(await readFile(databaseFile)).digest('hex');
+  const preflight = JSON.parse(execFileSync(launcher, ['preflight'], { cwd: unrelated,
+    env: { ...env, ORACULUM_INIT_STATE: undefined }, encoding: 'utf8', timeout: 10_000 }));
+  assert.deepEqual(preflight, { compatible: true, schemaVersion: 1, stateChanged: false });
+  assert.equal(createHash('sha256').update(await readFile(databaseFile)).digest('hex'), beforePreflight);
+  pass('Packaged preflight validates existing schema read-only without database changes or Codex execution');
+  assert.deepEqual((await readFile(calls, 'utf8')).trim().split('\n'), ['initialize', 'config/read', 'model/list', 'thread/list']);
+  pass('Actual extracted private Node/SQLite/libraries and standalone Bridge from unrelated cwd/HOME/XDG; simulated CLI, zero turns');
+  assert.deepEqual(writableEntries, [], 'Group/world writable package files or directories');
+  pass('No group/world writable package files or directories (symlinks checked by target)');
+  assert.deepEqual(missingLicenses, [], 'Published production dependencies must retain their license notices');
+  report.status = 'passed';
+} catch (error) {
+  report.status = 'failed'; report.error = error instanceof Error ? error.message : String(error);
+  console.error(`FAIL ${report.error}`); process.exitCode = 1;
+} finally {
+  if (child && child.exitCode === null) { const exited = once(child, 'exit'); child.kill('SIGKILL'); await exited; }
+  await rm(scratch, { recursive: true, force: true });
+  await writeFile(evidence, JSON.stringify(report, null, 2) + '\n');
+  console.log(JSON.stringify({ status: report.status, evidence, sha256: report.sha256, installed: false, osSandboxVerified: false }));
+}

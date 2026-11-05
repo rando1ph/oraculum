@@ -58,7 +58,7 @@
     "test:native:ui": "tsx scripts/native-requests-ui.ts",
     "test:native:devices": "tsx scripts/native-requests-live.ts",
     "build:runtime": "pnpm build && node scripts/build-runtime.mjs",
-    "build:deb": "pnpm build:runtime && node scripts/build-desktop.mjs",
+    "build:deb": "pnpm build:bridge:deb && pnpm build:desktop:deb",
     "test:composer:ui": "tsx scripts/composer-ui-contract.ts",
     "test:composer:live": "tsx scripts/composer-live.ts",
     "test:process:ui": "tsx scripts/process-ui-contract.ts",
@@ -68,7 +68,12 @@
     "test:identity:performance": "tsx scripts/identity-performance.ts --optimized",
     "test:identity:performance:android": "tsx scripts/identity-performance.ts --optimized --android",
     "test:synchronization:ui": "tsx scripts/synchronization-ui.ts",
-    "test:synchronization:native": "tsx scripts/synchronization-native.ts"
+    "test:synchronization:native": "tsx scripts/synchronization-native.ts",
+    "build:bridge:deb": "pnpm build:runtime && node scripts/build-bridge-deb.mjs",
+    "build:desktop:deb": "node scripts/build-desktop.mjs",
+    "verify:bridge:deb": "node scripts/verify-bridge-deb.mjs",
+    "verify:desktop:deb": "node scripts/verify-deb.mjs",
+    "test:stage-b": "node scripts/stage-b-acceptance.mjs"
   },
   "devDependencies": {
     "@electron-forge/cli": "8.0.1",

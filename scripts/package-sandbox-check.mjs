@@ -14,7 +14,7 @@ import { fileURLToPath } from 'node:url';
 
 const project = fileURLToPath(new URL('../', import.meta.url));
 const release = JSON.parse(await readFile(join(project, 'release.json'), 'utf8'));
-const artifact = resolve(process.argv[2] || join(project, `dist/desktop/out/make/deb/x64/oraculum_${release.version}_amd64.deb`));
+const artifact = resolve(process.argv[2] || join(project, `dist/desktop/out/make/deb/x64/oraculum_${release.components.desktop.version}_amd64.deb`));
 // Optional read-only reuse of an already installed, byte-identical root helper.
 // Only a symlink in our disposable extraction changes; the host file is untouched.
 const helperPath = process.argv[3] === '--sandbox-helper' && process.argv[4] ? resolve(process.argv[4]) : undefined;
@@ -22,7 +22,7 @@ assert.ok(process.argv.length <= 3 || helperPath && process.argv.length === 5,
   'Usage: package-sandbox-check.mjs [DEB [--sandbox-helper ROOT_OWNED_IDENTICAL_HELPER]]');
 const scratch = await mkdtemp(join(tmpdir(), 'oraculum-deb-sandbox-'));
 const extracted = join(scratch, 'package'), fixtureHome = join(scratch, 'home');
-const output = join(project, '.local/evidence/phase4b/deb'); await mkdir(output, { recursive: true });
+const output = join(project, '.local/evidence/stage-b'); await mkdir(output, { recursive: true });
 const evidence = join(output, `${basename(artifact)}.sandbox.json`);
 const report = { artifact, date: new Date().toISOString(), installed: false, realBridge: false,
   realCodex: false, serviceActions: false, noSandboxOverride: false, osSandboxVerified: false };

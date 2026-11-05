@@ -68,7 +68,11 @@ function desktopPaths(env = process.env) {
   const iconInfo = info(icon);
   if (!iconInfo || iconInfo.isSymbolicLink() || !iconInfo.isFile()) throw new Error('Desktop icon is missing or not a regular file; configure ORACULUM_RESOURCE_DIR or ORACULUM_DESKTOP_ICON');
   accessSync(icon, constants.R_OK);
-  return { userData: profilePath(env), icon };
+  const splash = path.join(resourceRoot, 'apps/desktop/splash.html');
+  const splashInfo = info(splash);
+  if (!splashInfo || splashInfo.isSymbolicLink() || !splashInfo.isFile()) throw new Error('Desktop splash is missing or not a regular file; repair the Desktop DEB');
+  accessSync(splash, constants.R_OK);
+  return { userData: profilePath(env), icon, splash };
 }
 
 // Finish all preflight checks before creating only the explicitly selected path.
