@@ -4,6 +4,7 @@ import { createInterface } from 'node:readline';
 import type { WireMessage, RpcId } from '../../packages/shared/protocol';
 import { codexExecutable, readCodexVersion } from './version';
 import { CodexCompatibilityError, validateNativeResponse } from './compatibility';
+import { nativeReads } from './read-queries';
 
 export class NativeRpcError extends Error {
   constructor(message: string, readonly code: number) { super(message); }
@@ -86,8 +87,8 @@ export class Codex extends EventEmitter {
     return new Promise<T>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(id);
-        reject(new Error(`${method}: response timeout; result unknown, do not retry automatically`));
-      }, 60_000);
+        reject(new Error(nativeReads.has(method) ? `${method}: read response timeout; query may be retried` : `${method}: response timeout; result unknown, do not retry automatically`));
+      }, nativeReads.has(method) ? 8000 : 60_000);
       this.pending.set(id, { method, resolve: value => resolve(value as T), reject, timer });
       this.send({ id, method, params: params as Record<string, unknown> });
     });

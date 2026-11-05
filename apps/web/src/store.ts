@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Approval, NativeOperation, ServerNotification, Snapshot, Thread, ThreadItem, Turn } from '../../../packages/shared/protocol';
+import type { Approval, HistoryItems, NativeOperation, ServerNotification, Snapshot, Thread, ThreadItem, Turn } from '../../../packages/shared/protocol';
 import type { AgentSummary } from '../../../packages/shared/subagents';
 
 export const itemKey = (turnId: string, itemId: string) => JSON.stringify([turnId, itemId]);
@@ -34,6 +34,7 @@ type State = {
   reset: () => void;
   snapshot: (value: Snapshot) => void;
   older: (value: Snapshot) => void;
+  historyItems: (value: HistoryItems) => void;
   event: (event: ServerNotification, skipDeltas?: boolean) => void;
   approval: (request: Approval) => void;
 };
@@ -41,6 +42,7 @@ const empty = () => ({ agents: {}, thread: undefined, items: {}, turns: {}, pend
   activeTurn: undefined, lastTurnId: undefined, history: undefined, settings: undefined, sendBlocked: false, receipts: [],
   attachments: [], nativeOperations: [], nativeCapabilities: undefined, historyRevision: 0, historyReloading: false, discardedTurns: [],
   diffs: {}, plans: {}, planAfter: {}, plan: '' });
+const appendPreview = (a: string, b: string) => a.length + b.length > 32_000 ? (a + b).slice(0, 32_000) + '\n[内容较长，请查询原生历史详情]' : a + b;
 
 // Native pages define the order of their items. Keep observed-only records at
 // their nearest surviving native anchor instead of moving them to the end.
@@ -133,7 +135,7 @@ export const useSession = create<State>((set, get) => ({
       historyReloading: true, sendBlocked: true,
       discardedTurns: [...new Set([...state.discardedTurns, ...Object.keys(state.turns)])] });
   },
-  snapshot: ({ thread, pending, history, settings, sendBlocked, receipts, attachments, nativeOperations, nativeCapabilities, agents, historyRevision = 0 }) => {
+  snapshot: ({ thread, pending, history, settings, sendBlocked, receipts, attachments, nativeOperations, nativeCapabilities, agents, historyRevision = 0, metadataOnly }) => {
     const state = get();
     const same = state.thread?.id === thread.id;
     if (same && historyRevision < state.historyRevision) return;
@@ -145,13 +147,13 @@ export const useSession = create<State>((set, get) => ({
     const lastTurnId = Object.keys(turns).at(-1);
     // Retain live items internally; never persist them as native history.
     const discarded = same ? [...new Set([...state.discardedTurns, ...(!retain ? Object.keys(state.turns) : [])])] : [];
-    set({ ...(retain ? {} : empty()), thread, pending, items, history, settings, sendBlocked: !!sendBlocked, receipts: receipts ?? [],
+    set({ ...(retain ? {} : empty()), thread, pending, items, history: metadataOnly && retain ? state.history : history, settings, sendBlocked: !!sendBlocked, receipts: receipts ?? [],
       agents: mergeAgents(retain ? state.agents : {}, agents ?? []),
       nativeOperations: nativeOperations ?? [], nativeCapabilities, historyRevision, historyReloading: false,
       attachments: [...(retain ? state.attachments.filter(prior => !attachments?.some(value => value.operationId === prior.operationId)) : []), ...(attachments ?? [])],
       discardedTurns: discarded.filter(id => !(id in turns)),
       turns, lastTurnId, plan: retain && lastTurnId ? state.plans[lastTurnId] ?? '' : '',
-      activeTurn: thread.turns.find(turn => turns[turn.id].status === 'inProgress')?.id });
+      activeTurn: metadataOnly ? thread.status?.type === 'active' ? state.activeTurn : undefined : thread.turns.find(turn => turns[turn.id].status === 'inProgress')?.id });
   },
   older: snapshot => {
     const state = get();
@@ -159,12 +161,25 @@ export const useSession = create<State>((set, get) => ({
     if (state.historyReloading || (snapshot.historyRevision ?? 0) !== state.historyRevision) return;
     const incoming = nativeItems(snapshot.thread, state.items);
     const ordered = nativeOrder(state.items, incoming, 'after');
-    set({ items: Object.fromEntries(Object.keys(ordered).map(key => [key, state.items[key] ?? ordered[key]])),
+    set({ items: Object.fromEntries(Object.keys(ordered).map(key => [key, state.items[key]?.complete ? state.items[key] : ordered[key]])),
       agents: mergeAgents(state.agents, snapshot.agents ?? []),
       attachments: [...state.attachments.filter(prior => !snapshot.attachments?.some(value => value.operationId === prior.operationId)), ...(snapshot.attachments ?? [])],
       turns: nativeOrder(state.turns, Object.fromEntries(snapshot.thread.turns.map(turn =>
-        [turn.id, state.turns[turn.id] ?? turn])), 'after'),
-      history: snapshot.history, discardedTurns: state.discardedTurns.filter(id => !snapshot.thread.turns.some(turn => turn.id === id)) });
+        [turn.id, mergeTurn(state.turns[turn.id], turn)])), 'after'),
+      history: snapshot.history ? { ...snapshot.history, itemCursors: { ...state.history?.itemCursors, ...snapshot.history.itemCursors },
+        details: [...state.history?.details ?? [], ...snapshot.history.details ?? []].filter((v, i, all) => all.findIndex(w => w.itemId === v.itemId && w.turnId === v.turnId) === i) } : state.history,
+      activeTurn: snapshot.thread.turns.find(turn => turn.status === 'inProgress' && state.turns[turn.id]?.status !== 'completed')?.id ?? state.activeTurn,
+      discardedTurns: state.discardedTurns.filter(id => !snapshot.thread.turns.some(turn => turn.id === id)) });
+  },
+  historyItems: page => {
+    const state = get();
+    if (state.thread?.id !== page.threadId || state.historyRevision !== page.historyRevision || state.historyReloading || !state.turns[page.turnId]) return;
+    const turn = { ...state.turns[page.turnId], items: page.items };
+    const incoming = nativeItems({ ...state.thread, turns: [turn] }, state.items);
+    const itemCursors = { ...state.history?.itemCursors };
+    if (page.nextCursor) itemCursors[page.turnId] = page.nextCursor; else delete itemCursors[page.turnId];
+    set({ items: nativeOrder(state.items, incoming, 'after'), history: { source: 'native-pages', warning: '', ...state.history, itemCursors,
+      details: [...state.history?.details ?? [], ...page.details].filter((v, i, all) => all.findIndex(w => w.itemId === v.itemId && w.turnId === v.turnId) === i) } });
   },
   approval: request => {
     const state = get();
@@ -230,25 +245,25 @@ export const useSession = create<State>((set, get) => ({
       if (view && !view.complete && (!state.turns[view.turnId] || state.turns[view.turnId].status === 'inProgress')) {
         const item = view.item;
         let updated: ThreadItem | undefined;
-        if (item.type === 'plan' && event.method === 'item/plan/delta') updated = { ...item, text: item.text + event.params.delta };
+        if (item.type === 'plan' && event.method === 'item/plan/delta') updated = { ...item, text: appendPreview(item.text, event.params.delta) };
         if (item.type === 'reasoning') {
           if (event.method === 'item/reasoning/summaryPartAdded' || event.method === 'item/reasoning/summaryTextDelta') {
             const summary = [...item.summary];
             const index = event.params.summaryIndex;
-            summary[index] = (summary[index] ?? '') + (event.method === 'item/reasoning/summaryTextDelta' ? event.params.delta : '');
+            summary[index] = appendPreview(summary[index] ?? '', event.method === 'item/reasoning/summaryTextDelta' ? event.params.delta : '');
             updated = { ...item, summary };
           }
           if (event.method === 'item/reasoning/textDelta') {
             const content = [...item.content];
             const index = event.params.contentIndex;
-            content[index] = (content[index] ?? '') + event.params.delta;
+            content[index] = appendPreview(content[index] ?? '', event.params.delta);
             updated = { ...item, content };
           }
         }
         if (item.type === 'fileChange' && event.method === 'item/fileChange/patchUpdated') updated = { ...item, changes: event.params.changes };
         if (updated) changes.items = { ...state.items, [key]: { ...view, item: updated } };
         if (item.type === 'mcpToolCall' && event.method === 'item/mcpToolCall/progress') {
-          changes.items = { ...state.items, [key]: { ...view, progress: [...view.progress ?? [], event.params.message] } };
+          changes.items = { ...state.items, [key]: { ...view, progress: [...view.progress ?? [], event.params.message.slice(0, 2000)].slice(-100) } };
         }
       }
     }
@@ -259,10 +274,10 @@ export const useSession = create<State>((set, get) => ({
       if (!skipDeltas && view && !view.complete && (!state.turns[turnId] || state.turns[turnId].status === 'inProgress')) {
         const item = view.item;
         if (item.type === 'agentMessage' && event.method === 'item/agentMessage/delta') {
-          changes.items = { ...state.items, [key]: { ...view, item: { ...item, text: item.text + delta } } };
+          changes.items = { ...state.items, [key]: { ...view, item: { ...item, text: appendPreview(item.text, delta) } } };
         }
         if (item.type === 'commandExecution' && event.method === 'item/commandExecution/outputDelta') {
-          changes.items = { ...state.items, [key]: { ...view, item: { ...item, aggregatedOutput: (item.aggregatedOutput ?? '') + delta } } };
+          changes.items = { ...state.items, [key]: { ...view, item: { ...item, aggregatedOutput: appendPreview(item.aggregatedOutput ?? '', delta) } } };
         }
       }
     }

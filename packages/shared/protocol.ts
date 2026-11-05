@@ -44,7 +44,7 @@ export type NativeCapabilities = {
   unsupportedMethods: NativeOperationMethod[];
   plan: { available: false; reason: string };
 };
-export type BridgeEvent =
+export type BridgeEvent = ({ streamId?: string; seq?: number }) & (
   | { type: 'subagentChanged'; agent: AgentSummary; displayThreadIds: string[] }
   | { type: 'attachmentsChanged'; threadId: string; cwd: string; deliveries: AttachmentDelivery[] }
   | { type: 'nativeOperationChanged'; operation: NativeOperation }
@@ -59,16 +59,19 @@ export type BridgeEvent =
   | { type: 'unavailable'; message: string }
   | { type: 'settingsChanged'; threadId: string; settings?: NativeSessionSettings }
   | { type: 'projectsChanged' }
-  | { type: 'threadLifecycleChanged'; threadId: string; cwd: string; state: ThreadLifecycleState };
+  | { type: 'threadLifecycleChanged'; threadId: string; cwd: string; state: ThreadLifecycleState });
+export type HistoryDetail = { turnId: string; itemId: string; cursor: string | null };
+export type HistoryItems = { threadId: string; turnId: string; items: import('../../.local/codex-protocol/v2/ThreadItem').ThreadItem[]; nextCursor: string | null; details: HistoryDetail[]; historyRevision: number };
 export type ThreadLifecycleState = 'active' | 'archived' | 'deleted' | 'unknown';
 export type ThreadLifecycleResult = { threadId: string; state: Exclude<ThreadLifecycleState, 'unknown'> };
 export type Snapshot = {
+  metadataOnly?: boolean;
   agents?: AgentSummary[];
   attachments?: AttachmentDelivery[];
   thread: Thread;
   pending: Approval[];
   settings?: NativeSessionSettings;
-  history?: { source: 'native-read' | 'native-pages'; warning: string; nextCursor?: string | null };
+  history?: { source: 'native-read' | 'native-pages'; warning: string; nextCursor?: string | null; itemCursors?: Record<string, string>; details?: HistoryDetail[] };
   sendBlocked?: boolean;
   receipts?: SendReceipt[];
   nativeOperations?: NativeOperation[];

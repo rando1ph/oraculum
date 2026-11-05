@@ -2,14 +2,25 @@ import type { BridgeEvent, WireMessage } from './protocol';
 import { appUrl } from './entry';
 
 const operationMethods = new Set(['turn/start', 'thread/name/set', 'thread/fork', 'thread/revert', 'turn/steer', 'review/start', 'thread/compact/start']);
+const readMethods = new Set(['bridge/ping', 'bridge/events', 'bridge/nativeHealth', 'bridge/config', 'bridge/projects', 'bridge/browse', 'thread/list', 'bridge/threads', 'model/list', 'bridge/subscribe', 'bridge/history', 'bridge/historyItems', 'bridge/historyText', 'bridge/usage', 'bridge/accountUsage', 'bridge/extensions', 'bridge/agent', 'bridge/notifications']);
 export class BridgeRpcError extends Error {
   constructor(message: string, readonly sendStatus?: 'notSent' | 'rejected' | 'unknown' | 'accepted') { super(message); }
 }
 
 export class BridgeClient {
   private socket?: WebSocket;
-  private pending = new Map<string, { resolve: (value: unknown) => void; reject: (reason: Error) => void; timer: ReturnType<typeof setTimeout> }>();
-  constructor(private onEvent: (event: BridgeEvent) => void, private onConnection: (connected: boolean) => void) {}
+  private pending = new Map<string, { resolve: (value: unknown) => void; reject: (reason: Error) => void; timer: ReturnType<typeof setTimeout>; cleanup: () => void; readOnly: boolean }>();
+  private streamId?: string;
+  private seq = 0;
+  constructor(private onEvent: (event: BridgeEvent) => void, private onConnection: (connected: boolean) => void, private onResync: () => void = () => {}) {}
+  private event(message: BridgeEvent) {
+    if (message.streamId && typeof message.seq === 'number') {
+      if (message.streamId === this.streamId && message.seq <= this.seq) return;
+      if (this.streamId && (message.streamId !== this.streamId || message.seq !== this.seq + 1)) this.onResync();
+      this.streamId = message.streamId; this.seq = message.seq;
+    }
+    this.onEvent(message);
+  }
   connect(): Promise<void> {
     this.close();
     const url = appUrl('ws');
@@ -28,11 +39,12 @@ export class BridgeClient {
         socket.close(1002, 'Invalid Bridge response');
         return;
       }
-      if ('type' in message) { this.onEvent(message); return; }
+      if ('type' in message) { this.event(message); return; }
       const request = this.pending.get(String(message.id));
       if (!request) return;
       this.pending.delete(String(message.id));
       clearTimeout(request.timer);
+      request.cleanup();
       if (message.error) request.reject(new BridgeRpcError(message.error.message, message.error.sendStatus));
       else request.resolve(message.result);
     };
@@ -54,22 +66,32 @@ export class BridgeClient {
   }
   async probe(): Promise<void> {
     const socket = this.socket;
-    try { await this.request('bridge/ping', {}, undefined, 5000); }
-    catch (error) { if (socket && this.socket === socket) socket.close(); throw error; }
+    try {
+      await this.request('bridge/ping', {}, undefined, 5000);
+      const replay = await this.request<{ streamId: string; seq: number; reset: boolean; events: BridgeEvent[] }>('bridge/events', { streamId: this.streamId, since: this.seq }, undefined, 5000);
+      if (replay.reset) { this.streamId = replay.streamId; this.seq = replay.seq; this.onResync(); }
+      else for (const event of replay.events) this.event(event);
+    }
+    catch (error) { if (socket && this.socket === socket) this.close(); throw error; }
   }
-  request<T>(method: string, params: object, requestId?: string, timeoutMs = 65_000): Promise<T> {
+  request<T>(method: string, params: object, requestId?: string, timeoutMs = 65_000, signal?: AbortSignal): Promise<T> {
+    if (signal?.aborted) return Promise.reject(signal.reason);
     if (this.socket?.readyState !== WebSocket.OPEN) return Promise.reject(new Error('连接已断开；请重新连接并查询状态'));
     const id = requestId ?? crypto.randomUUID();
     if (this.pending.has(id)) return Promise.reject(new Error('请求仍在等待确认，不能重复发送'));
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(id);
-        reject(new Error('响应超时，执行结果未知；请查询状态，勿重复发送'));
+        cleanup();
+        reject(new Error(readMethods.has(method) ? '只读查询超时，请重新读取。' : '响应超时，执行结果未知；请查询状态，勿重复发送'));
       }, timeoutMs);
-      this.pending.set(id, { resolve: value => resolve(value as T), reject, timer });
+      const abort = () => { clearTimeout(timer); this.pending.delete(id); cleanup(); reject(signal!.reason); };
+      const cleanup = () => signal?.removeEventListener('abort', abort);
+      signal?.addEventListener('abort', abort, { once: true });
+      this.pending.set(id, { resolve: value => resolve(value as T), reject, timer, cleanup, readOnly: readMethods.has(method) });
       try { this.socket!.send(JSON.stringify({ id, method, params: operationMethods.has(method) ? { ...params, operationId: id } : params })); }
       catch {
-        clearTimeout(timer); this.pending.delete(id);
+        clearTimeout(timer); cleanup(); this.pending.delete(id);
         reject(new Error('发送失败，结果未知；请查询状态，勿自动重试'));
       }
     });
@@ -77,7 +99,8 @@ export class BridgeClient {
   private rejectPending() {
     for (const request of this.pending.values()) {
       clearTimeout(request.timer);
-      request.reject(new Error('连接断开，未确认操作结果未知；重新连接后查询，不自动重发'));
+      request.cleanup();
+      request.reject(new Error(request.readOnly ? '连接断开，重新连接后恢复只读查询。' : '连接断开，未确认操作结果未知；重新连接后查询，不自动重发'));
     }
     this.pending.clear();
   }

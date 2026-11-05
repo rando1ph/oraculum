@@ -584,8 +584,8 @@ it('broadcasts authoritative effective settings to both trusted devices after on
     } }));
     expect(await response).toMatchObject({ result: { turn: { id: f.turn.id } } });
     expect(await Promise.all(updates)).toEqual([
-      { type: 'settingsChanged', threadId, settings: readOnly },
-      { type: 'settingsChanged', threadId, settings: readOnly },
+      { type: 'settingsChanged', threadId, settings: readOnly, streamId: expect.any(String), seq: expect.any(Number) },
+      { type: 'settingsChanged', threadId, settings: readOnly, streamId: expect.any(String), seq: expect.any(Number) },
     ]);
     expect(f.start).toHaveBeenCalledTimes(1);
   } finally { for (const socket of sockets) socket.terminate(); }

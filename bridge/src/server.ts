@@ -3,13 +3,15 @@ import { basePath, httpsOrigin } from '../../packages/shared/entry';
 import websocket from '@fastify/websocket';
 import staticFiles from '@fastify/static';
 import { existsSync } from 'node:fs';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import type { BridgeService } from './service';
 import type { BridgeEvent, WireMessage } from '../../packages/shared/protocol';
 import type { TrustStore } from './trust-store';
 import type { Themes } from './themes';
 import type { Readable } from 'node:stream';
 import { attachmentLimits } from '../../packages/shared/attachments';
+import { previewItem } from './history';
+import { requestTrace } from './diagnostics';
 
 export async function createServer(service: BridgeService, port: number, webRoot: string,
   options: { trust?: TrustStore; themes?: Themes; remoteOrigin?: string; remoteBasePath?: string; testOnlyUnauthenticated?: boolean } = {}) {
@@ -48,6 +50,25 @@ export async function createServer(service: BridgeService, port: number, webRoot
     : [sessionCookie(source, token, seconds), '__Host-oraculum=; Secure; HttpOnly; SameSite=Strict; Path=/; Max-Age=0',
       ...ancestors.map(path => `${cookieName(source)}=; Secure; HttpOnly; SameSite=Strict; Path=${path}; Max-Age=0`)];
   let closing = false;
+  const streamId = randomUUID();
+  let seq = 0, replayBytes = 0;
+  const replay: { event: BridgeEvent; bytes: number }[] = [];
+  const subscribers = new Set<(event: BridgeEvent) => void>();
+  const publish = (event: BridgeEvent) => {
+    // Native facts were already observed by BridgeService. Bound only the UI
+    // projection; large contents remain available through native history reads.
+    if (event.type === 'event') {
+      const native = event.event;
+      if (native.method === 'item/completed' || native.method === 'item/started') event = { ...event, event: { ...native, params: { ...native.params, item: previewItem(native.params.item).item } } } as BridgeEvent;
+      else if (native.method === 'turn/completed' || native.method === 'turn/started') event = { ...event, event: { ...native, params: { ...native.params, turn: { ...native.params.turn, items: native.params.turn.items?.slice(-40).map(item => previewItem(item).item) ?? [] } } } };
+      else if ('delta' in native.params && typeof native.params.delta === 'string' && native.params.delta.length > 32_000) event = { ...event, event: { ...native, params: { ...native.params, delta: native.params.delta.slice(0, 32_000) } } } as BridgeEvent;
+    }
+    const value = { ...event, streamId, seq: ++seq }, bytes = Buffer.byteLength(JSON.stringify(value));
+    replay.push({ event: value, bytes }); replayBytes += bytes;
+    while (replay.length > 256 || replayBytes > 1024 * 1024) replayBytes -= replay.shift()!.bytes;
+    for (const forward of subscribers) forward(value);
+  };
+  let observing = false;
   const connections = new Set<() => void>();
   let cleaning: Promise<void> | undefined;
   const cleanupTimer = service.attachments ? setInterval(() => {
@@ -56,6 +77,7 @@ export async function createServer(service: BridgeService, port: number, webRoot
   cleanupTimer?.unref();
   app.addHook('preClose', async () => {
     closing = true;
+    service.off('event', publish); subscribers.clear(); replay.length = 0;
     if (cleanupTimer) clearInterval(cleanupTimer);
     for (const cleanup of connections) cleanup();
     await cleaning;
@@ -277,6 +299,7 @@ export async function createServer(service: BridgeService, port: number, webRoot
         }
       },
     }, (socket, request) => {
+      if (!observing) { service.on('event', publish); observing = true; }
       const source = requestOrigin(request.headers);
       const token = tokenFrom(request.headers, source);
       const deviceId = trust?.authenticate(token, scope(source))?.id;
@@ -285,10 +308,10 @@ export async function createServer(service: BridgeService, port: number, webRoot
         if (!authorized()) { socket.close(1008, 'Device trust expired or revoked'); return; }
         if (socket.readyState === 1) socket.send(JSON.stringify(event));
       };
-      service.on('event', forward);
+      subscribers.add(forward);
       const timer = trust ? setInterval(() => { if (!authorized()) socket.close(1008, 'Device trust expired or revoked'); }, 1000) : undefined;
       const cleanup = () => {
-        service.off('event', forward);
+        subscribers.delete(forward);
         if (timer) clearInterval(timer);
         connections.delete(cleanup);
       };
@@ -307,11 +330,23 @@ export async function createServer(service: BridgeService, port: number, webRoot
         if (seen.has(String(request.id)) || seen.size >= 500) { socket.close(1008, 'Duplicate ID or request limit'); return; }
         seen.add(String(request.id));
         let response: WireMessage;
-        try { response = { id: request.id, result: await service.dispatch(request.method!, request.params!, deviceId ? { deviceId, isAuthorized: authorized } : undefined) }; }
+        const started = performance.now();
+        const requestId = /^[a-f0-9-]{36}$/.test(request.id) ? request.id : randomUUID();
+        try {
+          const since = request.params.since;
+          const reset = request.params.streamId !== streamId || !Number.isSafeInteger(since) || Number(since) > seq || Number(since) < (replay[0]?.event.seq ?? seq + 1)! - 1;
+          const result = request.method === 'bridge/events' ? { streamId, seq, reset, events: reset ? [] : replay.filter(entry => entry.event.seq! > Number(since)).map(entry => entry.event) }
+            : await requestTrace.run(requestId, () => service.dispatch(request.method!, request.params!, deviceId ? { deviceId, isAuthorized: authorized } : undefined));
+          response = { id: request.id, result };
+        }
         catch (error) { response = { id: request.id, error: { code: -32000, message: error instanceof Error ? error.message : 'Request failed',
           ...(request.method === 'turn/start' && request.params?.attachmentIds !== undefined && deviceId
             ? { sendStatus: service.sendStatus(String(request.params.operationId), deviceId) } : {}) } }; }
         if (authorized() && socket.readyState === 1) socket.send(JSON.stringify(response));
+        if (['bridge/subscribe', 'bridge/history', 'bridge/events', 'bridge/nativeHealth', 'bridge/config', 'thread/list', 'model/list', 'turn/start', 'bridge/approve', 'thread/name/set', 'thread/fork', 'thread/revert', 'turn/steer', 'review/start', 'thread/compact/start'].includes(request.method!)) {
+          const elapsedMs = Math.round(performance.now() - started);
+          if (response.error || elapsedMs >= 1000 || process.env.ORACULUM_DIAGNOSTICS === '1') console.info(JSON.stringify({ layer: 'bridge-rpc', requestId, method: request.method, elapsedMs, outcome: response.error ? 'error' : 'ok', seq }));
+        }
       });
     });
   }

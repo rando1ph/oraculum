@@ -23,7 +23,7 @@ afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
 it('detects a silent transport failure with a bounded read-only probe, without replaying mutations', async () => {
   const changed = vi.fn(), client = new BridgeClient(vi.fn(), changed);
   const connected = client.connect(); const socket = Socket.instances[0]; socket.open(); await connected;
-  const probe = client.probe(); const rejection = expect(probe).rejects.toThrow('未知');
+  const probe = client.probe(); const rejection = expect(probe).rejects.toThrow('只读查询超时');
   expect(JSON.parse(socket.sent[0])).toMatchObject({ method: 'bridge/ping', params: {} });
   await vi.advanceTimersByTimeAsync(5000); await rejection;
   expect(socket.readyState).toBe(3); expect(changed).toHaveBeenLastCalledWith(false);
@@ -33,8 +33,28 @@ it('keeps a live transport open after a successful probe', async () => {
   const client = new BridgeClient(vi.fn(), vi.fn());
   const connected = client.connect(); const socket = Socket.instances[0]; socket.open(); await connected;
   const probe = client.probe(), id = JSON.parse(socket.sent[0]).id;
-  socket.onmessage!({ data: JSON.stringify({ id, result: { connected: true } }) }); await probe;
+  socket.onmessage!({ data: JSON.stringify({ id, result: { connected: true } }) });
+  await vi.advanceTimersByTimeAsync(0);
+  const recovery = JSON.parse(socket.sent[1]); expect(recovery.method).toBe('bridge/events');
+  socket.onmessage!({ data: JSON.stringify({ id: recovery.id, result: { streamId: 'stream', seq: 0, reset: true, events: [] } }) }); await probe;
   await vi.advanceTimersByTimeAsync(5001); expect(socket.readyState).toBe(1); client.close();
+});
+it('ignores duplicate/old event sequences and requests a snapshot on a gap or new stream', async () => {
+  const event = vi.fn(), resync = vi.fn(), client = new BridgeClient(event, vi.fn(), resync);
+  const connected = client.connect(), socket = Socket.instances[0]; socket.open(); await connected;
+  for (const [streamId, seq] of [['first', 1], ['first', 1], ['first', 0], ['first', 3], ['second', 1]] as const) {
+    socket.onmessage!({ data: JSON.stringify({ type: 'projectsChanged', streamId, seq }) });
+  }
+  expect(event).toHaveBeenCalledTimes(3); expect(resync).toHaveBeenCalledTimes(2); client.close();
+});
+it('cancels a superseded read and ignores its late reply without closing the socket', async () => {
+  const client = new BridgeClient(vi.fn(), vi.fn()), controller = new AbortController();
+  const connected = client.connect(), socket = Socket.instances[0]; socket.open(); await connected;
+  const request = client.request('bridge/subscribe', {}, undefined, 1000, controller.signal);
+  const rejected = expect(request).rejects.toThrow('superseded');
+  controller.abort(new Error('superseded')); await rejected;
+  socket.onmessage!({ data: JSON.stringify({ id: JSON.parse(socket.sent[0]).id, result: { stale: true } }) });
+  expect(socket.readyState).toBe(1); expect(socket.sent).toHaveLength(1); client.close();
 });
 it.each(['thread/name/set', 'thread/fork', 'thread/revert', 'turn/steer', 'review/start', 'thread/compact/start'])('correlates %s once and never retries it after a disconnect', async method => {
   const client = new BridgeClient(vi.fn(), vi.fn());
@@ -95,7 +115,7 @@ it('fails a malformed response closed and bounds the connection handshake', asyn
   const onConnection = vi.fn(); const client = new BridgeClient(vi.fn(), onConnection);
   const connected = client.connect(); Socket.instances[0].open(); await connected;
   const request = client.request('bridge/subscribe', {});
-  const rejection = expect(request).rejects.toThrow('未知');
+  const rejection = expect(request).rejects.toThrow('只读查询');
   Socket.instances[0].onmessage!({ data: '{broken' }); await rejection;
   expect(onConnection).toHaveBeenLastCalledWith(false);
   const retry = client.connect(); const timeout = expect(retry).rejects.toThrow();

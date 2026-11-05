@@ -17,7 +17,7 @@ import type { TurnSteerResponse } from '../../.local/codex-protocol/v2/TurnSteer
 import type { ReviewStartResponse } from '../../.local/codex-protocol/v2/ReviewStartResponse';
 import type { ReviewTarget } from '../../.local/codex-protocol/v2/ReviewTarget';
 import type { ThreadTurnsListResponse } from '../../.local/codex-protocol/v2/ThreadTurnsListResponse';
-import { readHistory } from './history';
+import { readHistory, readHistoryItems, nativeItemPage } from './history';
 import type { ReceiptStore } from './receipts';
 import type { ProjectDirectories } from './projects';
 import { basename, dirname } from 'node:path';
@@ -34,6 +34,7 @@ import { attachmentId } from '../../packages/shared/attachments';
 import { ArtifactStore, type ArtifactOwner } from './artifacts';
 import type { Readable } from 'node:stream';
 import { TaskNotifications } from './notifications';
+import { nativeReads, ReadQueries } from './read-queries';
 
 type RequestContext = { deviceId: string; isAuthorized?: () => boolean };
 const nativeMethods = new Set<NativeOperationMethod>(['thread/name/set', 'thread/fork', 'thread/revert', 'turn/steer', 'review/start', 'thread/compact/start']);
@@ -78,12 +79,19 @@ export class BridgeService extends EventEmitter {
   private liveNativeOperations = new Map<string, NativeOperation>();
   private nameRevisions = new Map<string, number>();
   constructor(readonly codex: Pick<Codex, 'request' | 'send'> & { on(event: string, listener: (...args: any[]) => void): unknown }, readonly cwd: string,
-    private receipts?: ReceiptStore, private projects?: ProjectDirectories, private permissionChoices?: ThreadPermissionStore, readonly attachments?: AttachmentStore, readonly artifacts?: ArtifactStore) {
+    private receipts?: ReceiptStore, private projects?: ProjectDirectories, private permissionChoices?: ThreadPermissionStore, readonly attachments?: AttachmentStore, readonly artifacts?: ArtifactStore, options: { readTimeoutMs?: number } = {}) {
     super();
+    const reads = new ReadQueries(options.readTimeoutMs);
+    this.codex = { on: codex.on.bind(codex), send: codex.send.bind(codex),
+      request: <T>(method: string, params: object) => nativeReads.has(method)
+        ? reads.run(method, params, () => codex.request<T>(method, params), method !== 'thread/resume')
+        : (reads.invalidate(), codex.request<T>(method, params)),
+      get alive() { return (codex as Codex).alive ?? true; },
+    } as typeof codex;
     this.on('event', (event: BridgeEvent) => this.notifications.observe(event));
     this.nativeOperations = receipts?.nativeOperations ?? new NativeOperations();
     this.usage = new NativeUsage((method, params) => codex.request(method, params), snapshot => this.emit('event', { type: 'accountLimits', snapshot } satisfies BridgeEvent));
-    codex.on('message', (message: WireMessage) => this.receive(message));
+    codex.on('message', (message: WireMessage) => { reads.invalidate(); this.receive(message); });
     codex.on('unavailable', (message: string) => {
       this.usage.invalidate(true);
       this.pending.clear();
@@ -251,7 +259,7 @@ export class BridgeService extends EventEmitter {
     this.assertAuthorized(context);
     const threadId = typeof params.threadId === 'string' ? params.threadId : undefined;
     const mutation = ['thread/archive', 'thread/unarchive', 'thread/delete'].includes(method) || nativeMethods.has(method as NativeOperationMethod);
-    const guarded = mutation || ['bridge/subscribe', 'bridge/history', 'turn/start'].includes(method);
+    const guarded = mutation || ['bridge/subscribe', 'bridge/history', 'bridge/historyItems', 'bridge/historyText', 'turn/start'].includes(method);
     if (!threadId || !guarded) return this.dispatchRequest(method, params, context);
     // Reserve before the first asynchronous directory/read check. Other devices
     // cannot sneak in a send or native resume while a lifecycle check is running.
@@ -313,6 +321,10 @@ export class BridgeService extends EventEmitter {
   sendStatus(operationId: string, deviceId: string) { return this.receipts?.sendStatus(operationId, deviceId) ?? 'unknown'; }
   private async dispatchRequest(method: string, params: Record<string, unknown>, context?: RequestContext): Promise<unknown> {
     if (method === 'bridge/ping') return { connected: true };
+    if (method === 'bridge/nativeHealth') {
+      await this.codex.request('config/read', { cwd: this.cwd, includeLayers: false });
+      this.assertAuthorized(context); return { responding: true };
+    }
     if (method === 'bridge/notifications') {
       const feed = await this.notificationFeed(); this.assertAuthorized(context); return feed;
     }
@@ -368,6 +380,7 @@ export class BridgeService extends EventEmitter {
       });
       if (revision !== this.lifecycleRevision) throw new Error('会话状态已变化，请刷新列表。');
       page.data = page.data.filter(thread => thread.cwd === cwd && !this.deleted.has(thread.id));
+      page.data = page.data.map(thread => thread.turns?.length ? { ...thread, turns: [] } : thread);
       for (const thread of page.data) {
         this.track(thread.id, cwd);
         if (archived) this.archived.add(thread.id); else this.archived.delete(thread.id);
@@ -406,10 +419,27 @@ export class BridgeService extends EventEmitter {
     }
     if (nativeMethods.has(method as NativeOperationMethod)) return this.changeNative(method as NativeOperationMethod, threadId, cwd, params, context);
     const pendingResponse = method === 'bridge/approve' ? this.pending.get(params.requestId as RpcId) : undefined;
-    const needsDirectory = ['bridge/subscribe', 'bridge/history', 'turn/start'].includes(method) ||
+    const needsDirectory = ['bridge/subscribe', 'bridge/history', 'bridge/historyItems', 'bridge/historyText', 'turn/start'].includes(method) ||
       (pendingResponse?.params.threadId === threadId && responseNeedsDirectory(pendingResponse, params));
     // Even if a directory disappears, Stop and Decline remain available.
     if (needsDirectory && this.projects && await this.projects.resolve(cwd) !== cwd) throw new Error('Project directory changed; refresh the native thread list');
+    if (method === 'bridge/historyItems' || method === 'bridge/historyText') {
+      const revision = this.historyRevision(threadId);
+      if (!this.loaded.has(threadId) || params.historyRevision !== revision || typeof params.turnId !== 'string') throw new Error('会话历史已变化，请重新查询');
+      const cursor = typeof params.cursor === 'string' ? params.cursor : undefined;
+      let result: unknown;
+      if (method === 'bridge/historyItems') result = { threadId, turnId: params.turnId, ...await readHistoryItems(this.codex, threadId, params.turnId, cursor), historyRevision: revision };
+      else {
+        const page = await nativeItemPage(this.codex, threadId, params.turnId, cursor);
+        const item = page.data.find(entry => entry.turnId === params.turnId && entry.item.id === params.itemId)?.item;
+        if (!item) throw new Error('原生内容已变化，请重新读取历史');
+        const text = JSON.stringify(item, null, 2), offset = params.offset ?? 0;
+        if (!Number.isSafeInteger(offset) || Number(offset) < 0 || Number(offset) > text.length) throw new Error('Invalid content offset');
+        result = { text: text.slice(Number(offset), Number(offset) + 32_000), nextOffset: Number(offset) + 32_000 < text.length ? Number(offset) + 32_000 : null };
+      }
+      if (revision !== this.historyRevision(threadId)) throw new Error('原生历史已变化，请重新查询');
+      this.assertAuthorized(context); return result;
+    }
     if (method === 'bridge/subscribe' || method === 'bridge/history') {
       const historyRevision = this.historyRevision(threadId);
       if (method === 'bridge/history' && params.historyRevision !== undefined && params.historyRevision !== historyRevision) {
@@ -425,7 +455,8 @@ export class BridgeService extends EventEmitter {
       const fresh = this.fresh.get(threadId);
       const thread = fresh ?? (await this.codex.request<ThreadReadResponse>('thread/read', { threadId })).thread;
       if (thread.cwd !== cwd) throw new Error('Thread is outside this workspace');
-      const result = fresh ? { thread } : await readHistory(this.codex, thread, typeof params.cursor === 'string' ? params.cursor : undefined);
+      const result = params.metadataOnly === true ? { thread: { ...thread, turns: [] } } : fresh ? { thread }
+        : await readHistory(this.codex, thread, typeof params.cursor === 'string' ? params.cursor : undefined, params.bounded === true);
       if (historyRevision !== this.historyRevision(threadId)) throw new Error('原生历史已变化，请重新查询会话。');
       for (const turn of result.thread.turns) {
         this.agents.observeReferences(threadId, turn.items);
@@ -436,11 +467,12 @@ export class BridgeService extends EventEmitter {
       // Older history pages must not change current execution controls.
       if (!params.cursor && revision === (this.revisions.get(threadId) ?? 0)) {
         if (active) { this.busy.add(threadId); this.activeTurns.set(threadId, active.id); }
-        else if (thread.status.type !== 'active' && !this.unknownSends.has(threadId)) {
+        else if (thread.status.type === 'active') this.busy.add(threadId);
+        else if (!this.unknownSends.has(threadId)) {
           this.busy.delete(threadId); this.activeTurns.delete(threadId);
         }
       }
-      return { ...result, pending: [...this.pending.values()].filter(r => r.params.threadId === threadId || this.descendsFrom(r.params.threadId, threadId)),
+      return { ...result, ...(params.metadataOnly === true ? { metadataOnly: true } : {}), pending: [...this.pending.values()].filter(r => r.params.threadId === threadId || this.descendsFrom(r.params.threadId, threadId)),
         agents: [...this.agents.values.values()].filter(agent => this.descendsFrom(agent.id, threadId)),
         attachments: await this.attachments?.deliveries(cwd, threadId, result.thread.turns.map(turn => turn.id)),
         settings: this.settings.get(threadId),

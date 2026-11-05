@@ -1,9 +1,11 @@
 import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { createRoot } from 'react-dom/client';
+import { retryRead } from '../../../packages/shared/read-recovery';
+import { HistoryText } from './history-detail';
 import { BridgeClient, BridgeRpcError } from '../../../packages/shared/client';
 import { attachmentAccept } from '../../../packages/shared/attachments';
 import { AttachmentTray, useAttachments } from './attachments';
-import type { BridgeEvent, LocalConfig, Model, NativeOperation, NativeOperationMethod, ProjectList, Snapshot, Thread, ThreadItem } from '../../../packages/shared/protocol';
+import type { BridgeEvent, HistoryDetail, HistoryItems, LocalConfig, Model, NativeOperation, NativeOperationMethod, ProjectList, Snapshot, Thread, ThreadItem } from '../../../packages/shared/protocol';
 import type { ThreadStartResponse } from '../../../.local/codex-protocol/v2/ThreadStartResponse';
 import type { ThreadListResponse } from '../../../.local/codex-protocol/v2/ThreadListResponse';
 import { itemKey, useSession } from './store';
@@ -38,7 +40,7 @@ import './native-controls.css';
 
 const Artifacts = lazy(() => import('./artifacts').then(module => ({ default: module.Artifacts })));
 const Diff = lazy(() => import('./diff').then(module => ({ default: module.Diff })));
-type Inspected = { kind: 'diff'; path: string; diff: string } | { kind: 'item'; id: string; turnId: string } | { kind: 'agent'; id: string } | { kind: 'usage' | 'emptyDiff' | 'artifacts' };
+type Inspected = { kind: 'historyText'; detail: HistoryDetail } | { kind: 'diff'; path: string; diff: string } | { kind: 'item'; id: string; turnId: string } | { kind: 'agent'; id: string } | { kind: 'usage' | 'emptyDiff' | 'artifacts' };
 const readSaved = (key: string) => { try { return localStorage.getItem(key); } catch { return null; } };
 const save = (key: string, value: string) => { try { localStorage.setItem(key, value); } catch { /* Storage is optional. */ } };
 // Native shells keep drafts/reading state across window recreation. Browser
@@ -54,8 +56,13 @@ function App() {
   const [menu, setMenu] = useState(false);
   const [readingSize, setReadingSize] = useState(() => Math.min(150, Math.max(100, Number(readSaved('oraculum.reading-size')) || 100)));
   const [connected, setConnected] = useState(false);
+  const [nativeState, setNativeState] = useState<'unknown' | 'responding' | 'timeout'>('unknown');
   const [connecting, setConnecting] = useState(false);
-  const [synced, setSynced] = useState(false);
+  const [synced, setSyncedState] = useState(false);
+  const [syncError, setSyncError] = useState('');
+  const [syncing, setSyncing] = useState(false);
+  const [historyError, setHistoryError] = useState('');
+  const [catalogError, setCatalogError] = useState('');
   const [config, setConfig] = useState<LocalConfig>();
   const [projects, setProjects] = useState<ProjectList>({ root: '', projects: [] });
   const [models, setModels] = useState<Model[]>([]);
@@ -67,7 +74,7 @@ function App() {
   const [listing, setListing] = useState(false);
   const [listError, setListError] = useState('');
   const [actionTarget, setActionTarget] = useState<SessionTarget>();
-  const [lifecycleBusy, setLifecycleBusy] = useState(false);
+  const [submitting, setSubmitting] = useState(new Set<string>());
   const [lifecycleNotice, setLifecycleNotice] = useState('');
   const [unknownThreads, setUnknownThreads] = useState(new Set<string>());
   const [backgroundNative, setBackgroundNative] = useState<NativeOperation[]>([]);
@@ -77,12 +84,11 @@ function App() {
   const [text, setText] = useState('');
   const [query, setQuery] = useState('');
   const [error, setError] = useState('');
-  const [sending, setSending] = useState(false);
   const [steerDraft, setSteerDraft] = useState<{ threadId: string; turnId: string }>();
   const steerBinding = useRef<typeof steerDraft>(undefined);
-  const nativeSubmitting = useRef(false);
+  const nativeSubmitting = useRef(new Set<string>());
   const [switching, setSwitching] = useState(false);
-  const [approving, setApproving] = useState(false);
+  const [approvalThreads, setApprovalThreads] = useState(new Set<string>());
   const [inspected, setInspected] = useState<Inspected>();
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [layout, setLayout] = useLayout();
@@ -98,7 +104,22 @@ function App() {
   const [atBottom, setAtBottom] = useState(true);
   const client = useRef<BridgeClient>(null);
   const selected = useRef('');
+  const selectionRevision = useRef(0);
+  const syncedLive = useRef(false);
+  const syncExhausted = useRef(false);
+  const syncController = useRef<AbortController | null>(null);
+  const historyController = useRef<AbortController | null>(null);
+  const catalogController = useRef<AbortController | null>(null);
+  const syncFlight = useRef<{ key: string; promise: Promise<void> } | null>(null);
+  const setSynced = (value: boolean) => { syncedLive.current = value; setSyncedState(value); };
   const workspace = useRef('');
+  const sending = submitting.has(selected.current) || submitting.has(`new:${workspace.current}`);
+  const lifecycleBusy = submitting.has(actionTarget?.thread.id ?? selected.current);
+  const approving = approvalThreads.has(selected.current);
+  function setSubmission(id: string, value: boolean) {
+    if (value) nativeSubmitting.current.add(id); else nativeSubmitting.current.delete(id);
+    setSubmitting(new Set(nativeSubmitting.current));
+  }
   const epoch = useRef(0);
   const connectionEpoch = useRef(0);
   const connectingNow = useRef(false);
@@ -113,6 +134,8 @@ function App() {
   const registryEpoch = useRef(0);
   const draftRevision = useRef(0);
   const buffer = useRef<BridgeEvent[] | null>(null);
+  const bufferBytes = useRef(0);
+  const bufferOverflow = useRef(false);
   const scroller = useRef<HTMLDivElement>(null);
   const scrollContent = useRef<HTMLDivElement>(null);
   const composer = useRef<HTMLTextAreaElement>(null);
@@ -221,6 +244,7 @@ function App() {
     steerBinding.current = value; setSteerDraft(value);
   }
   function writeDraft(value: string) {
+    ++selectionRevision.current;
     ++draftRevision.current; setText(value);
     if (!value.trim()) bindSteerDraft(undefined);
     else {
@@ -258,7 +282,7 @@ function App() {
         const cursor = useSession.getState().history?.nextCursor;
         if (!cursor || cursors.has(cursor) || cursors.size >= 20 || performance.now() >= deadline) break;
         cursors.add(cursor); setLoadingHistory(true);
-        const page = await readingDeadline(client.current!.request<Snapshot>('bridge/history', { threadId: id, cursor }), deadline - performance.now());
+        const page = await readingDeadline(client.current!.request<Snapshot>('bridge/history', { threadId: id, cursor, bounded: true, historyRevision: useSession.getState().historyRevision }, undefined, 12_000), deadline - performance.now());
         if (!current()) return;
         useSession.getState().older(page);
       }
@@ -266,7 +290,7 @@ function App() {
     finally { if (current()) setLoadingHistory(false); }
   }
   const openDiff = (path: string, diff: string) => { setInspected({ kind: 'diff', path, diff }); setLayout(l => ({ ...l, inspector: true })); };
-  function openItem(item: ThreadItem, turnId: string) { setInspected({ kind: 'item', id: item.id, turnId }); setLayout(l => ({ ...l, inspector: true })); }
+  function openItem(item: ThreadItem, turnId: string) { const detail = useSession.getState().history?.details?.find(value => value.itemId === item.id && value.turnId === turnId); setInspected(detail ? { kind: 'historyText', detail } : { kind: 'item', id: item.id, turnId }); setLayout(l => ({ ...l, inspector: true })); }
   function openUsage() { setInspected({ kind: 'usage' }); setLayout(l => ({ ...l, inspector: true })); setMenu(false); void refreshUsage(); }
   async function refreshProjects() {
     const ticket = ++registryEpoch.current;
@@ -280,6 +304,7 @@ function App() {
     setListing(true); setListError('');
     try {
       const page = await client.current!.request<ThreadListResponse>('thread/list', { cursor, cwd, archived });
+      if (cursor && page.nextCursor === cursor) throw new Error('会话分页游标重复，请重新读取列表');
       if (cwd !== workspace.current || archived !== archivedView.current || ticket !== listEpoch.current) return null;
       setThreads(current => [...new Map([...(cursor ? current : []), ...page.data].map(t => [t.id, t])).values()]);
       setNextCursor(page.nextCursor);
@@ -328,7 +353,7 @@ function App() {
   async function changeSession(action: SessionAction) {
     if (!actionTarget || lifecycleBusy) return;
     const target = actionTarget;
-    setLifecycleBusy(true); setError('');
+    setSubmission(target.thread.id, true); setError('');
     try {
       await client.current!.request(`thread/${action}`, { threadId: target.thread.id, cwd: target.thread.cwd, ...(action === 'delete' ? { confirm: true } : {}) });
       closeSessionActions();
@@ -336,13 +361,13 @@ function App() {
       // clients whose connection missed it. Never repeat the mutation itself.
       if (workspace.current === target.thread.cwd) await listThreads();
     } catch (value) { report(value); throw value; }
-    finally { setLifecycleBusy(false); }
+    finally { setSubmission(target.thread.id, false); }
   }
   async function changeNativeSession(action: SessionNativeAction) {
-    if (!actionTarget || lifecycleBusy || nativeSubmitting.current || methodBlock(action.method, actionTarget.thread.id) || (action.method === 'thread/name/set' ? renameBlocked : nativeActionBlocked || actionBlocked)) return;
+    if (!actionTarget || lifecycleBusy || nativeSubmitting.current.has(actionTarget.thread.id) || methodBlock(action.method, actionTarget.thread.id) || (action.method === 'thread/name/set' ? renameBlocked : nativeActionBlocked || actionBlocked)) return;
     const target = actionTarget.thread;
     const operationId = crypto.randomUUID();
-    nativeSubmitting.current = true; setLifecycleBusy(true); setError('');
+    setSubmission(target.id, true); setError('');
     try {
       const result = await client.current!.request<{ thread?: Thread }>(action.method, { threadId: target.id, cwd: target.cwd,
         ...(action.method === 'thread/name/set' ? { name: action.name } : action.method === 'thread/revert' ? { beforeTurnId: action.beforeTurnId, confirm: true } : action.method === 'review/start' ? { target: { type: 'uncommittedChanges' } } : {}) }, operationId);
@@ -351,8 +376,8 @@ function App() {
       await listThreads();
       if (action.method === 'thread/fork' && result.thread) { await refresh(result.thread.id); composer.current?.focus(); }
       else if (selected.current === target.id) await refresh(target.id);
-    } catch (value) { report(value); if (!['thread/name/set', 'thread/fork'].includes(action.method) && useSession.getState().nativeOperations.find(operation => operation.operationId === operationId)?.state !== 'rejected') setSynced(false); throw value; }
-    finally { nativeSubmitting.current = false; setLifecycleBusy(false); }
+    } catch (value) { report(value); if (selected.current === target.id && !['thread/name/set', 'thread/fork'].includes(action.method) && useSession.getState().nativeOperations.find(operation => operation.operationId === operationId)?.state !== 'rejected') setSynced(false); throw value; }
+    finally { setSubmission(target.id, false); }
   }
   function cacheNativeOperation(operation: NativeOperation) {
     setBackgroundNative(current => {
@@ -404,61 +429,116 @@ function App() {
     } catch { /* Keep the last verified values; connection changes invalidate the store. */ }
     finally { if (ticket === usageRequest.current) setUsageRefreshing(false); }
   }
-  async function refresh(id = selected.current) {
+  function refresh(id = selected.current, withHistory = true): Promise<void> {
+    const key = JSON.stringify([workspace.current, id, withHistory]);
+    if (syncFlight.current?.key === key) return syncFlight.current.promise;
+    if (withHistory) ++selectionRevision.current;
+    syncController.current?.abort(); historyController.current?.abort();
+    const controller = new AbortController(); syncController.current = controller;
+    setSyncing(true);
+    const promise = refreshSession(id, withHistory, controller.signal).finally(() => {
+      if (syncFlight.current?.promise === promise) { syncFlight.current = null; setSyncing(false); }
+    });
+    syncFlight.current = { key, promise }; return promise;
+  }
+  async function loadHistory(id: string, ticket: number, position = savedScroll(id), restoring = false) {
+    historyController.current?.abort();
+    const controller = new AbortController(); historyController.current = controller;
+    const current = () => !controller.signal.aborted && ticket === epoch.current && id === selected.current;
+    setLoadingHistory(true); setHistoryError('');
+    try {
+      const snapshot = await retryRead(() => client.current!.request<Snapshot>('bridge/history', { threadId: id, bounded: true,
+        historyRevision: useSession.getState().historyRevision }, undefined, 30_000, controller.signal), controller.signal);
+      if (!current()) return;
+      if (!restoring) { rememberScroll(); position = savedScroll(id); }
+      readingRestore.current = ticket; follow.current = false;
+      useSession.getState().older(snapshot);
+      await restoreEarlier(position, id, ticket);
+      if (!current()) return;
+      // History can confirm an unknown receipt. Read current controls again;
+      // an old history reply must never replace live approvals or operation state.
+      setLoadingHistory(false);
+      requestAnimationFrame(() => {
+        if (!current() || !scroller.current) return;
+        placeReading(scroller.current, position); readingRestore.current = null;
+        follow.current = !position || position.bottom; setAtBottom(follow.current); rememberScroll();
+        void refresh(id, false).catch(report);
+      });
+    } catch (value) { if (current()) { readingRestore.current = null; setHistoryError(value instanceof Error ? value.message : String(value)); } }
+    finally { if (current()) setLoadingHistory(false); }
+  }
+  async function refreshSession(id: string, withHistory: boolean, signal: AbortSignal) {
     setCreatedThreadId('');
-    const ticket = ++epoch.current;
-    const changed = selected.current !== id;
+    const ticket = ++epoch.current, changed = selected.current !== id;
     rememberScroll();
     let position = savedScroll(id);
     if (changed) { readingRestore.current = ticket; follow.current = false; }
-    selected.current = id;
+    selected.current = id; syncExhausted.current = false;
     void refreshUsage(id);
-    setSynced(false); setLoadingHistory(false);
+    setSynced(false); setSyncError(''); setLoadingHistory(false);
     if (changed) {
-      useSession.getState().reset(); closeComposerMenu(); setError(''); setInspected(undefined);
+      useSession.getState().reset(); closeComposerMenu(); setError(''); setHistoryError(''); setInspected(undefined);
       setText(readDraft()); restoreSteerDraft(); setDrawer(false); setMenu(false);
     }
     if (!id) { readingRestore.current = null; useSession.getState().reset(); setSynced(true); buffer.current = null; return; }
-    buffer.current = [];
+    buffer.current = []; bufferBytes.current = 0; bufferOverflow.current = false;
     let scheduled = false;
     try {
-      const snapshot = await client.current!.request<Snapshot>('bridge/subscribe', { threadId: id });
-      if (ticket !== epoch.current) return;
-      // A same-thread query leaves the reader in control while the response is pending.
-      // Capture at projection time, then suppress only DOM-induced scroll updates.
+      const snapshot = await retryRead(() => client.current!.request<Snapshot>('bridge/subscribe', { threadId: id, metadataOnly: true }, undefined, 30_000, signal), signal);
+      if (ticket !== epoch.current || signal.aborted) return;
       if (!changed) { rememberScroll(); position = savedScroll(id); }
       readingRestore.current = ticket; follow.current = false;
       useSession.getState().snapshot(snapshot);
+      setNativeState('responding');
       for (const operation of snapshot.nativeOperations ?? []) cacheNativeOperation(operation);
       const key = settingsDraftKey(workspace.current, id);
       saveChoices(confirmedComposerDraft(parseComposerDraft(readSaved(key)), snapshot.settings, snapshot.receipts), key);
-      const queued = buffer.current ?? [];
-      buffer.current = null;
-      for (const message of queued) apply(message, true);
-      await restoreEarlier(position, id, ticket);
-      if (ticket !== epoch.current) return;
-      save(storageKey(), id);
-      setSynced(!useSession.getState().historyReloading);
+      const queued = buffer.current ?? []; buffer.current = null;
+      for (const message of queued) apply(message);
+      save(storageKey(), id); setSynced(!useSession.getState().historyReloading && !bufferOverflow.current);
+      if (bufferOverflow.current) setSyncError('事件较多，请重新查询会话状态');
       scheduled = true;
-      requestAnimationFrame(() => {
+      if (!withHistory || !changed) requestAnimationFrame(() => {
         if (ticket !== epoch.current || selected.current !== id || !scroller.current) return;
-        placeReading(scroller.current, position);
-        readingRestore.current = null;
-        follow.current = !position || position.bottom || scroller.current.scrollHeight - scroller.current.scrollTop - scroller.current.clientHeight < 60;
-        setAtBottom(follow.current); rememberScroll();
+        placeReading(scroller.current, position); readingRestore.current = null;
+        follow.current = !position || position.bottom; setAtBottom(follow.current); rememberScroll();
       });
+      if (withHistory) void loadHistory(id, ticket, position, changed);
+    } catch (value) {
+      if (ticket !== epoch.current || signal.aborted) return;
+      syncExhausted.current = true;
+      setSyncError(value instanceof Error ? value.message : String(value));
+      // Keep live observations visible when the read failed; controls stay unconfirmed.
+      for (const message of buffer.current ?? []) apply(message);
+      throw value;
     } finally {
-      if (ticket === epoch.current) {
-        buffer.current = null;
-        if (!scheduled) readingRestore.current = null;
-      }
+      if (ticket === epoch.current) { buffer.current = null; if (!scheduled) readingRestore.current = null; }
     }
+  }
+  async function loadModels() {
+    catalogController.current?.abort();
+    const controller = new AbortController(); catalogController.current = controller;
+    const allModels: Model[] = [], cursors = new Set<string>();
+    let cursor: string | null = null;
+    setCatalogError('');
+    try {
+      do {
+        const page: { data: Model[]; nextCursor: string | null } = await retryRead(() => client.current!.request('model/list', { cursor }, undefined, 12_000, controller.signal), controller.signal);
+        if (controller.signal.aborted) return;
+        allModels.push(...page.data); setModels([...new Map(allModels.map(model => [model.id, model])).values()]);
+        cursor = page.nextCursor;
+        if (cursor && (cursors.has(cursor) || cursors.size >= 20)) throw new Error('模型目录分页异常，请重新读取');
+        if (cursor) cursors.add(cursor);
+      } while (cursor);
+    } catch (value) { if (!controller.signal.aborted) setCatalogError(value instanceof Error ? value.message : String(value)); }
   }
   async function selectProject(cwd: string, restore = true) {
     setCreatedThreadId('');
     const ticket = ++projectEpoch.current;
+    ++selectionRevision.current;
     ++listEpoch.current;
-    setSwitching(true); setError(''); setSynced(false);
+    syncController.current?.abort(); historyController.current?.abort(); ++epoch.current; buffer.current = null;
+    setSwitching(true); setError(''); setSynced(false); setLoadingHistory(false);
     try {
       rememberScroll();
       const settings = await client.current!.request<LocalConfig>('bridge/config', { cwd });
@@ -469,19 +549,30 @@ function App() {
       setConfig(settings); setThreads([]); setNextCursor(null); setQuery(''); closeComposerMenu(); setInspected(undefined);
       useSession.getState().reset(); setText(readDraft()); restoreSteerDraft();
       const saved = restore ? readSaved(storageKey()) : null;
-      let page = await listThreads();
+      const page = await listThreads();
       const fallback = restore ? page?.data[0]?.id ?? '' : '';
-      const cursors = new Set<string>();
-      // A remembered thread can live beyond the first native history page.
-      while (saved && page && !page.data.some(t => t.id === saved) && page.nextCursor) {
-        if (cursors.has(page.nextCursor)) throw new Error('会话分页游标重复');
-        cursors.add(page.nextCursor);
-        page = await listThreads(page.nextCursor);
-        if (ticket !== projectEpoch.current) return;
-      }
       if (ticket !== projectEpoch.current || !page) return;
-      await refresh(page.data.some(t => t.id === saved) ? saved! : fallback);
+      setSwitching(false);
+      const initial = page.data.some(t => t.id === saved) ? saved! : fallback;
+      await refresh(initial);
+      // A distant remembered thread is a bounded background lookup. The first
+      // page is usable immediately; any reader action supersedes restoration.
+      if (saved && saved !== initial && page.nextCursor && selected.current === initial) {
+        void restoreSavedThread(saved, page.nextCursor, ticket, selectionRevision.current).catch(() => {});
+      }
     } finally { if (ticket === projectEpoch.current) setSwitching(false); }
+  }
+  async function restoreSavedThread(id: string, cursor: string, projectTicket: number, intent: number) {
+    const cursors = new Set<string>();
+    while (projectTicket === projectEpoch.current && intent === selectionRevision.current && cursors.size < 3) {
+      if (cursors.has(cursor)) { setListError('会话分页游标重复，请重新读取列表'); return; }
+      cursors.add(cursor);
+      const page = await listThreads(cursor);
+      if (!page || projectTicket !== projectEpoch.current || intent !== selectionRevision.current) return;
+      if (page.data.some(thread => thread.id === id)) { await refresh(id); return; }
+      if (!page.nextCursor) return;
+      cursor = page.nextCursor;
+    }
   }
   async function connect() {
     if (connectingNow.current) return;
@@ -495,21 +586,11 @@ function App() {
     await client.current!.connect();
     if (ticket !== connectionEpoch.current) return;
     void refreshUsage('');
-    const settings = await client.current!.request<LocalConfig>('bridge/config', {});
-    const directory = await client.current!.request<ProjectList>('bridge/projects', {});
+    const directory = await client.current!.request<ProjectList>('bridge/projects', {}, undefined, 12_000);
+    setProjects(directory);
     if (ticket !== connectionEpoch.current) return;
     setProjects(directory);
-    const allModels: Model[] = [];
-    const cursors = new Set<string>();
-    let cursor: string | null = null;
-    do {
-      const page: { data: Model[]; nextCursor: string | null } = await client.current!.request('model/list', { cursor });
-      allModels.push(...page.data); cursor = page.nextCursor;
-      if (cursor && cursors.has(cursor)) throw new Error('模型分页游标重复');
-      if (cursor) cursors.add(cursor);
-    } while (cursor);
-    if (ticket !== connectionEpoch.current) return;
-    setModels(allModels);
+    void loadModels();
     const saved = readSaved('oraculum.project');
     if (workspace.current && selected.current && directory.projects.some(p => p.cwd === workspace.current && p.available !== false)) {
       const current = await client.current!.request<LocalConfig>('bridge/config', { cwd: workspace.current });
@@ -522,8 +603,12 @@ function App() {
         // Re-list through the normal project path, preserving its saved draft.
         await selectProject(current.cwd);
       }
-    } else await selectProject(directory.projects.some(p => p.cwd === saved && p.available !== false) ? saved! : settings.cwd);
-    } catch (error) { client.current?.close(); throw error; }
+    } else {
+      const cwd = directory.projects.find(p => p.cwd === saved && p.available !== false)?.cwd ?? directory.projects.find(p => p.available !== false)?.cwd;
+      if (cwd) await selectProject(cwd);
+      else { workspace.current = ''; selected.current = ''; setConfig(undefined); setThreads([]); useSession.getState().reset(); setSynced(true); }
+    }
+    } catch (error) { setSyncError(error instanceof Error ? error.message : String(error)); throw error; }
     finally { connectingNow.current = false; setConnecting(false); }
     if (pendingNotice.current) void openNotification().catch(report);
   }
@@ -566,7 +651,11 @@ function App() {
       if (message.type === 'nativeOperationChanged') cacheNativeOperation(message.operation);
       if (message.type === 'nativeCapabilitiesChanged') { useSession.setState({ nativeCapabilities: message.capabilities }); return; }
       if (message.type === 'unavailable') { useUsage.getState().connect(false); ++epoch.current; readingRestore.current = null; buffer.current = null; useSession.setState({ pending: [] }); setError(message.message); setSynced(false); setLoadingHistory(false); client.current?.close(); return; }
-      if (buffer.current) buffer.current.push(message);
+      if (buffer.current) {
+        bufferBytes.current += JSON.stringify(message).length;
+        if (buffer.current.length >= 256 || bufferBytes.current > 1024 * 1024) { buffer.current = []; bufferBytes.current = 0; bufferOverflow.current = true; }
+        buffer.current.push(message);
+      }
       else {
         apply(message);
         if (message.type === 'event' && message.event.method === 'turn/completed' && message.event.params.threadId === selected.current) {
@@ -578,8 +667,8 @@ function App() {
       connectionLive.current = value;
       if (value) { clearTimeout(timer); timer = undefined; }
       setConnected(value);
-      if (!value) { rememberScroll(); ++epoch.current; ++listEpoch.current; readingRestore.current = null; buffer.current = null; setListing(false); setSynced(false); void checkSession().catch(() => {}); retry(); }
-    });
+      if (!value) { syncController.current?.abort(); historyController.current?.abort(); catalogController.current?.abort(); syncFlight.current = null; rememberScroll(); ++epoch.current; ++listEpoch.current; readingRestore.current = null; buffer.current = null; setListing(false); setSynced(false); void checkSession().catch(() => {}); retry(); }
+    }, () => { if (!disposed && !syncFlight.current) void refresh().catch(report); });
     const probe = async (reconcile = false) => {
       if (disposed || document.visibilityState === 'hidden' || connectingNow.current || probing) return;
       if (!connectionLive.current) {
@@ -589,7 +678,12 @@ function App() {
       probing = true;
       try {
         await client.current!.probe();
-        if (reconcile && !disposed) { await refresh(); await listThreads(); if (pendingNotice.current) await openNotification(); }
+        try { await client.current!.request('bridge/nativeHealth', {}, undefined, 12_000); if (!disposed) setNativeState('responding'); }
+        catch { if (!disposed) setNativeState('timeout'); }
+        if (!disposed && (reconcile || !syncedLive.current && !syncExhausted.current)) {
+          if (!workspace.current) await connect();
+          else { await refresh(); await listThreads(); if (pendingNotice.current) await openNotification(); }
+        }
       } catch (error) { if (!disposed) report(error); }
       finally { probing = false; }
     };
@@ -609,7 +703,7 @@ function App() {
       disposed = true; clearTimeout(timer); clearInterval(heartbeat);
       window.removeEventListener('online', wake); window.removeEventListener('focus', wake);
       window.removeEventListener('oraculum-resume', wake); document.removeEventListener('visibilitychange', wake); window.removeEventListener('hashchange', notice);
-      ++epoch.current; ++connectionEpoch.current; ++registryEpoch.current; client.current?.close();
+      ++epoch.current; ++connectionEpoch.current; ++registryEpoch.current; syncController.current?.abort(); historyController.current?.abort(); catalogController.current?.abort(); client.current?.close();
     };
   }, []);
   useEffect(() => {
@@ -714,13 +808,19 @@ function App() {
     return () => { delete window.oraculumAndroidBack; window.removeEventListener('keydown', close); };
   }, [settings, browsing, menu, composerMenu, modelMenuLevel, drawer, expanded, layout.inspector, actionTarget, lifecycleBusy]);
   async function createThread() {
-    setSending(true); setError('');
+    if (switching) return;
+    ++selectionRevision.current;
+    const scope = workspace.current, key = `new:${scope}`, ticket = epoch.current;
+    if (nativeSubmitting.current.has(key)) return;
+    setSubmission(key, true); setError('');
     try {
       // A new thread starts from project configuration, never another thread's draft.
       const initialChoices = session.thread ? {} : choices;
       const result = await client.current!.request<ThreadStartResponse>('thread/start', {
         model: initialChoices.model?.value, permissionMode: initialChoices.permissionMode?.value, cwd: workspace.current,
       });
+      if (scope !== workspace.current || ticket !== epoch.current) return;
+      historyController.current?.abort(); syncController.current?.abort();
       rememberScroll(); ++epoch.current; readingRestore.current = null; buffer.current = null; selected.current = result.thread.id;
       setInspected(undefined); setText(readDraft()); restoreSteerDraft(); setDrawer(false); follow.current = true;
       useSession.getState().reset(); useSession.getState().snapshot({ thread: result.thread, pending: [], nativeCapabilities: session.nativeCapabilities, settings: {
@@ -736,17 +836,17 @@ function App() {
       if (archivedView.current) changeSessionView(false);
       else setThreads(ids => [result.thread, ...ids]);
       setSynced(true); composer.current?.focus();
-    } catch (value) { report(value); } finally { setSending(false); }
+    } catch (value) { if (scope === workspace.current) report(value); } finally { setSubmission(key, false); }
   }
   const active = !!session.activeTurn || session.thread?.status.type === 'active';
   const projectAvailable = !!config && projects.projects.some(p => p.cwd === config.cwd && p.available !== false);
   const nativeRunning = session.nativeOperations.find(operation => operation.state === 'running');
   const nativePending = nativeRunning ?? session.nativeOperations.find(operation => ['accepted', 'unknown'].includes(operation.state) && ['review/start', 'thread/compact/start', 'thread/revert', 'turn/steer'].includes(operation.method));
   const methodBlock = (method: NativeOperationMethod, threadId = selected.current) => (threadId === session.thread?.id ? session.nativeOperations : backgroundNative).some(operation => operation.threadId === threadId && operation.method === method && ['running', 'accepted', 'unknown'].includes(operation.state)) ? '此操作尚未确认完成，请查询状态，勿重复操作。' : '';
-  const canAttach = projectAvailable && connected && synced && !!session.thread && !active && !session.sendBlocked && !session.historyReloading && !nativePending && !steerDraft && !sending && !switching && !lifecycleBusy;
+  const canAttach = projectAvailable && connected && synced && !!session.thread && !active && !session.sendBlocked && !session.historyReloading && !nativePending && !steerDraft && !sending && !switching && !submitting.has(selected.current);
   const canSend = canAttach && attachmentQueues.ready(attachmentQueue) && (!!text.trim() || !!attachmentQueue.files.length);
   const attachmentScope = JSON.stringify([config?.cwd, session.thread?.id]);
-  const canAttachNow = () => canAttach && !nativeSubmitting.current && selected.current === attachmentQueue.scope.threadId && workspace.current === attachmentQueue.scope.cwd;
+  const canAttachNow = () => canAttach && !nativeSubmitting.current.has(selected.current) && selected.current === attachmentQueue.scope.threadId && workspace.current === attachmentQueue.scope.cwd;
   function addAttachments(files: File[]) { if (!canAttachNow()) { setError('请先选择可发送消息的会话，再添加附件。运行中的补充指令仅支持文字。'); return; } attachmentQueues.add(attachmentQueue, files); }
   function openAttachmentPicker() { if (!canAttachNow()) return; pickerScope.current = attachmentScope; attachmentPicker.current?.click(); }
   useEffect(() => { attachmentQueues.reconcile(attachmentQueue, session.receipts); }, [attachmentQueues, attachmentQueue, session.receipts]);
@@ -756,32 +856,32 @@ function App() {
     window.addEventListener('dragover', preventFileNavigation); window.addEventListener('drop', preventFileNavigation);
     return () => { window.removeEventListener('dragover', preventFileNavigation); window.removeEventListener('drop', preventFileNavigation); };
   }, []);
-  const canSteer = projectAvailable && connected && synced && !!session.activeTurn && !session.pending.length && !steerDeliveryBlocked(session.sendBlocked, session.receipts, session.activeTurn, session.nativeOperations.some(operation => operation.method === 'review/start' && operation.state === 'accepted' && operation.turnId === session.activeTurn)) && !session.historyReloading && !steerOperationBlocked(session.nativeOperations, session.activeTurn) && !sending && !switching && !lifecycleBusy && !!text.trim()
+  const canSteer = projectAvailable && connected && synced && !!session.activeTurn && !session.pending.length && !steerDeliveryBlocked(session.sendBlocked, session.receipts, session.activeTurn, session.nativeOperations.some(operation => operation.method === 'review/start' && operation.state === 'accepted' && operation.turnId === session.activeTurn)) && !session.historyReloading && !steerOperationBlocked(session.nativeOperations, session.activeTurn) && !sending && !switching && !submitting.has(selected.current) && !!text.trim()
     && !attachmentQueue.files.length && !session.nativeCapabilities?.unsupportedMethods.includes('turn/steer') && (!steerDraft || steerDraft.threadId === session.thread?.id && steerDraft.turnId === session.activeTurn);
   async function steer() {
-    if (!canSteer || composing.current || nativeSubmitting.current) return;
+    if (!canSteer || composing.current || nativeSubmitting.current.has(selected.current)) return;
     const observedThread = session.thread!.id;
     const observedTurn = steerBinding.current?.turnId ?? session.activeTurn!;
     const current = useSession.getState();
     if (selected.current !== observedThread || current.thread?.id !== observedThread || current.activeTurn !== observedTurn) { setError('原运行已结束或切换，补充指令未发送。'); return; }
-    nativeSubmitting.current = true; setSending(true); setError('');
+    setSubmission(observedThread, true); setError('');
     bindSteerDraft({ threadId: observedThread, turnId: observedTurn });
     const submittedRevision = draftRevision.current;
     const operationId = crypto.randomUUID();
     try {
       await client.current!.request('turn/steer', { threadId: observedThread, cwd: workspace.current, expectedTurnId: observedTurn, text }, operationId);
       if (selected.current === observedThread && draftRevision.current === submittedRevision) writeDraft('');
-    } catch (value) { report(value); if (useSession.getState().nativeOperations.find(operation => operation.operationId === operationId)?.state !== 'rejected') setSynced(false); }
-    finally { nativeSubmitting.current = false; setSending(false); }
+    } catch (value) { if (selected.current !== observedThread) return; report(value); if (useSession.getState().nativeOperations.find(operation => operation.operationId === operationId)?.state !== 'rejected') setSynced(false); }
+    finally { setSubmission(observedThread, false); }
   }
   function submitComposer() { if (useSession.getState().activeTurn || steerBinding.current) void steer(); else void send(); }
   async function send() {
-    if (!canSend || composing.current || nativeSubmitting.current || steerBinding.current || useSession.getState().activeTurn) return;
-    nativeSubmitting.current = true; setSending(true); setError(''); follow.current = true;
+    if (!canSend || composing.current || nativeSubmitting.current.has(selected.current) || steerBinding.current || useSession.getState().activeTurn) return;
+    const submittedThread = selected.current;
+    setSubmission(submittedThread, true); setError(''); follow.current = true;
     const submittedRevision = draftRevision.current;
     const submittedSettings = useSession.getState().settings;
     const submittedKey = settingsKey;
-    const submittedThread = selected.current;
     const operationId = crypto.randomUUID();
     const submittedChoices: ComposerDraft = {};
     for (const key of ['model', 'effort', 'permissionMode'] as const) {
@@ -797,8 +897,17 @@ function App() {
       const readback = current.thread?.id === submittedThread ? current.settings : undefined;
       saveChoices(readback !== submittedSettings ? confirmedComposerDraft(acknowledged, readback) : acknowledged, submittedKey);
       if (draftRevision.current === submittedRevision && selected.current === submittedThread) writeDraft('');
-    } catch (value) { attachmentQueues.settled(attachmentQueue, operationId, value instanceof BridgeRpcError ? value.sendStatus ?? 'unknown' : 'unknown'); report(value); setSynced(false); }
-    finally { nativeSubmitting.current = false; setSending(false); }
+    } catch (value) { attachmentQueues.settled(attachmentQueue, operationId, value instanceof BridgeRpcError ? value.sendStatus ?? 'unknown' : 'unknown'); if (selected.current === submittedThread) { report(value); setSynced(false); } }
+    finally { setSubmission(submittedThread, false); }
+  }
+  async function olderItems(turnId: string, cursor: string) {
+    const id = selected.current, ticket = epoch.current;
+    setLoadingHistory(true);
+    try {
+      const page = await client.current!.request<HistoryItems>('bridge/historyItems', { threadId: id, turnId, cursor, historyRevision: session.historyRevision }, undefined, 12_000);
+      if (id === selected.current && ticket === epoch.current) useSession.getState().historyItems(page);
+    } catch (value) { if (ticket === epoch.current) report(value); }
+    finally { if (ticket === epoch.current) setLoadingHistory(false); }
   }
   async function older() {
     const id = selected.current;
@@ -806,7 +915,7 @@ function App() {
     const cursor = session.history!.nextCursor;
     setLoadingHistory(true); follow.current = false;
     try {
-      const value = await client.current!.request<Snapshot>('bridge/history', { threadId: id, cursor, historyRevision: session.historyRevision });
+      const value = await client.current!.request<Snapshot>('bridge/history', { threadId: id, cursor, bounded: true, historyRevision: session.historyRevision });
       if (selected.current !== id || epoch.current !== ticket) return;
       const top = scroller.current?.scrollTop ?? 0;
       const height = scroller.current?.scrollHeight ?? 0;
@@ -828,7 +937,7 @@ function App() {
   const viewingUsage = !inspected || inspected.kind === 'usage';
   const viewingArtifacts = inspected?.kind === 'artifacts';
   const title = session.thread?.name || session.thread?.preview.slice(0, 48) || '新会话';
-  const disabled = !connected || connecting || sending || approving || switching || lifecycleBusy;
+  const disabled = !connected;
   const targetThread = actionTarget && (threads.find(thread => thread.id === actionTarget.thread.id) ?? actionTarget.thread);
   const targetNative = targetThread?.id === session.thread?.id ? session.nativeOperations : backgroundNative.filter(operation => operation.threadId === targetThread?.id);
   const nativeActionBlocked = nativePending ? nativePending.state === 'unknown' ? '操作结果尚未确认，请查询状态，勿重复操作。' : '原生操作正在进行，请等待完成。' : '';
@@ -842,7 +951,7 @@ function App() {
   const nativeLatest = session.nativeOperations.find(operation => operation.state === 'unknown') ?? nativePending ?? [...session.nativeOperations].sort((a, b) => b.createdAt - a.createdAt)[0];
   const nativeLabels = { 'thread/name/set': '重命名', 'thread/fork': '分叉', 'thread/revert': '历史回退', 'turn/steer': '补充指令', 'review/start': '原生审阅', 'thread/compact/start': '上下文压缩' };
   const nativeStatusLabel = nativeLatest ? `${nativeLabels[nativeLatest.method]}${nativeLatest.state === 'running' || nativeLatest.state === 'accepted' ? '正在进行' : nativeLatest.state === 'unknown' ? '结果待确认，请查询状态，勿重复操作' : nativeLatest.state === 'rejected' ? '未完成' : '已完成'}` : '';
-  const connectionLabel = !connected ? '已断开' : synced ? '状态已查询' : '待查询状态';
+  const connectionLabel = !connected ? '已断开' : synced ? '状态已查询' : syncError && !syncing ? '查询失败' : '待查询状态';
   const sessionNavigation = <nav aria-label="原生会话" aria-busy={listing}>{threads.filter(thread => `${thread.name} ${thread.preview} ${thread.id}`.toLowerCase().includes(query.toLowerCase())).map(thread => {
         const current = thread.id === session.thread?.id;
         const status = current ? session.pending.length ? '待审批' : active ? '执行中' : '' : thread.status.type === 'active' ? thread.status.activeFlags.includes('waitingOnApproval') ? '待审批' : '执行中' : '';
@@ -870,7 +979,7 @@ function App() {
       <div className="nav-section-label desktop-session-label"><span>会话</span><button className="icon-button" aria-label="刷新列表" title="刷新列表" disabled={disabled || listing} onClick={() => void listThreads().catch(() => {})}><Icon name="refresh" size={14}/></button></div>
       <div className="session-view-tabs" ref={sessionTabs} role="group" aria-label="会话列表范围"><button aria-pressed={!archived} disabled={disabled} onClick={() => changeSessionView(false)}>会话</button><button aria-pressed={archived} disabled={disabled} onClick={() => changeSessionView(true)}><Icon name="archive" size={14}/>已归档</button></div>
       <label className="search-box"><Icon name="search" size={16}/><input aria-label="搜索会话" placeholder={archived ? '搜索已归档会话…' : '搜索会话…'} value={query} onChange={event => setQuery(event.target.value)}/></label>
-      <button className="new-session" onClick={() => void createThread()} disabled={disabled || !projectAvailable}><Icon name="plus"/>新建会话</button>
+      <button className="new-session" onClick={() => void createThread()} disabled={disabled || switching || !projectAvailable || submitting.has(`new:${workspace.current}`)}><Icon name="plus"/>新建会话</button>
       {lifecycleNotice && <p className="session-lifecycle-notice" role="status" aria-label="会话操作状态">{lifecycleNotice}</p>}
       {mobile ? <div className="mobile-project-tree">{projects.projects.map(project => {
         const current = config?.cwd === project.cwd;
@@ -903,10 +1012,17 @@ function App() {
           <button role="menuitem" onClick={() => { setMenu(false); setSettings(true); }}><Icon name="settings"/>设置</button>
         </div>}
       </header>
+      {connected && !synced && <div className="disconnect-banner" role="status">{syncError ? '会话状态查询失败，可重试或选择其他会话。' : '正在查询会话状态…'}<button disabled={syncing} onClick={() => void (workspace.current ? refresh() : connect()).catch(report)}>重新查询</button></div>}
       {!connected && <div className="disconnect-banner">连接已断开，主机任务不会因此停止。<button disabled={connecting || sending || approving} onClick={() => void connect().catch(report)}>重新连接</button></div>}
+      {connected && nativeState === 'timeout' && <p className="history-warning" role="status">Bridge 已连接，Codex 暂未响应；当前显示上次查询状态。<button onClick={() => void refresh().catch(report)}>重新查询状态</button></p>}
       <div className="conversation-scroll" ref={scroller} onScroll={() => { if (readingRestore.current !== null) return; const element = scroller.current!; follow.current = element.scrollHeight - element.scrollTop - element.clientHeight < 60; setAtBottom(follow.current); rememberScroll(); }}>
         <div data-theme-slot="content" className="conversation-content" ref={scrollContent}>
           {theme.notice && !settings && <p className="error" role="alert">{theme.notice}</p>}
+          {loadingHistory && <p role="status">正在加载历史，其他会话仍可使用。</p>}
+          {historyError && <p className="error" role="alert">历史加载失败：{historyError} <button disabled={loadingHistory} onClick={() => void loadHistory(selected.current, epoch.current)}>重新加载历史</button></p>}
+          {catalogError && <p className="history-warning">模型目录读取失败，当前原生设置仍有效。<button onClick={() => void loadModels()}>重新读取模型目录</button></p>}
+          {Object.entries(session.history?.itemCursors ?? {}).map(([turnId, cursor]) => <button className="history-more" key={turnId} disabled={loadingHistory || !connected} onClick={() => void olderItems(turnId, cursor)}>加载轮次更早内容</button>)}
+          {!!session.history?.details?.length && <p className="history-warning">较长内容已提供预览，可按需分段读取。{session.history.details.map((detail, index) => <button key={`${detail.turnId}:${detail.itemId}`} onClick={() => { setInspected({ kind: 'historyText', detail }); setLayout(value => ({ ...value, inspector: true })); }}>读取较长内容（{index + 1}）</button>)}</p>}
           {session.history?.nextCursor && <button className="history-more" disabled={loadingHistory || !connected} onClick={() => void older()}>{loadingHistory ? '正在加载…' : '加载更早历史'}</button>}
           {session.sendBlocked && (session.receipts.some(receipt => receipt.status === 'unknown') || !active && !nativePending) && <p role="alert" className="error">有发送尚未确认终态，禁止重发。请查询原生状态；结果仍未知时使用新会话。</p>}
           {config && !projectAvailable && <p className="error" role="alert">项目已移除或目录失效。请浏览主机文件夹并重新添加；仍可停止当前执行或拒绝审批。</p>}
@@ -920,7 +1036,7 @@ function App() {
                 <div className="brand-rule" aria-hidden="true"/><h2>{brandCopy[emptyBrand]}</h2>
                 {emptyBrand === 'noProject'
                   ? <button disabled={disabled} onClick={() => setBrowsing(true)}><Icon name="folder"/>选择项目</button>
-                  : !session.thread && <button className="primary" disabled={disabled} onClick={() => void createThread()}><Icon name="plus"/>{brandCopy.create}</button>}
+                  : !session.thread && <button className="primary" disabled={disabled || switching || submitting.has(`new:${workspace.current}`)} onClick={() => void createThread()}><Icon name="plus"/>{brandCopy.create}</button>}
               </div>
             </div>}
             {groupTurns(items, session.turns).map(group => <TurnProcess key={`${session.thread?.id}:${group.id}`} {...group} threadId={session.thread?.id}
@@ -932,10 +1048,10 @@ function App() {
           </div>
           <section aria-label="待审批" className="approvals">
             {session.pending.map(request => <NativeRequest key={`${typeof request.id}:${request.id}:${request.bridgeToken ?? ''}`} request={request} busy={approving} canReply={connected} canAccept={synced && projectAvailable} reply={value => {
-                setApproving(true);
+                setApprovalThreads(ids => new Set([...ids, request.params.threadId]));
                 void client.current!.request('bridge/approve', { threadId: request.params.threadId, requestId: request.id, bridgeToken: request.bridgeToken, ...value })
                   .then(() => useSession.setState(s => ({ pending: s.pending.filter(p => p.id !== request.id || p.bridgeToken !== request.bridgeToken) })))
-                  .catch(report).finally(() => setApproving(false));
+                  .catch(value => { if (selected.current === request.params.threadId) report(value); }).finally(() => setApprovalThreads(ids => { const next = new Set(ids); next.delete(request.params.threadId); return next; }));
               }}/>)}
           </section>
         </div>
@@ -951,7 +1067,7 @@ function App() {
           <button type="button" className="composer-control project-control" aria-label={`项目：${projectLabel}`} title={projectLabel} aria-haspopup="dialog" aria-expanded={composerMenu === 'project'} disabled={disabled} onClick={event => toggleComposerMenu('project', event.currentTarget)}><Icon name="folder"/><span className="composer-value">{projectLabel}</span><Icon name="chevron" size={12}/></button>
           <button type="button" className="composer-control model-control" aria-label={`模型与思考强度：${modelLabel} · ${effort || '未读取'}`} title={`${modelLabel} · ${effort || '未读取'}`} aria-haspopup="dialog" aria-expanded={composerMenu === 'model'} data-state={choices.model || choices.effort ? 'pending' : 'native'} disabled={disabled || active || !synced || !projectAvailable || session.sendBlocked} onClick={event => toggleComposerMenu('model', event.currentTarget)}><Icon name="model"/><span className="composer-value">{modelLabel}</span>{effort && <span className="effort-badge">{effort}</span>}<Icon name="chevron" size={12}/></button>
         </div>
-        <AttachmentTray queue={attachmentQueue} queues={attachmentQueues} locked={sending || switching || lifecycleBusy}/>
+        <AttachmentTray queue={attachmentQueue} queues={attachmentQueues} locked={sending || switching || submitting.has(selected.current)}/>
         {!!attachmentQueue.files.length && <p className="attachment-hint">最多 6 个 · 单个 20 MB · 合计 50 MB。文档通过主机工具读取。{active ? '附件保留到下一轮发送。' : ''}</p>}
         <div className="composer-input"><label className="sr-only" htmlFor="message">消息</label><textarea ref={composer} id="message" enterKeyHint="enter" onCompositionStart={() => { composing.current = true; }} onCompositionEnd={() => { composing.current = false; }} value={text} onChange={event => writeDraft(event.target.value)} placeholder={brandCopy.placeholder} maxLength={16000} rows={2} onKeyDown={event => { if (event.key === 'Enter' && (event.ctrlKey || event.metaKey) && !event.nativeEvent.isComposing && !composing.current && event.keyCode !== 229) { event.preventDefault(); submitComposer(); } }}/><button className="icon-button expand-composer" type="button" aria-label={expanded ? '收起输入框' : '展开输入框'} title="展开输入框" onClick={() => setExpanded(value => !value)}><Icon name="expand" size={15}/></button></div>
         {steerDraft && <div className="steer-draft-status" role="status">{active && session.activeTurn === steerDraft.turnId ? '补充到当前运行，不开启新一轮。' : '原运行已结束或切换，草稿已保留。'}{!active && <button type="button" onClick={() => bindSteerDraft(undefined)}>作为新消息</button>}</div>}
@@ -1001,7 +1117,7 @@ function App() {
         <button className="icon-button" aria-label="关闭面板" title="关闭面板" onClick={() => setLayout(l => ({ ...l, inspector: false }))}><Icon name="close"/></button>
       </header>
       <div className="inspector-scroll">
-        {viewingAgent ? inspectedAgent ? <AgentDetailPanel key={`${session.thread?.id}:${inspectedAgent.id}`} agent={inspectedAgent} client={client.current} root={session.thread?.id ?? ''} cwd={session.thread?.cwd ?? ''} connected={connected} synced={synced && !switching} onClose={() => setLayout(l => ({ ...l, inspector: false }))} showDiff={openDiff}/> : <p>当前父任务中没有可用的子代理记录。</p> : viewingArtifacts ? <Suspense fallback={<p>正在加载项目成果…</p>}><Artifacts key={`${config?.cwd}:${session.thread?.id}`} scope={{ cwd: config?.cwd ?? '', threadId: session.thread?.id ?? '' }} enabled={connected && synced && !switching && !!session.thread && session.thread.cwd === config?.cwd && projectAvailable}/></Suspense> : viewingUsage ? <SessionUsage thread={session.thread && !switching ? usage.threads[usageKey(session.thread.cwd, session.thread.id)] : undefined} selected={!!session.thread && !switching} connected={usage.connected} refreshing={usageRefreshing} onRefresh={() => void refreshUsage()}/> : inspected?.kind === 'diff' ? <><div className="inspector-file"><Icon name="file"/><h2 title={inspected.path}>{displayPath(inspected.path, session.thread?.cwd)}</h2></div><small className="inspector-caption">Codex 原生差异 · 只读</small><Suspense fallback={<p>正在加载 Diff…</p>}><Diff text={inspected.diff} label={`Diff ${inspected.path}`}/></Suspense></> : inspectedItem ? <><div className="inspector-file"><Icon name="terminal"/><h2>{inspectedItem.type === 'commandExecution' ? '命令输出' : '工具详情'}</h2></div><ItemDetail item={inspectedItem}/></> : <div className="inspector-empty"><OracleEye/><h2>{brandCopy.inspectorTitle}</h2><p>{brandCopy.inspectorDescription}</p></div>}
+        {inspected?.kind === 'historyText' ? <HistoryText key={`${session.thread?.id}:${inspected.detail.turnId}:${inspected.detail.itemId}`} client={client.current} threadId={session.thread?.id ?? ''} revision={session.historyRevision} detail={inspected.detail}/> : viewingAgent ? inspectedAgent ? <AgentDetailPanel key={`${session.thread?.id}:${inspectedAgent.id}`} agent={inspectedAgent} client={client.current} root={session.thread?.id ?? ''} cwd={session.thread?.cwd ?? ''} connected={connected} synced={synced && !switching} onClose={() => setLayout(l => ({ ...l, inspector: false }))} showDiff={openDiff}/> : <p>当前父任务中没有可用的子代理记录。</p> : viewingArtifacts ? <Suspense fallback={<p>正在加载项目成果…</p>}><Artifacts key={`${config?.cwd}:${session.thread?.id}`} scope={{ cwd: config?.cwd ?? '', threadId: session.thread?.id ?? '' }} enabled={connected && synced && !switching && !!session.thread && session.thread.cwd === config?.cwd && projectAvailable}/></Suspense> : viewingUsage ? <SessionUsage thread={session.thread && !switching ? usage.threads[usageKey(session.thread.cwd, session.thread.id)] : undefined} selected={!!session.thread && !switching} connected={usage.connected} refreshing={usageRefreshing} onRefresh={() => void refreshUsage()}/> : inspected?.kind === 'diff' ? <><div className="inspector-file"><Icon name="file"/><h2 title={inspected.path}>{displayPath(inspected.path, session.thread?.cwd)}</h2></div><small className="inspector-caption">Codex 原生差异 · 只读</small><Suspense fallback={<p>正在加载 Diff…</p>}><Diff text={inspected.diff} label={`Diff ${inspected.path}`}/></Suspense></> : inspectedItem ? <><div className="inspector-file"><Icon name="terminal"/><h2>{inspectedItem.type === 'commandExecution' ? '命令输出' : '工具详情'}</h2></div><ItemDetail item={inspectedItem}/></> : <div className="inspector-empty"><OracleEye/><h2>{brandCopy.inspectorTitle}</h2><p>{brandCopy.inspectorDescription}</p></div>}
         {!viewingAgent && !viewingUsage && !viewingArtifacts && !!files.length && <details className="inspector-list" open><summary>变更文件 <span>{files.length}</span></summary>{files.map((file, index) => <button key={`${file.path}:${index}`} onClick={() => openDiff(file.path, file.diff)} className={inspected?.kind === 'diff' && inspected.path === file.path ? 'selected' : ''}><Icon name="file" size={14}/><span title={file.path}>{displayPath(file.path, session.thread?.cwd)}</span></button>)}</details>}
         {!viewingAgent && !viewingUsage && !viewingArtifacts && !!tools.length && <details className="inspector-list"><summary>工具记录 <span>{tools.length}</span></summary>{tools.map(view => <button key={`${view.turnId}:${view.item.id}`} onClick={() => openItem(view.item, view.turnId)}><Icon name="terminal" size={14}/><span>{view.item.type === 'commandExecution' ? view.item.command : view.item.type}</span></button>)}</details>}
       </div>

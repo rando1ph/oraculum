@@ -39,7 +39,7 @@ it('keeps browsing and registry behind paired sockets, broadcasts changes and de
     expect((await request('thread/start', { cwd: added })).error.message).toContain('registered');
     const changed = once(peer, 'message');
     expect((await request('bridge/registerProject', { path: added })).result.cwd).toBe(added);
-    expect(JSON.parse(String((await changed)[0]))).toEqual({ type: 'projectsChanged' });
+    expect(JSON.parse(String((await changed)[0]))).toEqual({ type: 'projectsChanged', streamId: expect.any(String), seq: 1 });
     expect((await request('bridge/projects', {})).result.projects).toContainEqual({ name: 'existing', cwd: added, available: true });
     expect((await request('bridge/registerProject', { path: '/etc' })).error).toBeTruthy();
     await request('bridge/unregisterProject', { cwd: added });
