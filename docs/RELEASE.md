@@ -1,5 +1,11 @@
 # Release build and verification
 
+Bridge/Desktop now use the independent [component candidate workflow](COMPONENT_RELEASES.md)
+and [phase B installation handoff](PHASE_B_SPLIT_PACKAGES.md). Their versions come
+from `release.json.components`; Desktop no longer embeds Bridge or server Node.
+The bundled runtime instructions below describe the historical 0.1.x release.
+The Android section continues to use the unchanged top-level version/code.
+
 Phase 4 authorization and product decisions remain in the Notion Project/Task.
 Building does not authorize installation, service registration/start, migration,
 Android replacement, or changes to other services.
