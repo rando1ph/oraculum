@@ -1,0 +1,88 @@
+name: Independent DEB release candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      component:
+        description: Component to build and submit for review
+        required: true
+        type: choice
+        options:
+          - bridge
+          - desktop
+
+# This workflow can upload review artifacts, but cannot create tags or releases.
+permissions:
+  contents: read
+
+concurrency:
+  group: component-candidate-${{ inputs.component }}
+  cancel-in-progress: false
+
+jobs:
+  candidate:
+    if: github.repository == 'rando1ph/oraculum' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      COMPONENT: ${{ inputs.component }}
+    steps:
+      - name: Check out main without persisted credentials
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install locked pnpm
+        uses: pnpm/action-setup@9fd676a19091d4595eefd76e4bd31c97133911f1 # v4.2.0
+        with:
+          version: 10.34.7
+          run_install: false
+      - name: Install Node 24
+        uses: actions/setup-node@395ad3262231945c25e8478fd5baf05154b1d79f # v6.1.0
+        with:
+          node-version: 24.21.0
+          cache: pnpm
+      - name: Verify selected clean source
+        run: |
+          test "$GITHUB_REF" = refs/heads/main
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git rev-parse origin/main)" = "$GITHUB_SHA"
+          node scripts/release-components.mjs check-source
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Generate the reviewed build protocol with an isolated CLI
+        run: |
+          NPM_CONFIG_USERCONFIG=/dev/null NPM_CONFIG_CACHE="$PWD/.local/cache/npm" npm install --prefix .local/codegen --no-save --package-lock=false --ignore-scripts --no-audit --no-fund @openai/codex@0.160.0
+          mkdir -p .local/codegen-home
+          CODEX_HOME="$PWD/.local/codegen-home" ORACULUM_CODEGEN_CODEX_BIN="$PWD/.local/codegen/node_modules/.bin/codex" pnpm protocol
+      - name: Check source and unit contracts
+        run: |
+          pnpm check
+          pnpm test
+      - name: Build selected component only
+        run: |
+          case "$COMPONENT" in
+            bridge) pnpm build:bridge:deb ;;
+            desktop) pnpm build:desktop:deb ;;
+            *) exit 1 ;;
+          esac
+      - name: Verify package and prepare review candidate
+        run: |
+          DEB="$(node scripts/release-components.mjs deb-path "$COMPONENT")"
+          case "$COMPONENT" in
+            bridge) node scripts/verify-bridge-deb.mjs "$DEB" ;;
+            desktop) node scripts/verify-deb.mjs "$DEB" ;;
+            *) exit 1 ;;
+          esac
+          node scripts/create-component-release.mjs --component "$COMPONENT" --deb "$DEB" --output "dist/releases/$COMPONENT"
+          cd "dist/releases/$COMPONENT"
+          sha256sum --check SHA256SUMS
+      - name: Upload candidate for independent review
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: ${{ inputs.component }}-candidate-${{ github.sha }}
+          path: dist/releases/${{ inputs.component }}/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
