@@ -6,7 +6,7 @@ umask 077
 cd "$(dirname "$0")/.."
 unset ORACULUM_RELEASE_UNSIGNED ORACULUM_RELEASE_KEYSTORE ORACULUM_RELEASE_KEY_ALIAS ORACULUM_RELEASE_STORE_PASSWORD ORACULUM_RELEASE_KEY_PASSWORD ORACULUM_RELEASE_CERT_SHA256
 if [[ $# -ne 1 || "$1" != --unsigned ]]; then
-  printf 'Use --unsigned for build preflight. For a signed Release, run locally: python3 scripts/android-signing.py release\n' >&2
+  printf 'Use --unsigned for build preflight. For automatic Release signing: python3 scripts/android-signing.py release --auto (omit --auto for local interactive signing)\n' >&2
   exit 2
 fi
 artifact=apps/android/app/build/outputs/apk/release/app-release-unsigned.apk

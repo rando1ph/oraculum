@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Local-terminal-only key custody and release launcher. Never run via agent PTY."""
+"""Release signing: local interactive custody, or --auto via Secret Service."""
 import argparse
 import hashlib
 import json
@@ -13,6 +13,7 @@ import tempfile
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
+ARTIFACT_DIR = ROOT / "dist/android"
 KEY_DIR = Path.home() / ".local/share/oraculum-signing"
 CONFIG = KEY_DIR / "release-signing.json"
 TOOLS = Path(os.environ.get("ORACULUM_TOOLS", str(Path.home() / ".local/share/oraculum-tools")))
@@ -21,7 +22,7 @@ ALIAS = "oraculum-release"
 
 def tool_environment():
     environment = os.environ.copy()
-    # Only the short-lived signing tool reads passwords from the real console.
+    # Passwords go only to apksigner's console or stdin, never Gradle.
     # Remove inherited shell/JVM hooks and obsolete Gradle signing inputs.
     for name in list(environment):
         if name.startswith("ORACULUM_RELEASE_") or name in {"BASH_ENV", "ENV", "SHELLOPTS", "BASHOPTS", "PS4", "JAVA_TOOL_OPTIONS", "JDK_JAVA_OPTIONS", "_JAVA_OPTIONS", "JAVA_OPTS", "GRADLE_OPTS"}:
@@ -132,11 +133,45 @@ def initialize(resume=False):
     print("Release key and verified backup prepared. No app was installed.")
 
 
-def release(apk=None):
+def secret_password(kind, environment):
+    # secret-tool writes the exact secret (no trailing newline when stdout is a
+    # pipe). Never strip whitespace or echo tool diagnostics containing secrets.
+    try:
+        result = subprocess.run(["secret-tool", "lookup", "app", "oraculum", "type", kind],
+                                stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                                env=environment, timeout=15, check=False)
+    except (OSError, subprocess.TimeoutExpired):
+        raise RuntimeError(f"Secret Service lookup failed for {kind}; no signing performed") from None
+    require(result.returncode == 0 and result.stdout,
+            f"Secret Service credential unavailable for {kind}; no signing performed")
+    require(not any(c in result.stdout for c in (b"\n", b"\r", b"\0")),
+            f"Secret Service credential for {kind} must be a nonempty single line")
+    return result.stdout
+
+
+def sign_apk(command, environment, auto):
+    if not auto:
+        # Preserve Console.readPassword in the user's real terminal.
+        subprocess.run(command, env=environment, check=True)
+        return
+    passwords = secret_password("jks-store", environment) + b"\n" + secret_password("jks-key", environment) + b"\n"
+    try:
+        # Only the literal input format appears in argv. The two passwords stay
+        # in memory and an anonymous stdin pipe; discard all signer diagnostics.
+        subprocess.run(command[:-1] + ["--ks-pass", "stdin", "--key-pass", "stdin"] + command[-1:],
+                       input=passwords, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                       env=environment, timeout=120, check=True)
+    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        raise RuntimeError("Automatic apksigner failed; no release published (diagnostics suppressed to protect credentials)") from None
+    finally:
+        del passwords
+
+
+def release(apk=None, auto=False):
     config = validate_config()
     require(not subprocess.check_output(["git", "status", "--porcelain"], cwd=ROOT, text=True).strip(), "Commit the reviewed source before producing the release artifact")
     metadata = json.loads((ROOT / "release.json").read_text())
-    target = ROOT / "dist/android" / f"oraculum-{metadata['version']}-{metadata['androidVersionCode']}.apk"
+    target = ARTIFACT_DIR / f"oraculum-{metadata['version']}-{metadata['androidVersionCode']}.apk"
     environment = tool_environment()
     if apk is None and not os.path.lexists(target):
         subprocess.run(["bash", "scripts/android-release-build.sh", "--unsigned"], cwd=ROOT, env=environment, check=True)
@@ -156,7 +191,7 @@ def release(apk=None):
         require(source_git == current_git, "Existing version belongs to another source commit; use the reviewed --apk or increment the release version")
     if os.path.lexists(target):
         require(target.is_file() and not target.is_symlink(), "Existing artifact path preserved; inspect it locally")
-        subprocess.run(["node", "scripts/verify-apk.mjs", str(target), "--expected-cert", config["certificateSha256"]], cwd=ROOT, env=tool_environment(), check=True)
+        subprocess.run(["node", "scripts/verify-apk.mjs", str(target), "--expected-cert", config["certificateSha256"], "--expected-git", source_git], cwd=ROOT, env=environment, check=True)
         with zipfile.ZipFile(target) as archive:
             signed_identity = json.loads(archive.read("assets/oraculum-build.json"))
         require(signed_identity == embedded, "Existing signed version belongs to a different build; preserved without overwriting")
@@ -167,40 +202,46 @@ def release(apk=None):
         unsigned = Path(temporary) / "input-unsigned.apk"
         shutil.copyfile(source, unsigned)
         # Check the exact private copy being signed; no Gradle rebuild with --apk.
-        subprocess.run(["node", "scripts/verify-apk.mjs", str(unsigned), "--unsigned"], cwd=ROOT, env=environment, check=True)
+        subprocess.run(["node", "scripts/verify-apk.mjs", str(unsigned), "--unsigned", "--expected-git", source_git], cwd=ROOT, env=environment, check=True)
         with zipfile.ZipFile(unsigned) as archive:
             require(json.loads(archive.read("assets/oraculum-build.json")) == embedded, "Unsigned input changed during preparation")
         candidate = Path(temporary) / target.name
-        # No password flags/env/files: apksigner defaults to Console.readPassword.
         # Explicit --out leaves the aligned unsigned input unchanged.
-        subprocess.run([str(TOOLS / "android-sdk/build-tools/35.0.0/apksigner"), "sign",
+        sign_apk([str(TOOLS / "android-sdk/build-tools/35.0.0/apksigner"), "sign",
                         "--ks", config["keystore"], "--ks-key-alias", config["alias"], "--ks-type", "JKS",
                         "--v4-signing-enabled", "false", "--out", str(candidate), str(unsigned)],
-                       env=environment, check=True)
-        subprocess.run(["node", "scripts/verify-apk.mjs", str(candidate), "--expected-cert", config["certificateSha256"]], cwd=ROOT, env=environment, check=True)
+                 environment, auto)
+        subprocess.run(["node", "scripts/verify-apk.mjs", str(candidate), "--expected-cert", config["certificateSha256"], "--expected-git", source_git], cwd=ROOT, env=environment, check=True)
         with candidate.open("rb") as completed:
             os.fsync(completed.fileno())
         os.link(candidate, target)  # publish a complete verified artifact; never overwrite
-    subprocess.run(["node", "scripts/verify-apk.mjs", str(target), "--expected-cert", config["certificateSha256"]], cwd=ROOT, env=environment, check=True)
+    subprocess.run(["node", "scripts/verify-apk.mjs", str(target), "--expected-cert", config["certificateSha256"], "--expected-git", source_git], cwd=ROOT, env=environment, check=True)
     print(f"Signed release APK: {target}")
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("command", choices=["init", "resume", "release", "verify-backup"])
+    parser.add_argument("--apk", type=Path, help="Sign an already reviewed unsigned Release APK without rebuilding (release only)")
+    parser.add_argument("--auto", action="store_true", help="Read existing Secret Service credentials and sign without a TTY (release only)")
+    args = parser.parse_args(argv)
+    require(args.apk is None or args.command == "release", "--apk is only valid with release")
+    require(not args.auto or args.command == "release", "--auto is only valid with release")
+    if not args.auto:
+        require(sys.stdin.isatty() and sys.stdout.isatty(), "Run in your own local terminal, or use release --auto for Secret Service signing")
+    os.umask(0o077)
+    if args.command == "release":
+        release(args.apk, auto=args.auto)
+    elif args.command == "verify-backup":
+        validate_config(check_backup=True)
+        print("Primary and offline backup byte comparison passed. No key or configuration changed.")
+    else:
+        initialize(resume=args.command == "resume")
 
 
 if __name__ == "__main__":
     try:
-        parser = argparse.ArgumentParser(description=__doc__)
-        parser.add_argument("command", choices=["init", "resume", "release", "verify-backup"])
-        parser.add_argument("--apk", type=Path, help="Sign an already reviewed unsigned Release APK without rebuilding (release only)")
-        args = parser.parse_args()
-        require(args.apk is None or args.command == "release", "--apk is only valid with release")
-        require(sys.stdin.isatty() and sys.stdout.isatty(), "Run in your own local terminal, never a captured agent terminal or pipe")
-        os.umask(0o077)
-        if args.command == "release":
-            release(args.apk)
-        elif args.command == "verify-backup":
-            validate_config(check_backup=True)
-            print("Primary and offline backup byte comparison passed. No key or configuration changed.")
-        else:
-            initialize(resume=args.command == "resume")
+        main()
     except (RuntimeError, OSError, ValueError, KeyError, zipfile.BadZipFile, subprocess.CalledProcessError, KeyboardInterrupt, EOFError, StopIteration) as error:
         # Do not print subprocess argv/env, exception data, or private key contents.
         print(str(error) if isinstance(error, RuntimeError) else "Local signing stopped; existing keys are preserved. Inspect the terminal error above.", file=sys.stderr)

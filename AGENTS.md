@@ -29,6 +29,12 @@ https://app.notion.com/p/3ff5421e690b81bdae14c0675f0b3acf
 - After substantial work, record changes, test results, limitations, and next steps in the appropriate Notion Task.
 - Obtain approval before changing frozen architectural decisions.
 
+## Android Release Signing
+
+- A user instruction to “签名 APK” or “构建并发布 APK” authorizes the requested signing/release work. Use `python3 scripts/android-signing.py release --auto` (with `--apk` for a reviewed existing unsigned build); do not ask again for passwords, hashes, authorization confirmations, one-time codes, or manual approval.
+- Read the existing Ubuntu Secret Service items through the launcher; passwords go only to apksigner stdin. Preserve the original JKS, certificate, offline backup, existing APKs and all identity/integrity checks. Compute and verify public hashes autonomously; never print secrets or pass them through arguments, environment variables or plaintext files.
+- Keep the interactive mode available. Missing credentials or failed verification must stop safely with a concrete report. Signing/release authorization does not authorize installation, state migration or production service/network changes.
+
 ## Git Workflow
 
 - Develop only on `main` in `~/Projects/Oraculum`. Do not create branches or worktrees per Phase or task. Fetch and verify `origin/main` before starting; use fast-forward-only updates and stop on divergence.

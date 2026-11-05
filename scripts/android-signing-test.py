@@ -5,6 +5,7 @@ from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import patch
+import subprocess
 import zipfile
 import sys
 
@@ -31,7 +32,8 @@ class SigningTests(unittest.TestCase):
                        "backupVerified": True}
         self.config_file = self.keys / "release-signing.json"
         self.write_config()
-        self.overrides = patch.multiple(signing, KEY_DIR=self.keys, CONFIG=self.config_file)
+        self.overrides = patch.multiple(signing, KEY_DIR=self.keys, CONFIG=self.config_file,
+                                        ARTIFACT_DIR=self.root / "repo/dist/android")
         self.overrides.start()
 
     def tearDown(self):
@@ -154,6 +156,174 @@ class SigningTests(unittest.TestCase):
                 signing.release(source)
         self.assertFalse(any(command[1:2] == ["sign"] for command in commands))
         self.assertFalse((repository / "dist/android/oraculum-0.1.2-4.apk").exists())
+
+    def prepare_release(self):
+        repository = self.root / "repo"
+        repository.mkdir()
+        (repository / "release.json").write_text(json.dumps({"version": "0.1.2", "androidVersionCode": 4}))
+        source = repository / "reviewed-unsigned.apk"
+        with zipfile.ZipFile(source, "w") as archive:
+            archive.writestr("assets/oraculum-build.json", json.dumps({
+                "sourceGit": "b" * 40, "sourceDirty": False, "version": "0.1.2", "versionCode": 4}))
+        return repository, source
+
+    def test_auto_release_uses_only_stdin_and_preserves_existing_output(self):
+        repository, source = self.prepare_release()
+        original = source.read_bytes()
+        key_bytes = self.primary.read_bytes()
+        commands = []
+        # Distinct fabricated passwords, including meaningful whitespace.
+        credentials = {"jks-store": b" fake store ", "jks-key": b"different fake key"}
+        def run(command, **kwargs):
+            commands.append((command, kwargs))
+            if command[0] == "secret-tool":
+                self.assertEqual(command[:-1], ["secret-tool", "lookup", "app", "oraculum", "type"])
+                self.assertEqual(kwargs["stdin"], subprocess.DEVNULL)
+                self.assertEqual(kwargs["stdout"], subprocess.PIPE)
+                self.assertEqual(kwargs["stderr"], subprocess.DEVNULL)
+                return subprocess.CompletedProcess(command, 0, credentials[command[-1]])
+            if command[1:2] == ["sign"]:
+                self.assertEqual(kwargs["input"], b" fake store \ndifferent fake key\n")
+                self.assertEqual(command[command.index("--ks-pass") + 1], "stdin")
+                self.assertEqual(command[command.index("--key-pass") + 1], "stdin")
+                self.assertEqual(kwargs["stdout"], subprocess.DEVNULL)
+                self.assertEqual(kwargs["stderr"], subprocess.DEVNULL)
+                Path(command[command.index("--out") + 1]).write_bytes(Path(command[-1]).read_bytes())
+            else:
+                self.assertNotIn("input", kwargs)
+            for secret in credentials.values():
+                self.assertNotIn(secret.decode(), repr(command))
+                self.assertNotIn(secret.decode(), repr(kwargs.get("env", {})))
+        with patch.object(signing, "ROOT", repository), patch.object(signing.subprocess, "run", side_effect=run), \
+                patch.object(signing.subprocess, "check_output", return_value=""):
+            signing.release(source, auto=True)
+            target = signing.ARTIFACT_DIR / "oraculum-0.1.2-4.apk"
+            before = target.stat()
+            signing.release(source, auto=True)
+            self.assertEqual(target.stat().st_ino, before.st_ino)
+            self.assertEqual(target.stat().st_mtime_ns, before.st_mtime_ns)
+        self.assertEqual(source.read_bytes(), original)
+        self.assertEqual(self.primary.read_bytes(), key_bytes)
+        self.assertFalse(self.backup.parent.exists())
+        self.assertEqual(sum(cmd[0] == "secret-tool" for cmd, _ in commands), 2)
+        self.assertEqual(sum(cmd[1:2] == ["sign"] for cmd, _ in commands), 1)
+        self.assertFalse(any(cmd[0] == "bash" for cmd, _ in commands))
+        for command, _ in commands:
+            if command[0] == "node":
+                self.assertIn("--expected-git", command)
+                self.assertTrue("--unsigned" in command or "--expected-cert" in command)
+
+    def test_secret_lookup_fails_closed_without_echoing_credentials(self):
+        command = ["secret-tool", "lookup", "app", "oraculum", "type", "jks-store"]
+        failures = [
+            subprocess.CompletedProcess(command, 1, b"fake sensitive diagnostic"),
+            FileNotFoundError("fake sensitive diagnostic"),
+            subprocess.TimeoutExpired(command, 15, output=b"fake sensitive diagnostic"),
+        ]
+        for failure in failures:
+            with self.subTest(failure=type(failure).__name__):
+                kwargs = {"side_effect": failure} if isinstance(failure, Exception) else {"return_value": failure}
+                with patch.object(signing.subprocess, "run", **kwargs):
+                    with self.assertRaises(RuntimeError) as caught:
+                        signing.secret_password("jks-store", {})
+                self.assertNotIn("sensitive", str(caught.exception))
+
+    def test_empty_or_multiline_secret_is_rejected_without_normalization(self):
+        for secret in [b"", b"line\n", b"line\r", b"line\0", b"one\ntwo"]:
+            with self.subTest(secret=secret), patch.object(signing.subprocess, "run",
+                    return_value=subprocess.CompletedProcess([], 0, secret)):
+                with self.assertRaises(RuntimeError):
+                    signing.secret_password("jks-key", {})
+
+    def test_auto_failure_does_not_publish_or_preserve_partial_candidate(self):
+        for stage in ["lookup", "sign", "certificate"]:
+            with self.subTest(stage=stage):
+                repository = self.root / "repo"
+                if repository.exists():
+                    signing.shutil.rmtree(repository)
+                repository, source = self.prepare_release()
+                def run(command, **kwargs):
+                    if command[0] == "secret-tool":
+                        # A missing second secret must prevent apksigner entirely.
+                        if stage == "lookup" and command[-1] == "jks-key":
+                            return subprocess.CompletedProcess(command, 1, b"")
+                        return subprocess.CompletedProcess(command, 0, b"fake-test-password")
+                    if command[1:2] == ["sign"]:
+                        self.assertNotEqual(stage, "lookup")
+                        Path(command[command.index("--out") + 1]).write_bytes(source.read_bytes())
+                        if stage == "sign":
+                            raise subprocess.CalledProcessError(1, command, stderr=b"fake-test-password")
+                    if stage == "certificate" and "--expected-cert" in command:
+                        raise subprocess.CalledProcessError(1, command)
+                with patch.object(signing, "ROOT", repository), patch.object(signing.subprocess, "run", side_effect=run), \
+                        patch.object(signing.subprocess, "check_output", return_value=""):
+                    with self.assertRaises((RuntimeError, subprocess.CalledProcessError)) as caught:
+                        signing.release(source, auto=True)
+                self.assertNotIn("fake-test-password", str(caught.exception))
+                self.assertEqual(list(signing.ARTIFACT_DIR.iterdir()), [])
+
+    def test_auto_cli_does_not_require_tty_or_ask_for_confirmation(self):
+        with patch.object(signing.sys.stdin, "isatty", return_value=False), \
+                patch.object(signing.sys.stdout, "isatty", return_value=False), \
+                patch.object(signing, "release") as release, patch("builtins.input", side_effect=AssertionError("prompt")):
+            signing.main(["release", "--auto", "--apk", "/reviewed.apk"])
+            release.assert_called_once_with(Path("/reviewed.apk"), auto=True)
+
+    def test_interactive_cli_still_requires_tty(self):
+        with patch.object(signing.sys.stdin, "isatty", return_value=False), patch.object(signing, "release") as release:
+            with self.assertRaisesRegex(RuntimeError, "terminal"):
+                signing.main(["release"])
+            release.assert_not_called()
+        with patch.object(signing.sys.stdin, "isatty", return_value=True), \
+                patch.object(signing.sys.stdout, "isatty", return_value=True), patch.object(signing, "release") as release:
+            signing.main(["release"])
+            release.assert_called_once_with(None, auto=False)
+
+    def test_auto_is_only_valid_for_release(self):
+        for command in ["init", "resume", "verify-backup"]:
+            with self.subTest(command=command), patch.object(signing, "initialize") as initialize:
+                with self.assertRaisesRegex(RuntimeError, "only valid with release"):
+                    signing.main([command, "--auto"])
+                initialize.assert_not_called()
+
+    def test_auto_builds_unsigned_before_reading_any_credentials(self):
+        repository, fixture = self.prepare_release()
+        built = repository / "apps/android/app/build/outputs/apk/release/app-release-unsigned.apk"
+        commands = []
+        def run(command, **kwargs):
+            commands.append(command)
+            if command[0] == "bash":
+                self.assertEqual(command, ["bash", "scripts/android-release-build.sh", "--unsigned"])
+                self.assertNotIn("input", kwargs)
+                built.parent.mkdir(parents=True)
+                built.write_bytes(fixture.read_bytes())
+            if command[0] == "secret-tool":
+                self.assertTrue(any("--unsigned" in cmd and cmd[0] == "node" for cmd in commands))
+                return subprocess.CompletedProcess(command, 0, b"fake-test-password")
+            if command[1:2] == ["sign"]:
+                Path(command[command.index("--out") + 1]).write_bytes(Path(command[-1]).read_bytes())
+        def check_output(command, **kwargs):
+            return "b" * 40 if command[1:2] == ["rev-parse"] else ""
+        with patch.object(signing, "ROOT", repository), patch.object(signing.subprocess, "run", side_effect=run), \
+                patch.object(signing.subprocess, "check_output", side_effect=check_output):
+            signing.release(auto=True)
+        self.assertTrue((signing.ARTIFACT_DIR / "oraculum-0.1.2-4.apk").is_file())
+        self.assertEqual(built.read_bytes(), fixture.read_bytes())
+
+    def test_signer_timeout_does_not_echo_captured_data(self):
+        with patch.object(signing, "secret_password", return_value=b"fake-test-password"), \
+                patch.object(signing.subprocess, "run", side_effect=subprocess.TimeoutExpired(
+                    ["apksigner"], 120, output=b"fake-test-password", stderr=b"fake-test-password")):
+            with self.assertRaisesRegex(RuntimeError, "diagnostics suppressed") as caught:
+                signing.sign_apk(["apksigner", "sign", "input.apk"], {}, auto=True)
+            self.assertNotIn("fake-test-password", str(caught.exception))
+
+    def test_dirty_repository_never_reads_credentials_or_signs(self):
+        with patch.object(signing.subprocess, "check_output", return_value=" M user-change"), \
+                patch.object(signing.subprocess, "run") as run:
+            with self.assertRaisesRegex(RuntimeError, "Commit the reviewed source"):
+                signing.release(auto=True)
+            run.assert_not_called()
 
 
 if __name__ == "__main__":

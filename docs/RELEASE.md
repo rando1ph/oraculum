@@ -11,7 +11,8 @@ Building does not authorize installation, service registration/start, migration,
 Android replacement, or changes to other services.
 
 The current R1-B8 `0.1.2` artifact identity, regression evidence, crash investigation,
-manual signing command and upgrade guide are in [the release handoff](R1_B8_RELEASE.md).
+original signing command and upgrade guide are in [the release handoff](R1_B8_RELEASE.md).
+The automatic signing workflow below supersedes its historical manual-only policy.
 
 ## Production runtime
 
@@ -152,16 +153,43 @@ application ID `dev.oraculum.poc` and increment the code for each published upda
 `bash scripts/android-release-build.sh --unsigned` runs Release compilation,
 lint and unit tests without a key. Its unsigned output is only a preflight result,
 never a signed release. The no-argument build entry refuses to run and directs
-the user to the local interactive signing launcher. Neither entry installs or
+the caller to the signing launcher. Neither entry installs or
 uninstalls anything, and no Release path falls back to Debug signing.
 
-Only the user runs these commands in their own local terminal with recording and
-shell tracing disabled; never use a captured agent terminal for them:
+For unattended signing, including a captured agent session without a TTY:
 
 ```sh
 cd ~/Projects/Oraculum
-python3 scripts/android-signing.py release
+python3 scripts/android-signing.py release --auto
 ```
+
+Automatic mode reads the existing Ubuntu Secret Service items with
+`secret-tool lookup app oraculum type jks-store` and
+`secret-tool lookup app oraculum type jks-key`. Run in the user's login session
+with `secret-tool` installed and the existing keyring available and unlocked.
+The launcher does not provision credentials or change the keyring/JKS/backup.
+Missing, empty, multiline or unreadable credentials stop signing; there is no
+fallback to a password prompt. Lookup and signing have bounded timeouts.
+
+Passwords stay in process memory and an anonymous stdin pipe to official
+`apksigner` using `--ks-pass stdin --key-pass stdin`, store password first, key
+password second. They never enter command arguments, environment variables,
+Gradle, logs or plaintext files. Secret lookup diagnostics and automatic signer
+stdout/stderr are discarded, including on failure. The public verifier reports
+contain artifact hashes, build identity and certificate fingerprints only.
+See the official [apksigner stdin format](https://developer.android.com/tools/apksigner)
+and [secret-tool implementation](https://github.com/GNOME/libsecret/blob/main/tool/secret-tool.c).
+
+The user's instruction to “签名 APK” or “构建并发布 APK” authorizes the requested
+signing/release work. Agents should use `release --auto`, calculate/verify public
+hashes themselves, and proceed without password/hash questions, extra
+confirmation, one-time authorization codes or manual approval gates. Failures
+must preserve existing artifacts and report the concrete error. Installation,
+state migration and production service changes retain their separate scope.
+
+Interactive signing remains available with `python3 scripts/android-signing.py release`
+in the user's real local terminal, with recording and shell tracing disabled.
+This mode keeps direct, non-echoing console input in apksigner and requires a TTY.
 
 For an existing reviewed unsigned APK, avoid rebuilding it by passing
 `--apk /absolute/path/to/oraculum-<version>-<code>-unsigned.apk` to `release`.
@@ -170,8 +198,9 @@ a known source commit, signs using the existing primary JKS, pins the resulting
 certificate to the saved public SHA-256 and publishes only after verification.
 It preserves both the input and any existing signed output. The selected version
 must match `release.json`; the `--apk` path deliberately identifies the reviewed
-build even if later documentation commits moved HEAD. Check its published SHA-256
-before running this command. No signing password enters the launcher or Gradle.
+build even if later documentation commits moved HEAD. Verify its public SHA-256
+against the build evidence automatically; no user-entered hash or confirmation
+is required. Both interactive and automatic modes support `--apk`.
 
 Daily signing does **not** access the offline backup. It retains the original
 `backupVerified` attestation and checks primary key/configuration ownership,
@@ -200,9 +229,9 @@ private backup directory. Existing configuration is never replaced automatically
 
 The release command requires a clean committed tree. Without `--apk`, Gradle builds and verifies
 an aligned unsigned APK with no signing configuration or password inputs, then
-SDK 35 `apksigner` signs it in a separate process, reading passwords directly from
-the user's real terminal without echo. No password enters Python, command
-arguments, environment variables, Gradle properties, caches or reports. Fixed
+SDK 35 `apksigner` signs it in a separate process, reading passwords from the
+user's real terminal or the automatic stdin pipe described above. No password
+enters command arguments, environment variables, Gradle properties, caches or reports. Fixed
 Gradle flags disable configuration/build caches, scans and persistent Kotlin
 daemons; the wrapper accepts no arbitrary logging flags.
 
