@@ -60,7 +60,7 @@ let server: Awaited<ReturnType<typeof createServer>> | undefined, app: ElectronA
 let phone!: Page, desktop!: Page, forwarded: string | undefined, savedCookies: Cookie[] | undefined;
 let savedStorage: { local: Record<string, string>; session: Record<string, string> } | undefined;
 const errors: string[] = [];
-const ready = (page: Page) => expect(page.getByRole('status', { includeHidden: true })).toContainText('状态已查询', { timeout: 30_000 });
+const ready = (page: Page) => expect(page.locator('.connection-status')).toContainText('状态已查询', { timeout: 30_000 });
 async function attach() {
   await android?.close(); const pid = adb('shell', 'pidof', 'dev.oraculum.poc'); if (!/^\d+$/.test(pid)) throw new Error('Expected one Oraculum Android process');
   if (forwarded) adb('forward', `tcp:${forwarded}`, `localabstract:webview_devtools_remote_${pid}`);

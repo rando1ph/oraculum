@@ -66,7 +66,9 @@
     "test:identity:ui": "tsx scripts/identity-ui.ts",
     "test:identity:android": "tsx scripts/identity-ui.ts --android",
     "test:identity:performance": "tsx scripts/identity-performance.ts --optimized",
-    "test:identity:performance:android": "tsx scripts/identity-performance.ts --optimized --android"
+    "test:identity:performance:android": "tsx scripts/identity-performance.ts --optimized --android",
+    "test:synchronization:ui": "tsx scripts/synchronization-ui.ts",
+    "test:synchronization:native": "tsx scripts/synchronization-native.ts"
   },
   "devDependencies": {
     "@electron-forge/cli": "8.0.1",

@@ -52,7 +52,7 @@ async function pair(page: Page, label: string) {
   await page.getByLabel('设备名称', { exact: true }).fill(label);
   await page.getByLabel('配对码', { exact: true }).fill(trust.createPairing().code);
   await page.getByRole('button', { name: '配对并连接', exact: true }).click();
-  await expect(page.getByRole('status')).toContainText('状态已查询', { timeout: 30_000 });
+  await expect(page.locator('.connection-status')).toContainText('状态已查询', { timeout: 30_000 });
   deviceIds.push(await page.evaluate(async () => (await (await fetch('/auth/session')).json()).device.id));
 }
 const itemIds = (page: Page) => page.locator('[data-item-id]').evaluateAll(nodes => nodes.map(n =>
@@ -76,7 +76,7 @@ try {
   evidence.threadId = threadId;
   await computer.getByRole('button', { name: '刷新列表', exact: true }).click();
   await computer.locator(`.session-link[data-thread-id="${threadId}"]`).click();
-  await expect(computer.getByRole('status')).toContainText('状态已查询');
+  await expect(computer.locator('.connection-status')).toContainText('状态已查询');
   await phone.getByLabel('消息', { exact: true }).fill('Controlled Oraculum recovery test. Do not use any tools, execute commands, access files, or delegate. Reply only with Markdown heading "## ORACULUM_RECOVERY_OK" and the sentence "双端恢复验证。" No additional work.');
   await phone.getByRole('button', { name: '发送', exact: true }).click();
   evidence.modelTurns = 1;
@@ -92,11 +92,11 @@ try {
   evidence.operationId = (await sessionSnapshot(phone)).receipts?.[0]?.operationId;
   step = 'Bridge and App Server restart';
   await stopBridge();
-  for (const page of [phone, computer]) await expect(page.getByRole('status')).toContainText('已断开');
+  for (const page of [phone, computer]) await expect(page.locator('.connection-status')).toContainText('已断开');
   await startBridge();
   for (const page of [phone, computer]) {
     await page.getByRole('button', { name: '重新连接', exact: true }).click();
-    await expect(page.getByRole('status')).toContainText('状态已查询', { timeout: 30_000 });
+    await expect(page.locator('.connection-status')).toContainText('状态已查询', { timeout: 30_000 });
     await expect(page.locator('.conversation')).toHaveAttribute('data-thread-id', threadId);
     await expect(page.locator('.conversation')).toHaveAttribute('data-last-turn-status', 'completed');
     expect(await itemIds(page)).toEqual(ids);

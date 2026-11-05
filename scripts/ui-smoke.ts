@@ -15,7 +15,7 @@ async function launch() {
   app = await electron.launch({ executablePath, args: [resolve('apps/desktop/main.cjs')], env, timeout: 30_000 });
   const page = await app.firstWindow();
   await expect(page.getByRole('heading', { name: 'Oraculum 神谕' })).toBeVisible();
-  await expect(page.getByRole('status')).toContainText('状态已查询', { timeout: 20_000 });
+  await expect(page.locator('.connection-status')).toContainText('状态已查询', { timeout: 20_000 });
   return page;
 }
 try {

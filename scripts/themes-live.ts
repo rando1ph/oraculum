@@ -79,7 +79,7 @@ let savedStorage: { local: Record<string, string>; session: Record<string, strin
 const errors: string[] = [];
 let step = 'setup', authenticated = false;
 let restoreFixture: (() => Promise<void>) | undefined;
-const ready = (page: Page) => expect(page.getByRole('status', { includeHidden: true })).toContainText('状态已查询', { timeout: 30_000 });
+const ready = (page: Page) => expect(page.locator('.connection-status')).toContainText('状态已查询', { timeout: 30_000 });
 const currentTheme = (page: Page, id: string) => expect(page.locator('.app-shell')).toHaveAttribute('data-theme-id', id);
 async function attach() {
   await android?.close();

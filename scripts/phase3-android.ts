@@ -112,7 +112,7 @@ let phone: Page | undefined, desktop: Page | undefined;
 let savedCookies: import('@playwright/test').Cookie[] | undefined;
 let savedStorage: { local: Record<string, string>; session: Record<string, string> } | undefined;
 const errors: string[] = []; let step = 'initialization', authenticated = false;
-const ready = (page: Page) => expect(page.getByRole('status', { includeHidden: true })).toContainText('状态已查询', { timeout: 45_000 });
+const ready = (page: Page) => expect(page.locator('.connection-status')).toContainText('状态已查询', { timeout: 45_000 });
 async function pair(page: Page, label: string) {
   await expect(page.getByRole('heading', { name: '信任此设备', exact: true })).toBeVisible();
   await page.getByLabel('设备名称', { exact: true }).fill(label);

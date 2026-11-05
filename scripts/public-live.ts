@@ -52,7 +52,7 @@ async function pair(page: Page, label: string, url: string) {
   const code = trust.createPairing().code;
   await page.getByLabel('配对码', { exact: true }).fill(code);
   await page.getByRole('button', { name: '配对并连接', exact: true }).click();
-  await expect(page.getByRole('status')).toContainText('状态已查询', { timeout: 30_000 });
+  await expect(page.locator('.connection-status')).toContainText('状态已查询', { timeout: 30_000 });
   const id = await page.evaluate(async url => (await (await fetch(url + 'auth/session')).json()).device.id, url);
   devices.push(id);
   return code;
@@ -120,7 +120,7 @@ try {
   await selectEffort(remote, 'low');
   await local.getByRole('button', { name: '刷新列表', exact: true }).click();
   await local.locator(`.session-link[data-thread-id="${threadId}"]`).click();
-  await expect(local.getByRole('status')).toContainText('状态已查询');
+  await expect(local.locator('.connection-status')).toContainText('状态已查询');
   await remote.getByLabel('消息', { exact: true }).fill('Controlled Oraculum public HTTPS/WSS acceptance test. Work only in cwd. No files, skills, MCP, web, subagents, configuration changes or other work. Make TWO SEPARATE shell approval requests sequentially with sandbox_permissions=require_escalated: first command exactly `printf ORACULUM_PUBLIC_ALLOW_OK` with justification="Oraculum harmless public allow test"; then exactly `printf ORACULUM_PUBLIC_DECLINE_OK` with justification="Oraculum harmless public decline test". The second will be declined: do not retry or run it another way. Finish with Markdown heading `## ORACULUM_PUBLIC_OK` and briefly report approval outcomes.');
   await remote.getByRole('button', { name: '发送', exact: true }).click(); evidence.modelTurns = 1;
   for (const [marker, button, actor] of [['ORACULUM_PUBLIC_ALLOW_OK', '允许本次', remote], ['ORACULUM_PUBLIC_DECLINE_OK', '拒绝', local]] as const) {
@@ -148,12 +148,12 @@ try {
   step = 'operator-controlled tunnel interruption';
   await writeFile(join(output, 'tunnel.ready'), JSON.stringify({ threadId, operationId: evidence.operationId }));
   console.log('Native turn and approvals passed; ready for recorded tunnel PID interruption.');
-  await expect(remote.getByRole('status')).toContainText('已断开', { timeout: 180_000 });
-  await expect(local.getByRole('status')).toContainText('状态已查询');
+  await expect(remote.locator('.connection-status')).toContainText('已断开', { timeout: 180_000 });
+  await expect(local.locator('.connection-status')).toContainText('状态已查询');
   await writeFile(join(output, 'tunnel.disconnected'), 'public disconnected; Electron retained native state\n');
   await expect.poll(() => access(join(output, 'tunnel.restored')).then(() => true, () => false), { timeout: 180_000 }).toBe(true);
   await remote.getByRole('button', { name: '重新连接', exact: true }).click();
-  await expect(remote.getByRole('status')).toContainText('状态已查询', { timeout: 30_000 });
+  await expect(remote.locator('.connection-status')).toContainText('状态已查询', { timeout: 30_000 });
   await expect(remote.locator('.conversation')).toHaveAttribute('data-thread-id', threadId);
   await expect(remote.locator('.conversation')).toHaveAttribute('data-last-turn-status', 'completed');
   expect(await itemIds(remote)).toEqual(ids);

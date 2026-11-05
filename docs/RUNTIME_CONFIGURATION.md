@@ -109,3 +109,73 @@ so an older Bridge does not understand the new authorizations. A future real rol
 must back up the selected database first and plan compatible rollback or forward
 repair; never restore an old copy over newly-written receipts. This patch's tests
 upgrade only isolated fixtures and do not migrate actual user state.
+
+## Isolated source development (stage A)
+
+Use `pnpm bridge:dev` (`pnpm bridge` is the same guarded entry). The default is
+loopback port 17861 and `.local/development` with its own HOME/XDG directories,
+Bridge database, device trust, project and browser profile. `ORACULUM_DEV_ROOT`
+selects a different absolute development root. Mutable path overrides must stay
+inside that root. Installed configuration and the live service's process paths
+are inspected without opening its database; overlapping production paths,
+symlinks and occupied ports fail before starting a child. A new test store is
+initialized only when absent/empty. Native Codex configuration is inherited via
+CODEX_HOME; this entry never copies or replaces native credentials.
+
+The special existing-tunnel test port 17860 requires a stopped production Bridge
+and `ORACULUM_DEV_ALLOW_PUBLIC_TEST=1`. Origin/Base Path remain deployment inputs.
+This opt-in does not stop any service or modify a tunnel, proxy or production
+store. Stopping a test Bridge leaves its independent test state available.
+
+## Synchronization and failure recovery (stage A)
+
+- Transport liveness (`bridge/ping`), native responsiveness (`bridge/nativeHealth`),
+  session controls and history are separate. The Web UI uses
+  `bridge/subscribe { metadataOnly: true }` for controls, then requests bounded
+  history independently. Model catalog pages load in the background.
+- Bounded history initially reads five recent turns and one page of 40 items per
+  turn. Older turns/items have independent cursors. Large native items have a
+  preview and authenticated, 32,000-character detail segments. Live projections
+  and replay buffers are bounded too. The native history remains authoritative.
+- Known legacy pagination errors use official `thread/read`; the UI slices its
+  response and exposes continuation cursors. This fallback still requires the
+  native server to produce full history. A timeout remains visible and does not
+  prevent switching to another thread. There is no alternate rollout/history DB.
+- Native reads have an 8-second response deadline. Safe identical reads coalesce
+  only within an unchanged generation; settings resumes remain separate. History
+  batches also have a 12-second scheduling budget. The UI retries failed reads
+  at most twice, with 1s/3s backoff, and cancels obsolete waiters/projections when
+  switching. Exhaustion shows a manual recovery action. Cancellation never
+  implies that an already dispatched native operation was undone.
+- Each server lifetime has an event stream ID and increasing sequence. Up to 256
+  events / 1 MiB are retained in memory. `bridge/events` replays a valid cursor;
+  expired, foreign or future cursors require a fresh snapshot. Duplicate/older
+  sequences are ignored. Reconnect, foreground return and live-WS sync failure
+  trigger read reconciliation. The ring is neither durable history nor a second
+  agent runtime.
+- Unknown sends/approvals/Review/Compact/Revert are never automatically replayed.
+  Existing receipts, one-shot approval tokens and native operation guards remain
+  authoritative. Pending writes are scoped to their thread in the UI. Reading
+  restoration waits for its content without delaying session controls.
+- Structured diagnostics contain request/parent IDs, layer, method, elapsed time,
+  outcome and event sequence, never RPC parameters, native content or credentials.
+  Timeouts, errors and slow reads are logged; `ORACULUM_DIAGNOSTICS=1` also logs
+  successful short reads. Logs are local and are not sent to telemetry services.
+
+`pnpm test:synchronization:ui` uses Chromium touch/mobile emulation with an
+independent authenticated Bridge, SQLite and controlled native faults. It covers
+long history, huge outputs, bad cursors, stalled catalogs/reads, bounded recovery,
+late replies, pending/unknown sends, replay and removed projects. For an existing
+public tunnel, set `ORACULUM_SYNC_PORT` and `ORACULUM_SYNC_URL`; the script never
+changes infrastructure. Its isolated Chromium bypasses proxies, requires normal
+TLS verification and records the actual server address/certificate and forwarded
+requests. Do not run two fixtures on the same port.
+
+`pnpm test:synchronization:native` runs one official Codex turn in a fresh native
+home and test project, tests SIGSTOP beyond the real read deadline, and restarts
+its Bridge/native process. It creates private, temporary copies of native
+config/login only for that process, removes them afterward, and checks original
+fingerprints. It never copies the native history/database or opens production
+Bridge state. Both scripts write redacted reports/screenshots under ignored
+`.local/evidence/stage-a`. They do not build/install/publish a DEB or APK, change
+an installed service, or claim Android-device coverage.

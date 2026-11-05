@@ -54,7 +54,7 @@ async function startBackend() {
 async function launch() {
   app = await electron.launch({ executablePath: require('electron'), args: [resolve('apps/desktop/main.cjs')], env, timeout: 30_000 });
   const page = await app.firstWindow(); page.on('pageerror', e => errors.push(e.message));
-  await expect(page.getByRole('status')).toContainText('状态已查询', { timeout: 30_000 });
+  await expect(page.locator('.connection-status')).toContainText('状态已查询', { timeout: 30_000 });
   return page;
 }
 try {
@@ -97,7 +97,7 @@ try {
   evidence.independentTest = execFileSync(process.execPath, ['--test', 'sum.test.mjs'], { cwd, encoding: 'utf8' });
   await page.screenshot({ path: '.local/evidence/phase1/live-diff.png', fullPage: true });
   await page.getByRole('button', { name: '查询状态', exact: true }).click();
-  await expect(page.getByRole('status')).toContainText('状态已查询');
+  await expect(page.locator('.connection-status')).toContainText('状态已查询');
   const restored = await service!.dispatch('bridge/subscribe', { threadId }) as Snapshot;
   const restoredIds = restored.thread.turns.flatMap(t => t.items.map(i => i.id));
   evidence.history = { source: restored.history?.source, warning: restored.history?.warning, model: restored.thread.model, effort: restored.thread.reasoningEffort,

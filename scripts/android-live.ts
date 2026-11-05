@@ -19,7 +19,7 @@ if (!page) { await browser.close(); throw new Error('Expected the Oraculum debug
 const errors: string[] = [];
 page.on('pageerror', e => errors.push(e.message));
 try {
-  await expect(page.getByRole('status')).toContainText('状态已查询', { timeout: 30_000 });
+  await expect(page.locator('.connection-status')).toContainText('状态已查询', { timeout: 30_000 });
   await expect(page.locator('aside .path')).toContainText('/.cache/oraculum/workspaces/phase2-android-');
   evidence.workspace = await page.locator('aside .path').innerText();
   evidence.title = await page.title();
@@ -68,7 +68,7 @@ try {
   await page.screenshot({ path: `${evidenceDir}/android-completed.png`, fullPage: true });
   // Reopening the actual WebView reads native history; there is no local replay.
   await page.reload();
-  await expect(page.getByRole('status')).toContainText('状态已查询', { timeout: 30_000 });
+  await expect(page.locator('.connection-status')).toContainText('状态已查询', { timeout: 30_000 });
   await expect(page.locator('.conversation')).toHaveAttribute('data-thread-id', threadId);
   await expect(page.getByRole('heading', { name: 'ORACULUM_ANDROID_OK', exact: true })).toBeVisible();
   await expect(page.locator('.history-warning')).toHaveCount(0);

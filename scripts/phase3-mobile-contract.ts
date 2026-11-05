@@ -38,7 +38,11 @@ const codex = {
     else if (method === 'thread/turns/list') {
       if (params.cursor === 'earlier') { if (holdHistory) await new Promise<void>(accept => { releaseHistory = accept; }); result = { data: [earlier], nextCursor: null }; }
       else result = { data: [...threads[params.threadId].turns].reverse(), nextCursor: historyEnabled && params.threadId === firstId ? 'earlier' : null };
-    } else if (method === 'thread/items/list') result = { data: (params.turnId === earlier.id ? earlier : threads[params.threadId].turns.find((t: any) => t.id === params.turnId)).items.map((item: any) => ({ turnId: params.turnId, item })), nextCursor: null };
+    } else if (method === 'thread/items/list') {
+      const items = [...(params.turnId === earlier.id ? earlier : threads[params.threadId].turns.find((t: any) => t.id === params.turnId)).items];
+      if (params.sortDirection === 'desc') items.reverse();
+      result = { data: items.map((item: any) => ({ turnId: params.turnId, item })), nextCursor: null };
+    }
     else if (method === 'turn/start') throw new Error('Simulated uncertain transport failure after dispatch');
     else throw new Error(`Unexpected simulated method: ${method}`);
     return structuredClone(result) as T;
@@ -58,9 +62,10 @@ async function back() { expect(await page.evaluate(() => (window as any).oraculu
 async function openDrawer() { await page.getByRole('button', { name: '打开导航', exact: true }).click(); await expect(page.locator('.app-shell')).toHaveClass(/drawer-open/); }
 async function select(id: string) { await openDrawer(); await page.locator(`nav[aria-label="原生会话"] button[data-thread-id="${id}"]`).click(); await ready(); await expect(page.locator('.conversation')).toHaveAttribute('data-thread-id', id); }
 async function reset() {
-  await page.evaluate(() => { localStorage.clear(); sessionStorage.clear(); });
-  await page.setViewportSize({ width: 390, height: 844 }); await page.reload(); await ready();
+  await page.setViewportSize({ width: 390, height: 844 }); await page.goto(`http://127.0.0.1:${port}/?contract-reset`); await ready();
   await expect(page.locator('.conversation')).toHaveAttribute('data-thread-id', firstId);
+  await expect(page.locator('[data-item-id="reading-message"]')).toHaveCount(1);
+  await expect(page.getByText('正在加载历史，其他会话仍可使用。', { exact: true })).toHaveCount(0);
 }
 async function run(name: string, test: () => Promise<void>) {
   try { await reset(); await test(); results.push({ name, passed: true }); console.log(`PASS ${name}`); }
@@ -82,6 +87,7 @@ try {
   await server.listen({ host: '127.0.0.1', port });
   browser = await chromium.launch();
   page = await browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 1, userAgent: 'Mozilla/5.0 (Linux; Android 15) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36 OraculumAndroid/1' });
+  await page.addInitScript(() => { if (location.search === '?contract-reset') { localStorage.clear(); sessionStorage.clear(); history.replaceState(null, '', location.pathname); } });
   page.on('pageerror', error => errors.push(error.message));
   await page.goto(`http://127.0.0.1:${port}`); await ready();
   await run('portrait-landscape-and-touch-targets', async () => {
@@ -135,6 +141,7 @@ try {
     await expect(message).toHaveValue('很长的中文提示词。\n'.repeat(80));
   });
   await run('fullscreen-diff-back-retains-reading', async () => {
+    await page.locator('.turn-process[data-turn-id="history"] .process-toggle').click();
     const button = page.getByRole('button', { name: '查看 Diff', exact: true }); await button.scrollIntoViewIfNeeded();
     const before = await scrollTop(); await button.click();
     const panel = page.getByLabel('文件 Diff 面板', { exact: true }); await expect(panel).toBeVisible();
@@ -222,22 +229,24 @@ try {
     await expect(anchor).toHaveCount(1); await expect.poll(async () => (await anchor.boundingBox())!.y).toBeCloseTo(before, 0);
   }); historyEnabled = false; holdHistory = true;
   await run('approval-touch-and-external-invalidation', async () => {
-    bus.emit('message', { id: 31, method: 'item/commandExecution/requestApproval', params: { threadId: firstId, turnId: history.id, itemId: 'approval-command', command: 'printf MOBILE_CONTRACT', cwd, reason: 'Simulated approval contract' } });
+    emit('turn/started', { turn: { id: 'approval-live', status: 'inProgress', items: [] } });
+    bus.emit('message', { id: 31, method: 'item/commandExecution/requestApproval', params: { threadId: firstId, turnId: 'approval-live', itemId: 'approval-command', command: 'printf MOBILE_CONTRACT', cwd, reason: 'Simulated approval contract' } });
     await expect(page.getByRole('heading', { name: '需要审批', exact: true })).toBeVisible();
     await page.getByRole('button', { name: '允许本次', exact: true }).scrollIntoViewIfNeeded();
     await target('允许本次', 48); await target('拒绝', 48);
     const count = replies.length; emit('serverRequest/resolved', { requestId: 31 });
     await expect(page.locator('.approval')).toHaveCount(0); expect(replies).toHaveLength(count);
+    emit('turn/completed', { turn: { id: 'approval-live', status: 'completed', items: [] } });
   });
   await run('native-unavailable-expires-approval', async () => {
-    bus.emit('message', { id: 32, method: 'item/commandExecution/requestApproval', params: { threadId: firstId, turnId: history.id, itemId: 'expiring-command', command: 'printf EXPIRED_CONTRACT', cwd, reason: 'Simulated unavailable App Server' } });
+    emit('turn/started', { turn: { id: 'approval-live-2', status: 'inProgress', items: [] } });
+    bus.emit('message', { id: 32, method: 'item/commandExecution/requestApproval', params: { threadId: firstId, turnId: 'approval-live-2', itemId: 'expiring-command', command: 'printf EXPIRED_CONTRACT', cwd, reason: 'Simulated unavailable App Server' } });
     await expect(page.getByRole('heading', { name: '需要审批', exact: true })).toBeVisible();
     const count = replies.length; bus.emit('unavailable', 'Simulated App Server unavailable');
-    await expect.poll(async () => {
-      if (!await page.locator('.approval').count()) return true;
-      return await page.getByRole('button', { name: '允许本次', exact: true }).isDisabled() && await page.getByRole('button', { name: '拒绝', exact: true }).isDisabled();
-    }, { message: 'Expired approvals must disappear or disable both decisions' }).toBe(true);
+    await expect.poll(() => service.pending.size).toBe(0);
+    await expect(page.locator('.approval-actions button:not(:disabled)')).toHaveCount(0);
     expect(replies).toHaveLength(count);
+    emit('turn/completed', { turn: { id: 'approval-live-2', status: 'completed', items: [] } });
   });
   await run('unknown-send-never-replayed', async () => {
     const starts = requests.filter(r => r.method === 'turn/start').length;

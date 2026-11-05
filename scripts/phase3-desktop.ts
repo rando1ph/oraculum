@@ -96,7 +96,7 @@ async function drag(page: Page, label: string, delta: number) {
 async function selectThread(page: Page, id: string) {
   await page.locator(`nav[aria-label="原生会话"] button[data-thread-id="${id}"]`).click();
   await expect(page.locator('.conversation')).toHaveAttribute('data-thread-id', id);
-  await expect(page.getByRole('status', { includeHidden: true })).toContainText('状态已查询');
+  await expect(page.locator('.connection-status')).toContainText('状态已查询');
 }
 async function selectedThreadId(page: Page) {
   const id = (await readSelectedThreadId(page)).trim();
@@ -137,7 +137,7 @@ try {
   const page = await app.firstWindow();
   page.on('pageerror', error => errors.push(error.message));
   await resize(1440, 960);
-  await expect(page.getByRole('status', { includeHidden: true })).toContainText('状态已查询', { timeout: 30_000 });
+  await expect(page.locator('.connection-status')).toContainText('状态已查询', { timeout: 30_000 });
   evidence.electron = await app.evaluate(({ app }) => ({ version: process.versions.electron, chromium: process.versions.chrome, ready: app.isReady(), userData: app.getPath('userData') }));
   expect(evidence.electron.userData).toBe(env.ORACULUM_USER_DATA_DIR);
   evidence.renderer = await page.evaluate(() => ({ require: typeof (window as any).require, process: typeof (window as any).process }));
@@ -202,7 +202,7 @@ try {
   }
   await expect(page.getByRole('heading', { name: '加法修复完成', exact: true })).toBeVisible({ timeout: 180_000 });
   await expect(page.locator('.conversation')).toHaveAttribute('data-last-turn-status', 'completed', { timeout: 30_000 });
-  await expect(page.getByRole('status', { includeHidden: true })).toContainText('状态已查询', { timeout: 30_000 });
+  await expect(page.locator('.connection-status')).toContainText('状态已查询', { timeout: 30_000 });
   expect(evidence.requests[0]).toMatchObject({ model, effort });
   const testItem = evidence.items.find((item: any) => item.type === 'commandExecution' && item.command.includes('node --test') && item.exitCode === 0);
   expect(testItem).toBeTruthy();
@@ -244,7 +244,7 @@ try {
   await expect(page.locator('.navigation')).not.toBeVisible();
   await expect(page.locator('.inspector')).toBeVisible();
   await page.reload();
-  await expect(page.getByRole('status', { includeHidden: true })).toContainText('状态已查询', { timeout: 30_000 });
+  await expect(page.locator('.connection-status')).toContainText('状态已查询', { timeout: 30_000 });
   await expect(page.locator('.navigation')).not.toBeVisible();
   await page.getByRole('button', { name: '展开导航', exact: true }).click();
   if (!await page.locator('.inspector').isVisible()) await page.getByRole('button', { name: '查看 Diff', exact: true }).first().click();
@@ -252,7 +252,7 @@ try {
   await expect(page.locator('.inspector')).not.toBeVisible();
   await expect(page.locator('.navigation')).toBeVisible();
   await page.reload();
-  await expect(page.getByRole('status', { includeHidden: true })).toContainText('状态已查询', { timeout: 30_000 });
+  await expect(page.locator('.connection-status')).toContainText('状态已查询', { timeout: 30_000 });
   await expect(page.locator('.conversation')).toHaveAttribute('data-thread-id', threadId);
   await expect(page.locator('.inspector')).not.toBeVisible();
   expect((await page.locator('.navigation').boundingBox())!.width).toBeCloseTo(navAfter!.width, 0);

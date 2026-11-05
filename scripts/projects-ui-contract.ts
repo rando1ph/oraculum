@@ -18,7 +18,9 @@ await projects.register(cwd);
 const threads: any[] = [{ id: 'external-writer', cwd: first, name: '外部 Codex 正在使用的会话', preview: '', status: { type: 'idle' }, turns: [] }];
 let sequence = 0;
 const bus = new EventEmitter();
+const calls: { method: string; cwd?: string; threadId?: string }[] = [];
 const service = new BridgeService({ on: bus.on.bind(bus), send: () => {}, request: async <T>(method: string, params: any): Promise<T> => {
+  calls.push({ method, cwd: params.cwd, threadId: params.threadId });
   if (method === 'thread/resume' && params.threadId === 'external-writer') throw new Error('Thread already has an active writer');
   let result: any;
   if (method === 'config/read') result = { config: {} };
@@ -26,8 +28,8 @@ const service = new BridgeService({ on: bus.on.bind(bus), send: () => {}, reques
   else if (method === 'thread/list') result = { data: threads.filter(t => t.cwd === params.cwd), nextCursor: null };
   else if (method === 'thread/start') {
     const thread = { id: `fixture-${sequence++}`, name: null, preview: '', cwd: params.cwd, status: { type: 'idle' }, turns: [] };
-    threads.push(thread); result = { thread };
-  } else if (method === 'thread/read' || method === 'thread/resume') result = { thread: threads.find(t => t.id === params.threadId) };
+    threads.push(thread); result = { thread, approvalPolicy: 'on-request', sandbox: { type: 'readOnly', networkAccess: false }, approvalsReviewer: 'user' };
+  } else if (method === 'thread/read' || method === 'thread/resume') result = { thread: threads.find(t => t.id === params.threadId), approvalPolicy: 'on-request', sandbox: { type: 'readOnly', networkAccess: false }, approvalsReviewer: 'user' };
   else if (method === 'thread/turns/list') result = { data: [], nextCursor: null };
   else throw new Error(`Unexpected native call ${method}`);
   return result as T;
@@ -36,7 +38,7 @@ const port = 17869, origin = `http://127.0.0.1:${port}`;
 const server = await createServer(service, port, resolve('apps/web/dist'), { testOnlyUnauthenticated: true });
 const browser = await chromium.launch();
 const errors: string[] = [];
-const ready = (page: Page) => expect(page.getByRole('status', { includeHidden: true })).toContainText('状态已查询');
+const ready = (page: Page) => expect(page.locator('.connection-status')).toContainText('状态已查询');
 async function open(page: Page) { await page.getByRole('button', { name: '浏览主机文件夹 / 添加项目', exact: true }).click(); await expect(page.getByTestId('browsed-directory')).toHaveText(root); }
 async function go(page: Page, path: string) {
   await page.getByLabel('主机文件夹路径', { exact: true }).fill(path);
@@ -89,4 +91,4 @@ try {
   await expect(desktop.getByRole('button', { name: '新建会话', exact: true })).toBeDisabled();
   expect(errors).toEqual([]);
   console.log('PASS host browser: navigation, rejected path, desktop/mobile registration, live list sync, same-name paths, duplicate registration, isolated drafts/sessions, removal and unavailable directory controls (native simulated).');
-} finally { await browser.close(); await server.close(); db.close(); await rm(temp, { recursive: true, force: true }); }
+} catch (error) { console.error(JSON.stringify({ errors, calls })); for (const page of browser.contexts().flatMap(c => c.pages())) await page.screenshot({ path: '.local/evidence/stage-a/projects-ui-failure-' + page.viewportSize()?.width + '.png' }).catch(() => {}); throw error; } finally { await browser.close(); await server.close(); db.close(); await rm(temp, { recursive: true, force: true }); }

@@ -29,7 +29,7 @@ try {
     await page.getByLabel('设备名称', { exact: true }).fill('Android auth E2E');
     await page.getByLabel('配对码', { exact: true }).fill(code);
     await page.getByRole('button', { name: '配对并连接', exact: true }).click();
-    await expect(page.getByRole('status')).toContainText('状态已查询', { timeout: 30_000 });
+    await expect(page.locator('.connection-status')).toContainText('状态已查询', { timeout: 30_000 });
     const session = await page.evaluate(async () => (await fetch('/auth/session')).json());
     ids.push(session.device.id);
     return code;
@@ -46,7 +46,7 @@ try {
   expect(await page.evaluate(() => document.cookie)).toBe('');
   step = 'reload';
   await page.reload();
-  await expect(page.getByRole('status')).toContainText('状态已查询', { timeout: 30_000 });
+  await expect(page.locator('.connection-status')).toContainText('状态已查询', { timeout: 30_000 });
   await expect(page.locator('.conversation')).toHaveAttribute('data-thread-id', threadId);
   await expect(page.locator('.conversation')).toHaveAttribute('data-last-turn-status', 'completed');
   evidence.nativeHistoryReload = true;

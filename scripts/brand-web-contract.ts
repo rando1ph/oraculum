@@ -48,7 +48,7 @@ await themes.install('minimal-light');
 const server = await createServer(service, port, resolve('apps/web/dist'), { themes, testOnlyUnauthenticated: true });
 const results: string[] = [], errors: string[] = [];
 let browser: Browser | undefined;
-const ready = (page: Page) => expect(page.getByRole('status', { includeHidden: true })).toContainText('状态已查询');
+const ready = (page: Page) => expect(page.locator('.connection-status')).toContainText('状态已查询');
 const state = async (page: Page, kind: string, copy: string) => {
   await expect(page.locator('.empty-state')).toHaveAttribute('data-brand-state', kind);
   await expect(page.locator('.empty-state h2')).toHaveText(copy);

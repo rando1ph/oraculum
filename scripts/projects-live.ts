@@ -101,7 +101,7 @@ async function rpc<T>(page: Page, method: string, params: object): Promise<T> {
   if (response.error) throw new Error(response.error.message);
   return response.result as T;
 }
-const ready = (page: Page) => expect(page.getByRole('status', { includeHidden: true })).toContainText('状态已查询', { timeout: 45_000 });
+const ready = (page: Page) => expect(page.locator('.connection-status')).toContainText('状态已查询', { timeout: 45_000 });
 async function pair(page: Page, label: string) {
   await expect(page.getByRole('heading', { name: '信任此设备', exact: true })).toBeVisible();
   await page.getByLabel('设备名称', { exact: true }).fill(label);

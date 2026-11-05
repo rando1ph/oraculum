@@ -23,7 +23,7 @@ try {
   await page.getByLabel('设备名称', { exact: true }).fill('Electron auth E2E');
   await page.getByLabel('配对码', { exact: true }).fill(code);
   await page.getByRole('button', { name: '配对并连接', exact: true }).click();
-  await expect(page.getByRole('status')).toContainText('状态已查询', { timeout: 30_000 });
+  await expect(page.locator('.connection-status')).toContainText('状态已查询', { timeout: 30_000 });
   expect(await page.getByRole('button', { name: /^模型与思考强度：/ }).count()).toBe(1);
   const session = await page.evaluate(async () => (await fetch('/auth/session')).json());
   deviceId = session.device.id;

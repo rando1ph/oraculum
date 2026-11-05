@@ -113,7 +113,7 @@ function App() {
   const syncFlight = useRef<{ key: string; promise: Promise<void> } | null>(null);
   const setSynced = (value: boolean) => { syncedLive.current = value; setSyncedState(value); };
   const workspace = useRef('');
-  const sending = submitting.has(selected.current) || submitting.has(`new:${workspace.current}`);
+  const sending = submitting.has(selected.current);
   const lifecycleBusy = submitting.has(actionTarget?.thread.id ?? selected.current);
   const approving = approvalThreads.has(selected.current);
   function setSubmission(id: string, value: boolean) {
@@ -810,7 +810,7 @@ function App() {
   async function createThread() {
     if (switching) return;
     ++selectionRevision.current;
-    const scope = workspace.current, key = `new:${scope}`, ticket = epoch.current;
+    const scope = workspace.current, key = `new:${scope}`, originThread = selected.current;
     if (nativeSubmitting.current.has(key)) return;
     setSubmission(key, true); setError('');
     try {
@@ -819,7 +819,7 @@ function App() {
       const result = await client.current!.request<ThreadStartResponse>('thread/start', {
         model: initialChoices.model?.value, permissionMode: initialChoices.permissionMode?.value, cwd: workspace.current,
       });
-      if (scope !== workspace.current || ticket !== epoch.current) return;
+      if (scope !== workspace.current || selected.current !== originThread) return;
       historyController.current?.abort(); syncController.current?.abort();
       rememberScroll(); ++epoch.current; readingRestore.current = null; buffer.current = null; selected.current = result.thread.id;
       setInspected(undefined); setText(readDraft()); restoreSteerDraft(); setDrawer(false); follow.current = true;
