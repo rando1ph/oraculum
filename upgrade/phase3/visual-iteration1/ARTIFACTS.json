@@ -1,0 +1,558 @@
+{
+  "sourceGit": "ba4ead96f68d8d3464528c97a541e44b768dfb19",
+  "sourceDirty": false,
+  "screenshots": [
+    {
+      "file": "02-theme-dark.png",
+      "title": "Dark 主对话",
+      "stitch": "S1",
+      "note": "助手/用户/代码与 Composer 的层级",
+      "sourceGit": "ba4ead96f68d8d3464528c97a541e44b768dfb19",
+      "sourceDirty": false,
+      "device": "emulator-5554",
+      "api": 36,
+      "densityDpi": 420,
+      "pixels": [
+        1080,
+        2400
+      ],
+      "bytes": 211074,
+      "sha256": "a69fab2090d6c0cc11b1672560750d58fd6444ebc913da2a4ecb27b8517f0748",
+      "driveId": "1B7j5CgS38NWhUUGm_LBTILY8YluJQZGv",
+      "url": "https://drive.google.com/file/d/1B7j5CgS38NWhUUGm_LBTILY8YluJQZGv/view?usp=drivesdk",
+      "capture": "Android UiAutomation.takeScreenshot"
+    },
+    {
+      "file": "02-theme-light.png",
+      "title": "Light 主对话",
+      "stitch": "S1",
+      "note": "同一真实回复和滚动位置",
+      "sourceGit": "ba4ead96f68d8d3464528c97a541e44b768dfb19",
+      "sourceDirty": false,
+      "device": "emulator-5554",
+      "api": 36,
+      "densityDpi": 420,
+      "pixels": [
+        1080,
+        2400
+      ],
+      "bytes": 215151,
+      "sha256": "f0853601a9bd76e012df14ce6c0d3a8dcf7beeaa1ece3205896881eec5564d6c",
+      "driveId": "1M41c5dFcmD0uVBnyXYJzzKj3-9B0qGHD",
+      "url": "https://drive.google.com/file/d/1M41c5dFcmD0uVBnyXYJzzKj3-9B0qGHD/view?usp=drivesdk",
+      "capture": "Android UiAutomation.takeScreenshot"
+    },
+    {
+      "file": "02-theme-oled.png",
+      "title": "OLED Dark 主对话",
+      "stitch": "S1",
+      "note": "纯黑根背景与内容容器层次",
+      "sourceGit": "ba4ead96f68d8d3464528c97a541e44b768dfb19",
+      "sourceDirty": false,
+      "device": "emulator-5554",
+      "api": 36,
+      "densityDpi": 420,
+      "pixels": [
+        1080,
+        2400
+      ],
+      "bytes": 214101,
+      "sha256": "345dad0abd52903b95607f5715367d9b0c8ad76e83b47f9c4adcf3f82ba06966",
+      "driveId": "1IC_m31IU329Uk9QpX5ttpsl2zRnDe2o5",
+      "url": "https://drive.google.com/file/d/1IC_m31IU329Uk9QpX5ttpsl2zRnDe2o5/view?usp=drivesdk",
+      "capture": "Android UiAutomation.takeScreenshot"
+    },
+    {
+      "file": "visual-01-navigation-compact.png",
+      "title": "左侧导航",
+      "stitch": "S2",
+      "note": "品牌、紧凑列表、按需搜索入口",
+      "sourceGit": "ba4ead96f68d8d3464528c97a541e44b768dfb19",
+      "sourceDirty": false,
+      "device": "emulator-5554",
+      "api": 36,
+      "densityDpi": 420,
+      "pixels": [
+        1080,
+        2400
+      ],
+      "bytes": 138228,
+      "sha256": "f87ca349133d2203f468585de323380e40da4c91442ac45e009979b558c8864f",
+      "driveId": "169FXb1wzUcD7-MtOitFMLVfqx_Mji1my",
+      "url": "https://drive.google.com/file/d/169FXb1wzUcD7-MtOitFMLVfqx_Mji1my/view?usp=drivesdk",
+      "capture": "Android UiAutomation.takeScreenshot"
+    },
+    {
+      "file": "visual-14-inspector-settled.png",
+      "title": "Inspector 输出",
+      "stitch": "I2",
+      "note": "状态先行、短 ID、真实失败状态可见",
+      "sourceGit": "ba4ead96f68d8d3464528c97a541e44b768dfb19",
+      "sourceDirty": false,
+      "device": "emulator-5554",
+      "api": 36,
+      "densityDpi": 420,
+      "pixels": [
+        1080,
+        2400
+      ],
+      "bytes": 185666,
+      "sha256": "41a494e0a53fb7b9f819e8fc9f374df50ee50cdb5d24d6407181e6a79a2ce4b3",
+      "driveId": "19bKnhlivHl_avaYI0CJhoxOnivFa3m29",
+      "url": "https://drive.google.com/file/d/19bKnhlivHl_avaYI0CJhoxOnivFa3m29/view?usp=drivesdk",
+      "capture": "android-cli screen"
+    },
+    {
+      "file": "visual-03-settings-appearance.png",
+      "title": "设置",
+      "stitch": "S3",
+      "note": "外观、字号、称呼与通知分组",
+      "sourceGit": "ba4ead96f68d8d3464528c97a541e44b768dfb19",
+      "sourceDirty": false,
+      "device": "emulator-5554",
+      "api": 36,
+      "densityDpi": 420,
+      "pixels": [
+        1080,
+        2400
+      ],
+      "bytes": 214859,
+      "sha256": "df67f26a9294d06f8cd953168f575d8464427d08db4d1149faaefeda026832d9",
+      "driveId": "1X5uGBNDYwgg0rEZuuCKP8sOBvN6eDpon",
+      "url": "https://drive.google.com/file/d/1X5uGBNDYwgg0rEZuuCKP8sOBvN6eDpon/view?usp=drivesdk",
+      "capture": "Android UiAutomation.takeScreenshot"
+    },
+    {
+      "file": "visual-06-models.png",
+      "title": "模型与思考强度入口",
+      "stitch": "S3",
+      "note": "真实模型目录与当前原生模型",
+      "sourceGit": "ba4ead96f68d8d3464528c97a541e44b768dfb19",
+      "sourceDirty": false,
+      "device": "emulator-5554",
+      "api": 36,
+      "densityDpi": 420,
+      "pixels": [
+        1080,
+        2400
+      ],
+      "bytes": 187993,
+      "sha256": "3f90a577714c04882a6597e16173f43ba81ae59bfdcf3d5c7fb64e8c45488a85",
+      "driveId": "1saA80nkva7wLMNTCFTv8FcYt_inQsAWN",
+      "url": "https://drive.google.com/file/d/1saA80nkva7wLMNTCFTv8FcYt_inQsAWN/view?usp=drivesdk",
+      "capture": "Android UiAutomation.takeScreenshot"
+    },
+    {
+      "file": "visual-08-permissions.png",
+      "title": "执行权限",
+      "stitch": "S3",
+      "note": "完整风险说明、原生回读边界",
+      "sourceGit": "ba4ead96f68d8d3464528c97a541e44b768dfb19",
+      "sourceDirty": false,
+      "device": "emulator-5554",
+      "api": 36,
+      "densityDpi": 420,
+      "pixels": [
+        1080,
+        2400
+      ],
+      "bytes": 144316,
+      "sha256": "b53e3e000c171525855a80fc6be7029c0f65efdd75414b41e0f65c23d8fd575c",
+      "driveId": "1MStNIsLmrHi9nck7oGOVyDtt0oMPO9EV",
+      "url": "https://drive.google.com/file/d/1MStNIsLmrHi9nck7oGOVyDtt0oMPO9EV/view?usp=drivesdk",
+      "capture": "Android UiAutomation.takeScreenshot"
+    },
+    {
+      "file": "visual-09-full-access-confirmation.png",
+      "title": "Full access 确认",
+      "stitch": "S3",
+      "note": "本次展示后取消，未授权 Full access",
+      "sourceGit": "ba4ead96f68d8d3464528c97a541e44b768dfb19",
+      "sourceDirty": false,
+      "device": "emulator-5554",
+      "api": 36,
+      "densityDpi": 420,
+      "pixels": [
+        1080,
+        2400
+      ],
+      "bytes": 162712,
+      "sha256": "701cca34d531421d08ab636c7df3c3bb6b7cc27e253630d96be0cd10430b4e6b",
+      "driveId": "1PIqbqBVT3W99FWvzFx6AVjOPDPQ01BqD",
+      "url": "https://drive.google.com/file/d/1PIqbqBVT3W99FWvzFx6AVjOPDPQ01BqD/view?usp=drivesdk",
+      "capture": "Android UiAutomation.takeScreenshot"
+    },
+    {
+      "file": "visual-10-native-code-block.png",
+      "title": "真实 Kotlin 代码块",
+      "stitch": "S1",
+      "note": "独立标题/内容层与复制操作",
+      "sourceGit": "ba4ead96f68d8d3464528c97a541e44b768dfb19",
+      "sourceDirty": false,
+      "device": "emulator-5554",
+      "api": 36,
+      "densityDpi": 420,
+      "pixels": [
+        1080,
+        2400
+      ],
+      "bytes": 214360,
+      "sha256": "9de7aeaec43825670408b1687064161a2b7ab144ff96dc0026532325afe19197",
+      "driveId": "1eoF9DpsGimKhNa_Wm4Vw-ugXIV0gSy5z",
+      "url": "https://drive.google.com/file/d/1eoF9DpsGimKhNa_Wm4Vw-ugXIV0gSy5z/view?usp=drivesdk",
+      "capture": "Android UiAutomation.takeScreenshot"
+    },
+    {
+      "file": "05-native-ime.png",
+      "title": "真实 Android IME",
+      "stitch": "S1",
+      "note": "键盘弹出后草稿、附件与发送仍可达",
+      "sourceGit": "ba4ead96f68d8d3464528c97a541e44b768dfb19",
+      "sourceDirty": false,
+      "device": "emulator-5554",
+      "api": 36,
+      "densityDpi": 420,
+      "pixels": [
+        1080,
+        2400
+      ],
+      "bytes": 189320,
+      "sha256": "1a1afdbb0bac72aff8fa58c4a909ea8a674467d9be2f4eb62277ca23d3e3355f",
+      "driveId": "1ASxjo2IBX6jFLCMiOk_qYf3IhHKuc-hF",
+      "url": "https://drive.google.com/file/d/1ASxjo2IBX6jFLCMiOk_qYf3IhHKuc-hF/view?usp=drivesdk",
+      "capture": "Android UiAutomation.takeScreenshot"
+    },
+    {
+      "file": "visual-15-inspector-expanded-id.png",
+      "title": "展开完整 ID",
+      "stitch": "I2",
+      "note": "完整 Turn ID 和复制入口",
+      "sourceGit": "ba4ead96f68d8d3464528c97a541e44b768dfb19",
+      "sourceDirty": false,
+      "device": "emulator-5554",
+      "api": 36,
+      "densityDpi": 420,
+      "pixels": [
+        1080,
+        2400
+      ],
+      "bytes": 192903,
+      "sha256": "447ac22774f9a90258238013b4cc362d58178ace5712108084be21b814426abc",
+      "driveId": "1aVZ2zN8uPpuPhb8E0pVxSIpBL7jwOKxU",
+      "url": "https://drive.google.com/file/d/1aVZ2zN8uPpuPhb8E0pVxSIpBL7jwOKxU/view?usp=drivesdk",
+      "capture": "android-cli screen"
+    },
+    {
+      "file": "visual-16-native-diff.png",
+      "title": "真实 Diff",
+      "stitch": "I3",
+      "note": "原生实际文件变更；有界横向预览",
+      "sourceGit": "ba4ead96f68d8d3464528c97a541e44b768dfb19",
+      "sourceDirty": false,
+      "device": "emulator-5554",
+      "api": 36,
+      "densityDpi": 420,
+      "pixels": [
+        1080,
+        2400
+      ],
+      "bytes": 120456,
+      "sha256": "5c02972e0265ba194634c4a4c8c95c4042d622a502918b6160fd233209ce6733",
+      "driveId": "12OXKgF2P24UPU8FZK0Oc8_WBMS7mSaIp",
+      "url": "https://drive.google.com/file/d/12OXKgF2P24UPU8FZK0Oc8_WBMS7mSaIp/view?usp=drivesdk",
+      "capture": "android-cli screen"
+    },
+    {
+      "file": "visual-17-native-usage.png",
+      "title": "用量空状态",
+      "stitch": "I3",
+      "note": "当前原生未提供 token 值，如实显示",
+      "sourceGit": "ba4ead96f68d8d3464528c97a541e44b768dfb19",
+      "sourceDirty": false,
+      "device": "emulator-5554",
+      "api": 36,
+      "densityDpi": 420,
+      "pixels": [
+        1080,
+        2400
+      ],
+      "bytes": 111609,
+      "sha256": "3ab703245708b46793fac1b39f1ad5a4015c30f514bf48db871c4ae1f446e979",
+      "driveId": "13WX5EpSCqxm4PaWdfLqHtFieRd7dYHMD",
+      "url": "https://drive.google.com/file/d/13WX5EpSCqxm4PaWdfLqHtFieRd7dYHMD/view?usp=drivesdk",
+      "capture": "android-cli screen"
+    },
+    {
+      "file": "visual-02-navigation-local-filter.png",
+      "title": "展开本地筛选",
+      "stitch": "S2",
+      "note": "无匹配状态；只筛选已加载列表",
+      "sourceGit": "ba4ead96f68d8d3464528c97a541e44b768dfb19",
+      "sourceDirty": false,
+      "device": "emulator-5554",
+      "api": 36,
+      "densityDpi": 420,
+      "pixels": [
+        1080,
+        2400
+      ],
+      "bytes": 109752,
+      "sha256": "4494a609e8d8e02b2247781304be3f657bbe75e5791229bfdbbe99ca66e9ba64",
+      "driveId": "1IYEwLA1pDdpFait-cgKkgfBzl4pEUBr7",
+      "url": "https://drive.google.com/file/d/1IYEwLA1pDdpFait-cgKkgfBzl4pEUBr7/view?usp=drivesdk",
+      "capture": "Android UiAutomation.takeScreenshot"
+    },
+    {
+      "file": "visual-11-large-font-conversation.png",
+      "title": "200% 字号对话",
+      "stitch": "S1",
+      "note": "发送可达；附件横向滚动",
+      "sourceGit": "ba4ead96f68d8d3464528c97a541e44b768dfb19",
+      "sourceDirty": false,
+      "device": "emulator-5554",
+      "api": 36,
+      "densityDpi": 420,
+      "pixels": [
+        1080,
+        2400
+      ],
+      "bytes": 203222,
+      "sha256": "07855fac362a23eeae86f1ea276eb94fb7f7f5355c80d7b2e7654fde181f266c",
+      "driveId": "1s7YwmMueHZfkLhCGwIOn6Qn5qjQtDDr0",
+      "url": "https://drive.google.com/file/d/1s7YwmMueHZfkLhCGwIOn6Qn5qjQtDDr0/view?usp=drivesdk",
+      "capture": "Android UiAutomation.takeScreenshot"
+    },
+    {
+      "file": "visual-12-large-font-navigation.png",
+      "title": "200% 字号导航",
+      "stitch": "S2",
+      "note": "品牌、搜索、关闭与新建可达",
+      "sourceGit": "ba4ead96f68d8d3464528c97a541e44b768dfb19",
+      "sourceDirty": false,
+      "device": "emulator-5554",
+      "api": 36,
+      "densityDpi": 420,
+      "pixels": [
+        1080,
+        2400
+      ],
+      "bytes": 168728,
+      "sha256": "a0fd35e576898fa0914d0119c6d13e7e87680c17acfbaefd8baf623fc6dde2b3",
+      "driveId": "1esh4ZBN6t2QXmP9IjsJlZxF9ZC2bLxqS",
+      "url": "https://drive.google.com/file/d/1esh4ZBN6t2QXmP9IjsJlZxF9ZC2bLxqS/view?usp=drivesdk",
+      "capture": "Android UiAutomation.takeScreenshot"
+    },
+    {
+      "file": "visual-13-large-font-permission-confirmation.png",
+      "title": "200% 字号确认框",
+      "stitch": "S3",
+      "note": "完整风险文案和确认/取消均可见",
+      "sourceGit": "ba4ead96f68d8d3464528c97a541e44b768dfb19",
+      "sourceDirty": false,
+      "device": "emulator-5554",
+      "api": 36,
+      "densityDpi": 420,
+      "pixels": [
+        1080,
+        2400
+      ],
+      "bytes": 182462,
+      "sha256": "bd8bba06658d72d21d574adf2bef7814958ec2c6963b8478e27177ffd2f55b4b",
+      "driveId": "13P9tYe34LYZlfSGmBvsEUXi14jxIG97I",
+      "url": "https://drive.google.com/file/d/13P9tYe34LYZlfSGmBvsEUXi14jxIG97I/view?usp=drivesdk",
+      "capture": "Android UiAutomation.takeScreenshot"
+    },
+    {
+      "file": "06-landscape-large-font.png",
+      "title": "横屏 + 200% 字号",
+      "stitch": "S1/I2",
+      "note": "可滚动 Inspector；会话和草稿保持",
+      "sourceGit": "ba4ead96f68d8d3464528c97a541e44b768dfb19",
+      "sourceDirty": false,
+      "device": "emulator-5554",
+      "api": 36,
+      "densityDpi": 420,
+      "pixels": [
+        2400,
+        1080
+      ],
+      "bytes": 183747,
+      "sha256": "d2c72adc6e0049ef02b7d08ccbfcfd1d7d4ceca9a39a5b9c42f77f85dcc63935",
+      "driveId": "1Osz4ndljqZfeCv_CqQnsS3Qz7pwOgZYN",
+      "url": "https://drive.google.com/file/d/1Osz4ndljqZfeCv_CqQnsS3Qz7pwOgZYN/view?usp=drivesdk",
+      "capture": "Android UiAutomation.takeScreenshot"
+    },
+    {
+      "file": "14-verified-host-preview.png",
+      "title": "文件与校验后预览",
+      "stitch": "I1",
+      "note": "真实 Markdown 文件、摘要验证与分享操作",
+      "sourceGit": "ba4ead96f68d8d3464528c97a541e44b768dfb19",
+      "sourceDirty": false,
+      "device": "emulator-5554",
+      "api": 36,
+      "densityDpi": 420,
+      "pixels": [
+        1080,
+        2400
+      ],
+      "bytes": 196883,
+      "sha256": "0b0f4197d972adbf6dcaf534e283684a67655c954c9165214a0d4d4bec20a235",
+      "driveId": "1TK_qAGiiUVkW_LM8gGrfmRwpUSYSClkF",
+      "url": "https://drive.google.com/file/d/1TK_qAGiiUVkW_LM8gGrfmRwpUSYSClkF/view?usp=drivesdk",
+      "capture": "Android UiAutomation.takeScreenshot"
+    },
+    {
+      "file": "07-real-native-approval-cancel.png",
+      "title": "200% 真实原生审批",
+      "stitch": "S4",
+      "note": "实际 cancel；保留系统审批通知横幅",
+      "sourceGit": "ba4ead96f68d8d3464528c97a541e44b768dfb19",
+      "sourceDirty": false,
+      "device": "emulator-5554",
+      "api": 36,
+      "densityDpi": 420,
+      "pixels": [
+        1080,
+        2400
+      ],
+      "bytes": 212228,
+      "sha256": "9bf5811b590272e9559e940c23ff41d4f2291aaf62980221352e2c39abf648d0",
+      "driveId": "1u_9Hm1hihRy9U_aGp9EzijUzSRilakmi",
+      "url": "https://drive.google.com/file/d/1u_9Hm1hihRy9U_aGp9EzijUzSRilakmi/view?usp=drivesdk",
+      "capture": "Android UiAutomation.takeScreenshot"
+    },
+    {
+      "file": "16-upload-unknown.png",
+      "title": "上传回执丢失",
+      "stitch": "S1/I1",
+      "note": "附件 unknown、禁止重新上传/发送",
+      "sourceGit": "ba4ead96f68d8d3464528c97a541e44b768dfb19",
+      "sourceDirty": false,
+      "device": "emulator-5554",
+      "api": 36,
+      "densityDpi": 420,
+      "pixels": [
+        1080,
+        2400
+      ],
+      "bytes": 258000,
+      "sha256": "f89b7c6147a738558c84156bd7d3d756e5e4fced4cc84b2252023bbba7ea263c",
+      "driveId": "1LL3ySAz6tNpdoR5lCVCexPmDRIrJjB85",
+      "url": "https://drive.google.com/file/d/1LL3ySAz6tNpdoR5lCVCexPmDRIrJjB85/view?usp=drivesdk",
+      "capture": "Android UiAutomation.takeScreenshot"
+    },
+    {
+      "file": "09-unknown-details.png",
+      "title": "Turn 回执丢失",
+      "stitch": "S1/I1",
+      "note": "原操作待核对、附件认领 held",
+      "sourceGit": "ba4ead96f68d8d3464528c97a541e44b768dfb19",
+      "sourceDirty": false,
+      "device": "emulator-5554",
+      "api": 36,
+      "densityDpi": 420,
+      "pixels": [
+        1080,
+        2400
+      ],
+      "bytes": 252271,
+      "sha256": "724996e95d1a420e193c5c13e18911db5a8d60513694175f6392cb7d1505580f",
+      "driveId": "1bXrovYfUHyg8Z4aLXFErNNlBVBKZiwvu",
+      "url": "https://drive.google.com/file/d/1bXrovYfUHyg8Z4aLXFErNNlBVBKZiwvu/view?usp=drivesdk",
+      "capture": "Android UiAutomation.takeScreenshot"
+    },
+    {
+      "file": "10-unknown-restored.png",
+      "title": "进程重启后的 unknown",
+      "stitch": "S1/I1",
+      "note": "原操作及附件保持；未重发",
+      "sourceGit": "ba4ead96f68d8d3464528c97a541e44b768dfb19",
+      "sourceDirty": false,
+      "device": "emulator-5554",
+      "api": 36,
+      "densityDpi": 420,
+      "pixels": [
+        1080,
+        2400
+      ],
+      "bytes": 248032,
+      "sha256": "40813733cb4adf7cb28cb2094209bd47fa93702916f3a53a015cb4a5f110d10b",
+      "driveId": "1V8V02xdXEXRapirZeoqaWDUpfH-z8hsO",
+      "url": "https://drive.google.com/file/d/1V8V02xdXEXRapirZeoqaWDUpfH-z8hsO/view?usp=drivesdk",
+      "capture": "Android UiAutomation.takeScreenshot"
+    },
+    {
+      "file": "20-offline-draft-readonly.png",
+      "title": "离线草稿",
+      "stitch": "S1",
+      "note": "缓存可读、草稿可编辑、写入口关闭",
+      "sourceGit": "ba4ead96f68d8d3464528c97a541e44b768dfb19",
+      "sourceDirty": false,
+      "device": "emulator-5554",
+      "api": 36,
+      "densityDpi": 420,
+      "pixels": [
+        1080,
+        2400
+      ],
+      "bytes": 240532,
+      "sha256": "6462d726efe1d961769e8c3660c2328ab22d3f6fc6edf3b536a95e171cdda385",
+      "driveId": "1R95aT6Z0a5faT2w9NXPr9Q34PA8nIIGs",
+      "url": "https://drive.google.com/file/d/1R95aT6Z0a5faT2w9NXPr9Q34PA8nIIGs/view?usp=drivesdk",
+      "capture": "Android UiAutomation.takeScreenshot"
+    },
+    {
+      "file": "21-reconnected-original-thread.png",
+      "title": "重新连接",
+      "stitch": "S1",
+      "note": "恢复原线程和草稿，不自动发送",
+      "sourceGit": "ba4ead96f68d8d3464528c97a541e44b768dfb19",
+      "sourceDirty": false,
+      "device": "emulator-5554",
+      "api": 36,
+      "densityDpi": 420,
+      "pixels": [
+        1080,
+        2400
+      ],
+      "bytes": 220185,
+      "sha256": "35552998422d9646976e5f3ae3ce763aac8433c5f1fb0c5624326f87bfd0120d",
+      "driveId": "1ASZWpKIgGFm1Ial9nVNszya4FbvAVsQH",
+      "url": "https://drive.google.com/file/d/1ASZWpKIgGFm1Ial9nVNszya4FbvAVsQH/view?usp=drivesdk",
+      "capture": "Android UiAutomation.takeScreenshot"
+    }
+  ],
+  "apks": [
+    {
+      "artifact": "oraculum-ba4ead9-debug.apk",
+      "bytes": 14820984,
+      "sha256": "110417f05c3a827454763c77fa273138d8be7cdf5e86869bd26a1dc60c4b468a",
+      "build": {
+        "format": 1,
+        "sourceGit": "ba4ead96f68d8d3464528c97a541e44b768dfb19",
+        "sourceDirty": false,
+        "version": "0.1.2",
+        "versionCode": 4
+      },
+      "kind": "Debug, system CA only; no release signing",
+      "applicationId": "dev.oraculum.poc.debug",
+      "url": "https://drive.google.com/file/d/1QMtF5OPSG5bOV_p1uQZyMZC03_GWS2uf/view",
+      "manifestUrl": "https://drive.google.com/file/d/1hO_jC8JrBNoUipQCs5WbMjL2yG10ieKs/view"
+    },
+    {
+      "artifact": "oraculum-ba4ead9-emulator-debug.apk",
+      "bytes": 14821059,
+      "sha256": "1e2b40c109a4a5601e439656d5aae9810bf4f06517451f899dacdce8479736f3",
+      "build": {
+        "format": 1,
+        "sourceGit": "ba4ead96f68d8d3464528c97a541e44b768dfb19",
+        "sourceDirty": false,
+        "version": "0.1.2",
+        "versionCode": 4
+      },
+      "kind": "Emulator Debug with disposable fixture CA",
+      "applicationId": "dev.oraculum.poc.debug"
+    }
+  ]
+}
