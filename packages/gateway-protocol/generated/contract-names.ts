@@ -69,6 +69,10 @@ export const contractNames = [
   "Model",
   "ModelPage",
   "ItemDetailsRequest",
-  "ItemDetails"
+  "ItemDetails",
+  "PermissionReadback",
+  "ExtensionEntry",
+  "ExtensionSection",
+  "ExtensionsSnapshot"
 ] as const;
 export type ContractName = typeof contractNames[number];

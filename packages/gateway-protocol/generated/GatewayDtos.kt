@@ -1,5 +1,5 @@
 // Generated from schema/v2.json by quicktype-core 24.0.0; DO NOT EDIT.
-// Schema SHA-256: 65be43febe66b96fe6774ed9cbf6f933d1eb06e5fa9de3ac121d1254b10b540d
+// Schema SHA-256: 71d4b2c1ac79489c5d445c22192a1d99c735b84f7578de88cc2c7c519eaab466
 // Decode with Json { ignoreUnknownKeys = true; explicitNulls = true }.
 // Keep encodeDefaults = false. Validate requests against JSON Schema.
 
@@ -552,11 +552,11 @@ data class ThreadStartRequest (
     @SerialName("operationId")
     val operationID: String,
 
-    val permissionPreset: PermissionPreset? = null
+    val permissionPreset: Preset? = null
 )
 
 @Serializable
-enum class PermissionPreset(val value: String) {
+enum class Preset(val value: String) {
     @SerialName("auto") Auto("auto"),
     @SerialName("full-access") FullAccess("full-access"),
     @SerialName("read-only") ReadOnly("read-only");
@@ -598,6 +598,7 @@ data class Thread (
     val parentThreadID: String? = null,
 
     val permissionPreset: String? = null,
+    val permissionReadback: ThreadPermissionReadback? = null,
     val preview: String? = null,
 
     @Required
@@ -612,6 +613,30 @@ data class Thread (
     val title: String? = null,
     val updatedAt: Long? = null
 )
+
+@Serializable
+data class ThreadPermissionReadback (
+    @Required
+    val approvalPolicy: String,
+
+    @Required
+    val observedAt: Long,
+
+    @Required
+    val preset: Preset? = null,
+
+    @Required
+    val sandboxType: String,
+
+    @Required
+    val source: PermissionReadbackSource
+)
+
+@Serializable
+enum class PermissionReadbackSource(val value: String) {
+    @SerialName("thread.resume") ThreadResume("thread.resume"),
+    @SerialName("thread.start") ThreadStart("thread.start");
+}
 
 @Serializable
 data class ThreadPage (
@@ -642,6 +667,7 @@ data class ThreadElement (
     val parentThreadID: String? = null,
 
     val permissionPreset: String? = null,
+    val permissionReadback: PurplePermissionReadback? = null,
     val preview: String? = null,
 
     @Required
@@ -655,6 +681,24 @@ data class ThreadElement (
 
     val title: String? = null,
     val updatedAt: Long? = null
+)
+
+@Serializable
+data class PurplePermissionReadback (
+    @Required
+    val approvalPolicy: String,
+
+    @Required
+    val observedAt: Long,
+
+    @Required
+    val preset: Preset? = null,
+
+    @Required
+    val sandboxType: String,
+
+    @Required
+    val source: PermissionReadbackSource
 )
 
 @Serializable
@@ -693,7 +737,7 @@ data class TurnStartRequest (
     @SerialName("operationId")
     val operationID: String,
 
-    val permissionPreset: PermissionPreset? = null,
+    val permissionPreset: Preset? = null,
 
     @Required
     @SerialName("projectId")
@@ -858,14 +902,14 @@ data class HistoryPage (
     val nextCursor: String? = null,
 
     @Required
-    val source: Source,
+    val source: HistoryPageSource,
 
     @Required
     val truncated: Boolean
 )
 
 @Serializable
-enum class Source(val value: String) {
+enum class HistoryPageSource(val value: String) {
     @SerialName("native-pagination") NativePagination("native-pagination"),
     @SerialName("native-read-projection") NativeReadProjection("native-read-projection");
 }
@@ -927,7 +971,7 @@ data class HistoryClass (
     val nextCursor: String? = null,
 
     @Required
-    val source: Source,
+    val source: HistoryPageSource,
 
     @Required
     val truncated: Boolean
@@ -1015,6 +1059,7 @@ data class SnapshotThread (
     val parentThreadID: String? = null,
 
     val permissionPreset: String? = null,
+    val permissionReadback: FluffyPermissionReadback? = null,
     val preview: String? = null,
 
     @Required
@@ -1028,6 +1073,24 @@ data class SnapshotThread (
 
     val title: String? = null,
     val updatedAt: Long? = null
+)
+
+@Serializable
+data class FluffyPermissionReadback (
+    @Required
+    val approvalPolicy: String,
+
+    @Required
+    val observedAt: Long,
+
+    @Required
+    val preset: Preset? = null,
+
+    @Required
+    val sandboxType: String,
+
+    @Required
+    val source: PermissionReadbackSource
 )
 
 @Serializable
@@ -1292,7 +1355,7 @@ data class Attachment (
     val id: String,
 
     @Required
-    val kind: Kind,
+    val kind: AttachmentKind,
 
     @Required
     val mime: String,
@@ -1319,7 +1382,7 @@ data class Attachment (
 )
 
 @Serializable
-enum class Kind(val value: String) {
+enum class AttachmentKind(val value: String) {
     @SerialName("document") Document("document"),
     @SerialName("image") Image("image");
 }
@@ -1585,7 +1648,7 @@ data class AttachmentClass (
     val id: String,
 
     @Required
-    val kind: Kind,
+    val kind: AttachmentKind,
 
     @Required
     val mime: String,
@@ -1737,7 +1800,7 @@ data class ItemDetails (
     val sha256: String,
 
     @Required
-    val source: Source,
+    val source: HistoryPageSource,
 
     @Required
     val totalBytes: Long
@@ -1752,3 +1815,136 @@ enum class Encoding(val value: String) {
 enum class Format(val value: String) {
     @SerialName("native-item-json") NativeItemJSON("native-item-json");
 }
+
+@Serializable
+data class PermissionReadback (
+    @Required
+    val approvalPolicy: String,
+
+    @Required
+    val observedAt: Long,
+
+    @Required
+    val preset: Preset? = null,
+
+    @Required
+    val sandboxType: String,
+
+    @Required
+    val source: PermissionReadbackSource
+)
+
+@Serializable
+data class ExtensionEntry (
+    val callable: Boolean? = null,
+    val description: String? = null,
+    val enabled: Boolean? = null,
+
+    @Required
+    val id: String,
+
+    @Required
+    val name: String,
+
+    val resourceCount: Long? = null,
+    val source: String? = null,
+    val status: String? = null,
+    val toolCount: Long? = null,
+    val version: String? = null
+)
+
+@Serializable
+data class ExtensionSection (
+    @Required
+    val entries: List<ExtensionSectionEntry>,
+
+    @Required
+    val kind: ExtensionSectionKind,
+
+    @Required
+    val limited: Boolean,
+
+    val reasonCode: String? = null,
+
+    @Required
+    val status: ExtensionSectionStatus
+)
+
+@Serializable
+data class ExtensionSectionEntry (
+    val callable: Boolean? = null,
+    val description: String? = null,
+    val enabled: Boolean? = null,
+
+    @Required
+    val id: String,
+
+    @Required
+    val name: String,
+
+    val resourceCount: Long? = null,
+    val source: String? = null,
+    val status: String? = null,
+    val toolCount: Long? = null,
+    val version: String? = null
+)
+
+@Serializable
+enum class ExtensionSectionKind(val value: String) {
+    @SerialName("apps") Apps("apps"),
+    @SerialName("mcp") MCP("mcp"),
+    @SerialName("plugins") Plugins("plugins"),
+    @SerialName("skills") Skills("skills");
+}
+
+@Serializable
+enum class ExtensionSectionStatus(val value: String) {
+    @SerialName("available") Available("available"),
+    @SerialName("unavailable") Unavailable("unavailable");
+}
+
+@Serializable
+data class ExtensionsSnapshot (
+    @Required
+    @SerialName("projectId")
+    val projectID: String,
+
+    @Required
+    val sections: List<SectionElement>
+)
+
+@Serializable
+data class SectionElement (
+    @Required
+    val entries: List<SectionEntry>,
+
+    @Required
+    val kind: ExtensionSectionKind,
+
+    @Required
+    val limited: Boolean,
+
+    val reasonCode: String? = null,
+
+    @Required
+    val status: ExtensionSectionStatus
+)
+
+@Serializable
+data class SectionEntry (
+    val callable: Boolean? = null,
+    val description: String? = null,
+    val enabled: Boolean? = null,
+
+    @Required
+    val id: String,
+
+    @Required
+    val name: String,
+
+    val resourceCount: Long? = null,
+    val source: String? = null,
+    val status: String? = null,
+    val toolCount: Long? = null,
+    val version: String? = null
+)

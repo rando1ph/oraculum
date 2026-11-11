@@ -37,4 +37,8 @@ describe('Gateway v2 JSON Schema contract', () => {
     const event = valid.find(f => f.contract === 'EventEnvelope')!.value as EventEnvelope;
     for (const seq of [NaN, Infinity, -Infinity, 1.5]) expect(validateContract('EventEnvelope', { ...event, seq })).toBe(false);
   });
+  it('bounds extension summary collections', () => {
+    const section = valid.find(f => f.contract === 'ExtensionSection')!.value;
+    expect(validateContract('ExtensionSection', { ...section, entries: Array.from({ length: 101 }, () => ({ id: 'id', name: 'name' })) })).toBe(false);
+  });
 });

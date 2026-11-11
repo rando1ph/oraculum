@@ -949,5 +949,102 @@
       "nextCursor": null,
       "complete": true
     }
+  },
+  {
+    "name": "PermissionReadback",
+    "contract": "PermissionReadback",
+    "value": {
+      "sandboxType": "readOnly",
+      "approvalPolicy": "on-request",
+      "preset": "read-only",
+      "observedAt": 123,
+      "source": "thread.resume"
+    }
+  },
+  {
+    "name": "ExtensionEntry",
+    "contract": "ExtensionEntry",
+    "value": {
+      "id": "safe-id",
+      "name": "原生扩展",
+      "enabled": true,
+      "callable": false,
+      "toolCount": 2,
+      "resourceCount": 1
+    }
+  },
+  {
+    "name": "ExtensionSection",
+    "contract": "ExtensionSection",
+    "value": {
+      "kind": "skills",
+      "status": "available",
+      "entries": [
+        {
+          "id": "safe-id",
+          "name": "原生扩展",
+          "enabled": true,
+          "callable": false,
+          "toolCount": 2,
+          "resourceCount": 1
+        }
+      ],
+      "limited": false
+    }
+  },
+  {
+    "name": "ExtensionsSnapshot",
+    "contract": "ExtensionsSnapshot",
+    "value": {
+      "projectId": "12345678-1234-4123-8123-123456789abc",
+      "sections": [
+        {
+          "kind": "skills",
+          "status": "available",
+          "entries": [
+            {
+              "id": "safe-id",
+              "name": "原生扩展",
+              "enabled": true,
+              "callable": false,
+              "toolCount": 2,
+              "resourceCount": 1
+            }
+          ],
+          "limited": false
+        },
+        {
+          "kind": "mcp",
+          "status": "unavailable",
+          "entries": [],
+          "limited": false,
+          "reasonCode": "NATIVE_TIMEOUT"
+        },
+        {
+          "kind": "apps",
+          "status": "available",
+          "entries": [],
+          "limited": false
+        },
+        {
+          "kind": "plugins",
+          "status": "unavailable",
+          "entries": [],
+          "limited": false,
+          "reasonCode": "STABILITY_UNVERIFIED"
+        }
+      ]
+    }
+  },
+  {
+    "name": "unknown-native-permission-readback",
+    "contract": "PermissionReadback",
+    "value": {
+      "sandboxType": "readOnly",
+      "approvalPolicy": "on-request",
+      "preset": null,
+      "observedAt": 123,
+      "source": "thread.resume"
+    }
   }
 ]

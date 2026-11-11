@@ -285,5 +285,27 @@
       "scope": {},
       "impact": "state"
     }
+  },
+  {
+    "name": "extension-entry-overlong-name",
+    "contract": "ExtensionEntry",
+    "value": {
+      "id": "safe-id",
+      "name": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "enabled": true,
+      "callable": false,
+      "toolCount": 2,
+      "resourceCount": 1
+    }
+  },
+  {
+    "name": "permission-readback-missing-required-null",
+    "contract": "PermissionReadback",
+    "value": {
+      "sandboxType": "readOnly",
+      "approvalPolicy": "on-request",
+      "observedAt": 123,
+      "source": "thread.resume"
+    }
   }
 ]

@@ -24,13 +24,16 @@ class MockCodex extends EventEmitter {
   nativeThreads = new Map<string, NativeThread>();
   calls = { startThread: 0, resumeThread: 0, startTurn: 0, interruptTurn: 0, respond: 0, reject: 0 };
   responses: { id: RpcId; response: unknown }[] = [];
+  permissionResult: Record<string, unknown> = {};
+  extensionCalls = 0;
+  async readExtensions(kind: string) { this.extensionCalls++; return { status: 'available' as const, data: kind === 'skills' ? { data: [] } : kind === 'mcp' ? { data: [], nextCursor: null } : { apps: [] } }; }
   async listModels() { return { data: [{ id: 'fixture', model: 'fixture', displayName: 'Fixture', isDefault: true, supportedReasoningEfforts: [{ reasoningEffort: 'low' }] }], nextCursor: null }; }
   async startThread(input: { cwd: string }) {
     this.calls.startThread++;
     if (this.startFailure) throw this.startFailure;
     const thread: NativeThread = { id: `native-thread-${this.calls.startThread}`, cwd: input.cwd, preview: '', status: { type: 'idle' }, turns: [], model: 'fixture' };
     this.nativeThreads.set(thread.id, thread);
-    return { thread: structuredClone(thread) };
+    return { thread: structuredClone(thread), ...this.permissionResult };
   }
   async readThread(id: string) {
     const thread = this.nativeThreads.get(id);
@@ -38,7 +41,7 @@ class MockCodex extends EventEmitter {
     return { thread: structuredClone(thread) };
   }
   async listThreads(input: { cwd: string }) { return { data: [...this.nativeThreads.values()].filter(thread => thread.cwd === input.cwd).map(thread => structuredClone(thread)), nextCursor: null }; }
-  async resumeThread(id: string) { this.calls.resumeThread++; return this.readThread(id); }
+  async resumeThread(id: string) { this.calls.resumeThread++; return { ...await this.readThread(id), ...this.permissionResult }; }
   async startTurn(input: { threadId: string }) {
     this.calls.startTurn++;
     if (this.turnFailure) throw this.turnFailure;
@@ -150,6 +153,32 @@ async function start(f: Running, device: Device, projectId: string) {
 const writeBody = (f: Running, projectId: string) => ({ operationId: randomUUID(), projectId, expectedEpoch: f.service.epoch });
 
 describe('Gateway HTTP authentication and endpoint boundaries', () => {
+  it('exposes bounded read-only extensions only for an authorized registered project', async () => {
+    const f = await setup(); const device = await f.pair(); const projectId = await register(f, device);
+    const before = { ...f.codex.calls };
+    const result = await f.request(`/projects/${projectId}/extensions`, { device });
+    expect(result.status).toBe(200); expect(validateContract('ExtensionsSnapshot', result.json.data)).toBe(true);
+    expect(result.json.data.sections.map((entry: Json) => entry.kind)).toEqual(['skills', 'mcp', 'apps', 'plugins']);
+    expect(result.json.data.sections[3]).toMatchObject({ status: 'unavailable', reasonCode: 'STABILITY_UNVERIFIED' });
+    expect(f.codex.extensionCalls).toBe(3); expect(f.codex.calls).toEqual(before);
+    expect((await f.request(`/projects/${projectId}/extensions`)).status).toBe(401);
+    const missing = await f.request(`/projects/${randomUUID()}/extensions`, { device });
+    expect(missing.status).toBe(409); expect(missing.json.error.code).toBe('PROJECT_UNAVAILABLE');
+    expect(f.codex.extensionCalls).toBe(3);
+  });
+  it('returns native permission observations and invalidates them when a Turn starts', async () => {
+    const f = await setup(); const device = await f.pair(); const projectId = await register(f, device);
+    f.codex.permissionResult = { sandbox: { type: 'dangerFullAccess' }, approvalPolicy: 'never' };
+    const threadId = await start(f, device, projectId); // Request asks read-only; readback is deliberately different.
+    const read = await f.request(`/projects/${projectId}/threads/${threadId}`, { device });
+    expect(read.json.data.permissionPreset).toBe('full-access');
+    expect(read.json.data.permissionReadback).toMatchObject({ preset: 'full-access', source: 'thread.start' });
+    expect(validateContract('Thread', read.json.data)).toBe(true);
+    const turn = await f.request(`/threads/${threadId}/turns`, { device, body: { ...writeBody(f, projectId), input: [{ type: 'text', text: 'safe fixture' }] } });
+    expect(turn.status).toBe(200);
+    const after = await f.request(`/projects/${projectId}/threads/${threadId}`, { device });
+    expect(after.json.data.permissionReadback).toBeUndefined(); expect(after.json.data.permissionPreset).toBeUndefined();
+  });
   it('pairs, renews after a discarded ACK, and exposes only minimal unauthenticated health', async () => {
     const f = await setup(); const health = await fetch(f.origin + '/health'); const publicHealth = await health.json();
     expect(publicHealth).toEqual({ status: 'ok', protocolMajor: 2, installationId: f.store.installationId });

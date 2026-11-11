@@ -16,6 +16,7 @@
 | GET `/api/v2/capabilities` | 无 | `Capabilities` |
 | GET `/api/v2/models` | 无 | `ModelPage` |
 | GET `/api/v2/projects` | 无 | `Projects` |
+| GET `/api/v2/projects/{projectId}/extensions` | 无 | `ExtensionsSnapshot`（只读、有界摘要） |
 | POST `/api/v2/project-directories/query` | `DirectoryQuery` | `DirectoryPage` |
 | POST `/api/v2/projects` | `ProjectRegisterRequest` | `OperationResponse` |
 | DELETE `/api/v2/projects/{projectId}` | `ProjectUnregisterRequest` | `OperationResponse` |
@@ -45,6 +46,8 @@
 ## 类型与安全语义
 
 - UUID 为规范小写 UUIDv4。原生 thread/turn/item ID 是有界不透明字符串。整数均在 JavaScript 安全整数范围内；时间为 UTC epoch milliseconds。需要保留更大整数的文件 dev/ino 等内部身份使用十进制字符串，不冒充浮点数。
+- `ExtensionsSnapshot` 按 Skills/MCP/Apps/Plugins 四节返回，只公开有界名称/描述及原生状态；每节至多 100 条，`limited` 表示截断、原生分页未读完或局部错误。只读 API `skills/list`、`mcpServerStatus/list`、`app/installed` 各自失败不影响其他节。Plugins 完整已安装清单当前因稳定支持未确证固定为 `unavailable/STABILITY_UNVERIFIED`；不调用 `plugin/list` 或以生成类型存在替代稳定支持证据。缺失 enabled/callable 不等于 false。
+- `Thread.permissionReadback` 是本 epoch 最近一次原生 `thread/start` 或 `thread/resume` 响应的读取事实，包含来源/时间和可精确匹配时的 preset；不是客户端请求值或逐 Turn 权限确认。新增 Turn、卸载、代次/未知事件失效时移除；`permissionPreset` 只在该读取事实可以精确映射时给出。自定义审批、额外可写根或未知 sandbox 形态的 preset 为 null。Android 应明确区分“最近原生回读”和“下次执行设置”。
 - 安全请求 `additionalProperties:false`，不隐式删字段、不强制类型转换、不自动补默认值。响应容许新增字段。未知原生 item/event 的类型是字符串；不能据此生成可执行审批。
 - `OperationReceipt.status` 只有 `accepted/rejected/unknown`，描述交付结果，不代表原生 Turn 已完成。`delivery` 为 `notSent/sent/unknown`。重复 operation ID 不执行；unknown 只读查询，禁止自动重发。
 - `installationId` 区分重新初始化的安装；`epoch` 区分 Gateway/Codex 运行代次；`seq` 为同设备、同 epoch 的事件序号，不保证从 1 开始；客户端使用首次连接响应的 headSeq 初始化游标。连接恢复先观察事件再读快照；`observedStartSeq/observedEndSeq` 不是原生历史水位。无 offset/revision 证明的活动 delta 不拼接到恢复快照正文，原生完成事实按 item ID 覆盖校正。

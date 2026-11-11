@@ -124,6 +124,7 @@ export async function createGatewayServer(service: GatewayService, config: Gatew
         return operation(request, reply, receipt(service.store.getOperation(q.operationId, caller.deviceId)!));
     });
     app.get(api + '/models', async (request) => resource(request, await service.codex.listModels({ limit: 100 }), 'ModelPage'));
+    app.get(api + '/projects/:projectId/extensions', async (request) => resource(request, await service.extensions(auth(request), params(request).projectId!), 'ExtensionsSnapshot'));
     app.get(api + '/projects/:projectId/threads', async (request) => {
         const query = request.query as Record<string, string>, q = parseContract('ThreadQuery', { ...query, ...(query.limit ? { limit: Number(query.limit) } : {}), ...(query.archived ? { archived: query.archived === 'true' ? true : query.archived === 'false' ? false : query.archived } : {}) });
         return resource(request, await service.listThreads(auth(request), params(request).projectId!, q), 'ThreadPage');

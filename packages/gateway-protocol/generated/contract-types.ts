@@ -71,4 +71,8 @@ export interface ContractTypes {
   ModelPage: Dto.ModelPage;
   ItemDetailsRequest: Dto.ItemDetailsRequest;
   ItemDetails: Dto.ItemDetails;
+  PermissionReadback: Dto.PermissionReadback;
+  ExtensionEntry: Dto.ExtensionEntry;
+  ExtensionSection: Dto.ExtensionSection;
+  ExtensionsSnapshot: Dto.ExtensionsSnapshot;
 }

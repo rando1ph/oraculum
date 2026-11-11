@@ -918,6 +918,9 @@
               "type": "null"
             }
           ]
+        },
+        "permissionReadback": {
+          "$ref": "#/definitions/PermissionReadback"
         }
       },
       "required": [
@@ -2362,6 +2365,174 @@
         "sha256",
         "nextCursor",
         "complete"
+      ],
+      "additionalProperties": true
+    },
+    "PermissionReadback": {
+      "type": "object",
+      "properties": {
+        "sandboxType": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "approvalPolicy": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "preset": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "read-only",
+            "auto",
+            "full-access",
+            null
+          ]
+        },
+        "observedAt": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "thread.start",
+            "thread.resume"
+          ]
+        }
+      },
+      "required": [
+        "sandboxType",
+        "approvalPolicy",
+        "preset",
+        "observedAt",
+        "source"
+      ],
+      "additionalProperties": true
+    },
+    "ExtensionEntry": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "callable": {
+          "type": "boolean"
+        },
+        "status": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "source": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "toolCount": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "resourceCount": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "additionalProperties": true
+    },
+    "ExtensionSection": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "skills",
+            "mcp",
+            "apps",
+            "plugins"
+          ]
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "available",
+            "unavailable"
+          ]
+        },
+        "entries": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ExtensionEntry"
+          },
+          "maxItems": 100
+        },
+        "limited": {
+          "type": "boolean"
+        },
+        "reasonCode": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        }
+      },
+      "required": [
+        "kind",
+        "status",
+        "entries",
+        "limited"
+      ],
+      "additionalProperties": true
+    },
+    "ExtensionsSnapshot": {
+      "type": "object",
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+        },
+        "sections": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ExtensionSection"
+          },
+          "minItems": 4,
+          "maxItems": 4
+        }
+      },
+      "required": [
+        "projectId",
+        "sections"
       ],
       "additionalProperties": true
     }

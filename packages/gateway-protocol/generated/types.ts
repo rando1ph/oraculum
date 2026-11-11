@@ -1,5 +1,5 @@
 // Generated from schema/v2.json by quicktype-core 24.0.0; DO NOT EDIT.
-// Schema SHA-256: 65be43febe66b96fe6774ed9cbf6f933d1eb06e5fa9de3ac121d1254b10b540d
+// Schema SHA-256: 71d4b2c1ac79489c5d445c22192a1d99c735b84f7578de88cc2c7c519eaab466
 export interface ProtocolVersion {
     major:          number;
     minClientMinor: number;
@@ -260,10 +260,10 @@ export interface ThreadStartRequest {
     expectedEpoch:     string;
     model?:            string;
     operationId:       string;
-    permissionPreset?: PermissionPreset;
+    permissionPreset?: Preset;
 }
 
-export type PermissionPreset = "read-only" | "auto" | "full-access";
+export type Preset = "read-only" | "auto" | "full-access";
 
 export interface ThreadResumeRequest {
     expectedEpoch: string;
@@ -279,20 +279,32 @@ export interface ThreadQuery {
 }
 
 export interface Thread {
-    archived?:         boolean;
-    createdAt?:        number | null;
-    id:                string;
-    model?:            null | string;
-    parentThreadId?:   null | string;
-    permissionPreset?: null | string;
-    preview?:          string;
-    projectId:         string;
-    reasoningEffort?:  null | string;
-    status:            string;
-    title?:            null | string;
-    updatedAt?:        number | null;
+    archived?:           boolean;
+    createdAt?:          number | null;
+    id:                  string;
+    model?:              null | string;
+    parentThreadId?:     null | string;
+    permissionPreset?:   null | string;
+    permissionReadback?: ThreadPermissionReadback;
+    preview?:            string;
+    projectId:           string;
+    reasoningEffort?:    null | string;
+    status:              string;
+    title?:              null | string;
+    updatedAt?:          number | null;
     [property: string]: unknown;
 }
+
+export interface ThreadPermissionReadback {
+    approvalPolicy: string;
+    observedAt:     number;
+    preset:         Preset | null;
+    sandboxType:    string;
+    source:         PermissionReadbackSource;
+    [property: string]: unknown;
+}
+
+export type PermissionReadbackSource = "thread.start" | "thread.resume";
 
 export interface ThreadPage {
     nextCursor: null | string;
@@ -303,18 +315,28 @@ export interface ThreadPage {
 }
 
 export interface ThreadElement {
-    archived?:         boolean;
-    createdAt?:        number | null;
-    id:                string;
-    model?:            null | string;
-    parentThreadId?:   null | string;
-    permissionPreset?: null | string;
-    preview?:          string;
-    projectId:         string;
-    reasoningEffort?:  null | string;
-    status:            string;
-    title?:            null | string;
-    updatedAt?:        number | null;
+    archived?:           boolean;
+    createdAt?:          number | null;
+    id:                  string;
+    model?:              null | string;
+    parentThreadId?:     null | string;
+    permissionPreset?:   null | string;
+    permissionReadback?: PurplePermissionReadback;
+    preview?:            string;
+    projectId:           string;
+    reasoningEffort?:    null | string;
+    status:              string;
+    title?:              null | string;
+    updatedAt?:          number | null;
+    [property: string]: unknown;
+}
+
+export interface PurplePermissionReadback {
+    approvalPolicy: string;
+    observedAt:     number;
+    preset:         Preset | null;
+    sandboxType:    string;
+    source:         PermissionReadbackSource;
     [property: string]: unknown;
 }
 
@@ -331,7 +353,7 @@ export interface TurnStartRequest {
     input:             TurnStartRequestInput[];
     model?:            string;
     operationId:       string;
-    permissionPreset?: PermissionPreset;
+    permissionPreset?: Preset;
     projectId:         string;
 }
 
@@ -413,12 +435,12 @@ export interface HistoryPage {
     itemCursors?:    { [key: string]: string };
     items:           unknown[];
     nextCursor:      null | string;
-    source:          Source;
+    source:          HistoryPageSource;
     truncated:       boolean;
     [property: string]: unknown;
 }
 
-export type Source = "native-pagination" | "native-read-projection";
+export type HistoryPageSource = "native-pagination" | "native-read-projection";
 
 export interface SnapshotRequest {
     knownEpoch?:    string;
@@ -445,7 +467,7 @@ export interface HistoryObject {
     itemCursors?:    { [key: string]: string };
     items:           unknown[];
     nextCursor:      null | string;
-    source:          Source;
+    source:          HistoryPageSource;
     truncated:       boolean;
     [property: string]: unknown;
 }
@@ -478,18 +500,28 @@ export interface OperationElement {
 export type Synchronization = "synchronizing" | "current" | "stale";
 
 export interface SnapshotThread {
-    archived?:         boolean;
-    createdAt?:        number | null;
-    id:                string;
-    model?:            null | string;
-    parentThreadId?:   null | string;
-    permissionPreset?: null | string;
-    preview?:          string;
-    projectId:         string;
-    reasoningEffort?:  null | string;
-    status:            string;
-    title?:            null | string;
-    updatedAt?:        number | null;
+    archived?:           boolean;
+    createdAt?:          number | null;
+    id:                  string;
+    model?:              null | string;
+    parentThreadId?:     null | string;
+    permissionPreset?:   null | string;
+    permissionReadback?: FluffyPermissionReadback;
+    preview?:            string;
+    projectId:           string;
+    reasoningEffort?:    null | string;
+    status:              string;
+    title?:              null | string;
+    updatedAt?:          number | null;
+    [property: string]: unknown;
+}
+
+export interface FluffyPermissionReadback {
+    approvalPolicy: string;
+    observedAt:     number;
+    preset:         Preset | null;
+    sandboxType:    string;
+    source:         PermissionReadbackSource;
     [property: string]: unknown;
 }
 
@@ -606,7 +638,7 @@ export interface Attachment {
     draftId:      string;
     expiresAt:    number | null;
     id:           string;
-    kind:         Kind;
+    kind:         AttachmentKind;
     mime:         string;
     name:         string;
     operationId?: null | string;
@@ -617,7 +649,7 @@ export interface Attachment {
     [property: string]: unknown;
 }
 
-export type Kind = "image" | "document";
+export type AttachmentKind = "image" | "document";
 
 export type AttachmentState = "uploading" | "ready" | "held" | "sent" | "expired" | "unknown";
 
@@ -745,7 +777,7 @@ export interface AttachmentObject {
     draftId:      string;
     expiresAt:    number | null;
     id:           string;
-    kind:         Kind;
+    kind:         AttachmentKind;
     mime:         string;
     name:         string;
     operationId?: null | string;
@@ -819,7 +851,86 @@ export interface ItemDetails {
     nextCursor:      null | string;
     offsetBytes:     number;
     sha256:          string;
-    source:          Source;
+    source:          HistoryPageSource;
     totalBytes:      number;
+    [property: string]: unknown;
+}
+
+export interface PermissionReadback {
+    approvalPolicy: string;
+    observedAt:     number;
+    preset:         Preset | null;
+    sandboxType:    string;
+    source:         PermissionReadbackSource;
+    [property: string]: unknown;
+}
+
+export interface ExtensionEntry {
+    callable?:      boolean;
+    description?:   string;
+    enabled?:       boolean;
+    id:             string;
+    name:           string;
+    resourceCount?: number;
+    source?:        string;
+    status?:        string;
+    toolCount?:     number;
+    version?:       string;
+    [property: string]: unknown;
+}
+
+export interface ExtensionSection {
+    entries:     ExtensionSectionEntry[];
+    kind:        ExtensionSectionKind;
+    limited:     boolean;
+    reasonCode?: string;
+    status:      ExtensionSectionStatus;
+    [property: string]: unknown;
+}
+
+export interface ExtensionSectionEntry {
+    callable?:      boolean;
+    description?:   string;
+    enabled?:       boolean;
+    id:             string;
+    name:           string;
+    resourceCount?: number;
+    source?:        string;
+    status?:        string;
+    toolCount?:     number;
+    version?:       string;
+    [property: string]: unknown;
+}
+
+export type ExtensionSectionKind = "skills" | "mcp" | "apps" | "plugins";
+
+export type ExtensionSectionStatus = "available" | "unavailable";
+
+export interface ExtensionsSnapshot {
+    projectId: string;
+    sections:  SectionElement[];
+    [property: string]: unknown;
+}
+
+export interface SectionElement {
+    entries:     SectionEntry[];
+    kind:        ExtensionSectionKind;
+    limited:     boolean;
+    reasonCode?: string;
+    status:      ExtensionSectionStatus;
+    [property: string]: unknown;
+}
+
+export interface SectionEntry {
+    callable?:      boolean;
+    description?:   string;
+    enabled?:       boolean;
+    id:             string;
+    name:           string;
+    resourceCount?: number;
+    source?:        string;
+    status?:        string;
+    toolCount?:     number;
+    version?:       string;
     [property: string]: unknown;
 }

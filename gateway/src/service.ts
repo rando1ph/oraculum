@@ -9,6 +9,8 @@ import { AttachmentStore, type AttachmentOwner, type AttachmentRow } from './att
 import { CodexAdapter, CodexError, record, type NativeThread, type NativeNotification, type NativeRequest } from './codex';
 import { NativeHistory, projectItem } from './history';
 import { Interactions, InteractionError, type Interaction, type InteractionResponse } from './interactions';
+import { extensionSection } from './extensions';
+import { permissionReadback, type PermissionReadback } from './permission-readback';
 import { EventFeeds, type EventInput } from './events';
 import { PROTOCOL, type ThreadStartRequest, type ThreadResumeRequest, type TurnStartRequest, type TurnInterruptRequest, type InteractionResponseRequest, type HistoryQuery, type AttachmentUploadMetadata, type AttachmentDeleteRequest } from '../../packages/gateway-protocol/src/index';
 export type Authorized = {
@@ -36,6 +38,8 @@ export class GatewayService {
     private readonly threads = new Map<string, string>();
     private readonly activeTurns = new Map<string, string>();
     private readonly observed = new Set<string>();
+    private readonly permissions = new Map<string, PermissionReadback>();
+    private extensionReads = 0;
     private readonly answers = new Map<string, {
         operationId: string;
         deviceId: string;
@@ -118,6 +122,7 @@ export class GatewayService {
         this.activeTurns.clear();
         this.threadCursors.clear();
         this.observed.clear();
+        this.permissions.clear();
         this.answers.clear();
         this.feeds.reset(this.epoch);
     }
@@ -149,7 +154,7 @@ export class GatewayService {
     private async notification(message: NativeNotification) {
         const p = message.params;
         if(message.method==='gateway/unsupportedNativeEvent'&&typeof p.threadId!=='string'){
-            this.history.clear();this.broadcast({kind:'history.invalidated',impact:'state',scope:{},payload:{reasonCode:'UNSUPPORTED_NATIVE_EVENT'}});return;
+            this.permissions.clear();this.history.clear();this.broadcast({kind:'history.invalidated',impact:'state',scope:{},payload:{reasonCode:'UNSUPPORTED_NATIVE_EVENT'}});return;
         }
         if (message.method === 'thread/started' && record(p.thread) && typeof p.thread.id === 'string' && typeof p.thread.cwd === 'string') {
             const project = this.store.listProjects().find(project => project.canonicalPath === (p.thread as Record<string, unknown>).cwd);
@@ -164,12 +169,16 @@ export class GatewayService {
             return;
         await this.projects.validate(projectId);
         if(message.method==='gateway/unsupportedNativeEvent'||((message.method==='item/started'||message.method==='item/completed')&&record(p.item)&&p.item.type==='contextCompaction')){
+            this.permissions.delete(threadId);
             this.history.invalidate(threadId);this.broadcast({kind:'history.invalidated',impact:'state',scope:{projectId,threadId},payload:{reasonCode:message.method==='gateway/unsupportedNativeEvent'?'UNSUPPORTED_NATIVE_EVENT':'NATIVE_COMPACTION'}});
             if(message.method==='gateway/unsupportedNativeEvent')return;
         }
         const scope = { projectId, threadId, ...(typeof p.turnId === 'string' ? { turnId: p.turnId } : {}), ...(typeof p.itemId === 'string' ? { itemId: p.itemId } : {}) };
         if (message.method === 'turn/started' && record(p.turn) && typeof p.turn.id === 'string')
             this.activeTurns.set(threadId, p.turn.id);
+        if (message.method === 'turn/started' || /thread\/(?:archived|unarchived|closed|deleted)/.test(message.method) ||
+            (message.method === 'thread/status/changed' && record(p.status) && p.status.type === 'notLoaded'))
+            this.permissions.delete(threadId);
         if (message.method === 'turn/completed') {
             if (record(p.turn) && this.activeTurns.get(threadId) === p.turn.id)
                 this.activeTurns.delete(threadId);
@@ -210,10 +219,11 @@ export class GatewayService {
             const oldest = this.threads.keys().next().value!;
             this.threads.delete(oldest);
             this.activeTurns.delete(oldest);
+            this.permissions.delete(oldest);
         }
     }
     capabilities() {
-        const names = ['projects', 'files', 'attachments', 'thread.list', 'thread.read', 'thread.start', 'thread.resume', 'turn.start', 'turn.interrupt', 'history', 'interactions'];
+        const names = ['projects', 'files', 'attachments', 'thread.list', 'thread.read', 'thread.start', 'thread.resume', 'turn.start', 'turn.interrupt', 'history', 'interactions', 'extensions.read'];
         return { protocol: PROTOCOL, gatewayVersion: '2.0.0', installationId: this.store.installationId, epoch: this.epoch,
             codex: { version: this.options.codexVersion ?? 'unknown', connectionState: this.codex.alive ? 'connected' : 'disconnected' },
             capabilities: [...names.map(name => ({ name, supported: true, availability: ['projects', 'files', 'attachments'].includes(name) || this.observed.has(name) ? 'available' : this.codex.alive ? 'unverified' : 'unavailable', maturity: ['projects', 'files', 'attachments'].includes(name) ? 'gateway' : 'default-surface', verified: ['projects', 'files', 'attachments'].includes(name) || this.observed.has(name), reasonCode: this.observed.has(name) ? 'OBSERVED' : 'AWAITING_FIRST_USER_OPERATION', observedVersion: this.options.codexVersion ?? 'unknown', epoch: this.epoch })),
@@ -230,12 +240,30 @@ export class GatewayService {
             fail('PROJECT_UNAVAILABLE', 403, 'Thread is outside this registered project');
         this.remember(threadId, projectId);
         this.observed.add('thread.read');
+        if (thread.status.type === 'notLoaded') this.permissions.delete(threadId);
         return thread;
     }
+    async extensions(auth: Authorized, projectId: string) {
+        auth.check();
+        const project = await this.projects.validate(projectId), epoch = this.epoch;
+        if (this.extensionReads >= 2) fail('NATIVE_BUSY', 429, 'Extension read capacity exhausted');
+        this.extensionReads++;
+        try {
+            const sections = await Promise.all((['skills', 'mcp', 'apps', 'plugins'] as const).map(kind => extensionSection(this.codex, kind, project.canonicalPath)));
+            auth.check();
+            await this.projects.validate(projectId);
+            this.expectEpoch(epoch);
+            this.observed.add('extensions.read');
+            return { projectId, sections };
+        } finally { this.extensionReads--; }
+    }
     threadView(thread: NativeThread, projectId: string) {
+        const permission = thread.status.type === 'notLoaded' ? undefined : this.permissions.get(thread.id);
         return clean({ id: thread.id, projectId, status: typeof thread.status?.type === 'string' ? thread.status.type : 'unknown',
             title: typeof thread.name === 'string' ? thread.name : undefined, preview: thread.preview?.slice(0, 4096),
             model: typeof thread.model === 'string' ? thread.model : undefined, reasoningEffort: typeof thread.reasoningEffort === 'string' ? thread.reasoningEffort : undefined,
+            parentThreadId: typeof thread.parentThreadId === 'string' ? thread.parentThreadId : undefined,
+            permissionPreset: permission?.preset ?? undefined, permissionReadback: permission,
             createdAt: typeof thread.createdAt === 'number' ? thread.createdAt : undefined, updatedAt: typeof thread.updatedAt === 'number' ? thread.updatedAt : undefined });
     }
     async listThreads(auth: Authorized, projectId: string, query: {
@@ -358,6 +386,8 @@ export class GatewayService {
             if (result.thread.cwd !== project.canonicalPath)
                 throw new CodexError('NATIVE_PROTOCOL', 'New thread project does not match authorization', 'unknown');
             this.remember(result.thread.id, projectId);
+            const permission = permissionReadback(result, 'thread.start', project.canonicalPath);
+            if (permission && input.expectedEpoch === this.epoch) this.permissions.set(result.thread.id, permission);
             return { nativeThreadId: result.thread.id };
         });
     }
@@ -367,6 +397,9 @@ export class GatewayService {
             const result = await this.codex.resumeThread(threadId);
             if (result.thread.id !== threadId || result.thread.cwd !== this.projects.get(input.projectId).canonicalPath)
                 throw new CodexError('NATIVE_PROTOCOL', 'Resumed thread project changed', 'unknown');
+            const permission = permissionReadback(result, 'thread.resume', result.thread.cwd);
+            if (permission && input.expectedEpoch === this.epoch) this.permissions.set(threadId, permission);
+            else this.permissions.delete(threadId);
             return { nativeThreadId: result.thread.id };
         });
     }
@@ -388,6 +421,7 @@ export class GatewayService {
         if (prepared.referenceText)
             nativeInput.push({ type: 'text', text: prepared.referenceText });
         return this.write(auth, { ...input, threadId, kind: 'turn.start', attachments: prepared.rows }, async () => {
+            this.permissions.delete(threadId);
             const result = await this.codex.startTurn({ threadId, input: nativeInput, model: input.model, effort: input.effort, permissionPreset: input.permissionPreset, clientUserMessageId: input.operationId });
             this.activeTurns.set(threadId, result.turn.id);
             return { nativeThreadId: threadId, nativeTurnId: result.turn.id };
