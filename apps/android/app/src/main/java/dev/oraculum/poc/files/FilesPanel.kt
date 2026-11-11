@@ -167,7 +167,9 @@ private fun RowScope.FileActionLabel(symbol: OraculumSymbol, text: String) {
 @Composable
 private fun Thumbnail(file: File, label: String) {
     val bitmap by produceState<Bitmap?>(null, file) { value = withContext(Dispatchers.IO) { boundedBitmap(file, 360) } }
-    DisposableEffect(bitmap) { onDispose { bitmap?.recycle() } }
+    // Image/BitmapPainter retains these pixels for drawing. Let GC release them after
+    // all UI references disappear; disposing a state-keyed effect can recycle the
+    // newly decoded value, and composition disposal is not a rendering fence.
     bitmap?.let { Image(it.asImageBitmap(), contentDescription = "附件预览：$label", modifier = Modifier.size(84.dp)) }
 }
 
@@ -178,7 +180,6 @@ private fun FilePreviewContent(preview: FilePreview) {
         val bitmap by produceState<Bitmap?>(null, preview.file) {
             value = withContext(Dispatchers.IO) { boundedBitmap(preview.file, 2048) }; failure = value == null
         }
-        DisposableEffect(bitmap) { onDispose { bitmap?.recycle() } }
         bitmap?.let { Image(it.asImageBitmap(), "成果图片：${preview.name}", Modifier.fillMaxWidth().heightIn(max = 360.dp)) }
     } else if (preview.mime == "application/pdf" && preview.size <= 16L * 1024 * 1024) {
         val bitmap by produceState<Bitmap?>(null, preview.file) {
@@ -197,7 +198,6 @@ private fun FilePreviewContent(preview: FilePreview) {
                 }
             }.getOrNull() }; failure = value == null
         }
-        DisposableEffect(bitmap) { onDispose { bitmap?.recycle() } }
         bitmap?.let { Image(it.asImageBitmap(), "PDF 第一页：${preview.name}", Modifier.fillMaxWidth().heightIn(max = 420.dp)) }
         Text("预览第 1 页；使用系统打开阅读完整 PDF。", style = MaterialTheme.typography.bodySmall)
     } else if (preview.mime.startsWith("text/") && preview.size <= FileTransferPolicy.MAX_TEXT_PREVIEW) {
