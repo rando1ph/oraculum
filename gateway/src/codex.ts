@@ -15,7 +15,8 @@ export type NativeRequest = { id: RpcId; method: string; params: JsonObject };
 export type NativeNotification = { method: string; params: JsonObject };
 export type NativeInput = { type: 'text'; text: string } | { type: 'localImage'; path: string };
 export type NativeFailureCode = 'NATIVE_UNAVAILABLE' | 'NATIVE_TIMEOUT' | 'NATIVE_PROTOCOL' | 'NATIVE_TOO_LARGE' |
-  'NATIVE_BUSY' | 'NATIVE_REJECTED' | 'NATIVE_UNSUPPORTED' | 'NATIVE_EXPERIMENTAL' | 'NATIVE_PAGINATION_UNSUPPORTED' | 'INVALID_NATIVE_ARGUMENT';
+  'NATIVE_BUSY' | 'NATIVE_REJECTED' | 'NATIVE_UNSUPPORTED' | 'NATIVE_EXPERIMENTAL' | 'NATIVE_PAGINATION_UNSUPPORTED' |
+  'NATIVE_HISTORY_NOT_MATERIALIZED' | 'INVALID_NATIVE_ARGUMENT';
 
 /** Messages are safe summaries: raw provider errors, stderr, prompts and config are never logged. */
 export class CodexError extends Error {
@@ -45,7 +46,13 @@ const notifications = new Set(['thread/started', 'thread/status/changed', 'threa
   'item/reasoning/summaryPartAdded', 'item/reasoning/textDelta', 'item/commandExecution/outputDelta', 'item/commandExecution/terminalInteraction',
   'item/fileChange/outputDelta', 'item/mcpToolCall/progress', 'serverRequest/resolved', 'error']);
 
-function nativeError(method: string, code: number, message: string): CodexError {
+function nativeError(method: string, code: number, message: string, threadId?: string): CodexError {
+  // A new native thread may have metadata before its first user message creates history.
+  // This is not an empty history result or permission to fall back/retry any write.
+  if (method === 'thread/turns/list' && code === -32600 && identifier(threadId) &&
+    message === `thread ${threadId} is not materialized yet; thread/turns/list is unavailable before first user message`) {
+    return new CodexError('NATIVE_HISTORY_NOT_MATERIALIZED', 'Native thread history is not materialized before its first user message', 'rejected', code);
+  }
   // Do not classify generic "unsupported", timeout, authorization or provider failures as pagination fallback.
   if (['thread/turns/list','thread/items/list'].includes(method) && code===-32601 &&
     (message==='paginated_threads is not supported yet'||message===`${method} is not supported yet`)) {
@@ -120,7 +127,7 @@ export interface CodexAdapterOptions {
   maxFrameBytes?: number;
   maxPending?: number;
 }
-type Pending = { method: string; resolve: (v: JsonObject) => void; reject: (e: Error) => void; timer: NodeJS.Timeout; expired?: boolean };
+type Pending = { method: string; threadId?: string; resolve: (v: JsonObject) => void; reject: (e: Error) => void; timer: NodeJS.Timeout; expired?: boolean };
 
 /** One object owns exactly one native process. Restart requires a new object and a new Gateway epoch. */
 export class CodexAdapter extends EventEmitter {
@@ -204,7 +211,7 @@ export class CodexAdapter extends EventEmitter {
       if (!record(error) || !Number.isInteger(error.code) || typeof error.message !== 'string' || 'result' in message) {
         pending.reject(new CodexError('NATIVE_PROTOCOL', 'Malformed native error response', writes.has(pending.method) ? 'unknown' : 'rejected')); return;
       }
-      pending.reject(nativeError(pending.method, error.code as number, error.message)); return;
+      pending.reject(nativeError(pending.method, error.code as number, error.message, pending.threadId)); return;
     }
     try { validate(pending.method, message.result); pending.resolve(message.result); }
     catch (error) { pending.reject(error as Error); }
@@ -238,7 +245,7 @@ export class CodexAdapter extends EventEmitter {
         const pending = this.pending.get(requestId); if (pending) pending.expired = true;
         reject(new CodexError('NATIVE_TIMEOUT', `Codex ${method} response timed out`, writes.has(method) ? 'unknown' : 'rejected'));
       }, timeoutMs ?? (writes.has(method) ? this.options.writeTimeoutMs ?? 60_000 : this.options.readTimeoutMs ?? 8_000));
-      this.pending.set(requestId, { method, resolve, reject, timer });
+      this.pending.set(requestId, { method, threadId: typeof params.threadId === 'string' ? params.threadId : undefined, resolve, reject, timer });
       try { this.write({ id: requestId, method, params }); }
       catch (error) { clearTimeout(timer); this.pending.delete(requestId); reject(error); }
     });

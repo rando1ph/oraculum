@@ -1,8 +1,9 @@
-import { afterEach, describe, expect, it } from 'vitest';
-import { mkdtemp, chmod, readFile, rm } from 'node:fs/promises';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { mkdtemp, chmod, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { CodexAdapter, CodexError } from './codex';
+import { NativeHistory } from './history';
 
 const adapters: CodexAdapter[] = [], directories: string[] = [];
 const fixture = resolve('gateway/test/fixtures/fake-codex.mjs');
@@ -13,6 +14,24 @@ async function setup(mode = 'normal', options: { maxFrameBytes?: number; readTim
   const adapter = new CodexAdapter({ cwd, executable: fixture, env: { ...process.env, ORACULUM_TEST_NATIVE_MODE: mode, ORACULUM_TEST_TRANSCRIPT: transcript }, ...options });
   adapters.push(adapter); await adapter.start();
   return { adapter, cwd, messages: async () => (await readFile(transcript, 'utf8')).trim().split('\n').map(line => JSON.parse(line)) };
+}
+async function setupNativeError(code: number, message: string) {
+  const cwd = await mkdtemp(join(tmpdir(), 'oraculum-native-error-')); directories.push(cwd);
+  const executable = join(cwd, 'native-error.mjs');
+  await writeFile(executable, `#!/usr/bin/env node
+import { createInterface } from 'node:readline';
+createInterface({ input: process.stdin }).on('line', line => {
+  const request = JSON.parse(line);
+  if (request.id === undefined) return;
+  const response = request.method === 'initialize'
+    ? { result: { userAgent: 'codex-test/0.0.0' } }
+    : { error: ${JSON.stringify({ code, message })} };
+  process.stdout.write(JSON.stringify({ id: request.id, ...response }) + '\\n');
+});
+`, { mode: 0o700 });
+  const adapter = new CodexAdapter({ cwd, executable });
+  adapters.push(adapter); await adapter.start();
+  return adapter;
 }
 afterEach(async () => { await Promise.all(adapters.splice(0).map(adapter => adapter.close())); await Promise.all(directories.splice(0).map(path => rm(path, { recursive: true, force: true }))); });
 
@@ -51,6 +70,41 @@ describe('official Codex stdio boundary', () => {
   it('classifies the specific unimplemented native item paging response',async()=>{
     const {adapter}=await setup('itemPaginationFeature');
     await expect(adapter.listItems({threadId:'thread-1',turnId:'turn-1'})).rejects.toMatchObject({code:'NATIVE_PAGINATION_UNSUPPORTED'});
+  });
+  it('recognizes only the exact native history-not-materialized response for the requested thread', async () => {
+    const adapter = await setupNativeError(-32600,
+      'thread thread-1 is not materialized yet; thread/turns/list is unavailable before first user message');
+    await expect(adapter.listTurns({ threadId: 'thread-1' })).rejects.toMatchObject({
+      code: 'NATIVE_HISTORY_NOT_MATERIALIZED', outcome: 'rejected', nativeCode: -32600,
+      message: 'Native thread history is not materialized before its first user message',
+    });
+    const fullRead = vi.spyOn(adapter, 'readThread');
+    await expect(new NativeHistory(adapter, { epoch: 'test-epoch' }).turns('thread-1', { scope: 'device:project' }))
+      .rejects.toMatchObject({ code: 'NATIVE_HISTORY_NOT_MATERIALIZED' });
+    expect(fullRead).not.toHaveBeenCalled();
+    expect(adapter.alive).toBe(true);
+  });
+  it.each([
+    [-32600, 'thread other-thread is not materialized yet; thread/turns/list is unavailable before first user message', 'NATIVE_REJECTED'],
+    [-32600, 'thread thread-1 is not materialized yet', 'NATIVE_REJECTED'],
+    [-32600, 'prefix thread thread-1 is not materialized yet; thread/turns/list is unavailable before first user message', 'NATIVE_REJECTED'],
+    [-32600, 'thread thread-1 is not materialized yet; thread/turns/list is unavailable before first user message; secret-value', 'NATIVE_REJECTED'],
+    [-32600, 'thread thread-1 is not materialized yet; thread/items/list is unavailable before first user message', 'NATIVE_REJECTED'],
+    [-32601, 'thread thread-1 is not materialized yet; thread/turns/list is unavailable before first user message', 'NATIVE_UNSUPPORTED'],
+    [-32000, 'thread thread-1 is not materialized yet; thread/turns/list is unavailable before first user message', 'NATIVE_REJECTED'],
+  ])('does not widen history materialization classification for code %i and message %s', async (code, message, expected) => {
+    const adapter = await setupNativeError(code as number, message as string);
+    await expect(adapter.listTurns({ threadId: 'thread-1' })).rejects.toMatchObject({ code: expected, outcome: 'rejected' });
+  });
+  it('does not classify other reads or writes as unmaterialized history', async () => {
+    const adapter = await setupNativeError(-32600,
+      'thread thread-1 is not materialized yet; thread/turns/list is unavailable before first user message');
+    await expect(adapter.readThread('thread-1', true)).rejects.toMatchObject({ code: 'NATIVE_REJECTED', outcome: 'rejected' });
+    await expect(adapter.listItems({ threadId: 'thread-1', turnId: 'turn-1' })).rejects.toMatchObject({ code: 'NATIVE_REJECTED', outcome: 'rejected' });
+    await expect(adapter.startTurn({ threadId: 'thread-1', input: [{ type: 'text', text: 'test' }] })).rejects.toMatchObject({ code: 'NATIVE_REJECTED', outcome: 'rejected' });
+    const providerFailure = await setupNativeError(-32000,
+      'thread thread-1 is not materialized yet; thread/turns/list is unavailable before first user message');
+    await expect(providerFailure.startTurn({ threadId: 'thread-1', input: [{ type: 'text', text: 'test' }] })).rejects.toMatchObject({ code: 'NATIVE_REJECTED', outcome: 'unknown' });
   });
   it('isolates optional failures from the core adapter lifecycle', async () => {
     const { adapter } = await setup('unsupported');
