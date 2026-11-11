@@ -29,6 +29,7 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
     private val cacheMutex = Mutex()
     private val projection = HistoryProjection()
     private val inspectorProjection = InspectorProjection()
+    private val fileChangeContexts = FileChangeApprovalContexts()
     private val notifications = dev.oraculum.poc.notifications.GatewayNotifications(application)
     private var foreground = true
     private var capabilityData: JsonObject? = null
@@ -42,6 +43,8 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
     private var pendingConnectionReady: CompletableDeferred<Unit>? = null
     private var connectionGeneration = 0
     private var invalidationVersion = 0L
+    private var receivedEventVersion = 0L
+    private var fileChangeEvidenceVersion = 0L
     private var snapshotCurrent = false
     private var activeTurnId: String? = null
     private var threadStatus = "unknown"
@@ -161,8 +164,9 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private suspend fun refreshModels() {
-        val models = modelOptions(resource(client.get("models")))
-        mutableState.value = state.value.copy(models = models,
+        val page = resource(client.get("models"))
+        val models = modelOptions(page)
+        mutableState.value = state.value.copy(models = models, modelsLimited = page.string("nextCursor") != null,
             selectedModel = state.value.selectedModel?.takeIf { selected -> models.any { it.id == selected } },
             selectedEffort = state.value.selectedEffort?.takeIf { effort -> models.firstOrNull { it.id == state.value.selectedModel }?.efforts?.contains(effort) == true })
     }
@@ -203,11 +207,19 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
         mutableState.value = state.value.copy(threads = (state.value.threads + added).distinctBy { it.id })
     }
 
-    fun respondInteraction(id: String, response: JsonObject) = action {
+    fun respondInteraction(id: String, response: JsonObject) = respondInteractionInternal(id, response, null)
+
+    /** The digest comes from the exact patch rendered by the tapped native approval card. */
+    fun respondFileChange(id: String, response: JsonObject, displayedDigest: String) = respondInteractionInternal(id, response, displayedDigest)
+
+    private fun respondInteractionInternal(id: String, response: JsonObject, displayedDigest: String?) = action {
         requireOnline("interactions")
         val project = state.value.selectedProjectId ?: return@action
         val thread = state.value.selectedThreadId ?: return@action
         val original = state.value.interactions.firstOrNull { it.id == id } ?: throw ClientStateException("此交互已经失效，请刷新原生状态")
+        val approvesFileChange = original.kind == "fileChange" && response.string("decision") == "accept"
+        if (approvesFileChange && original.fileChangeContext?.matchesPending(original, displayedDigest) != true)
+            throw ClientStateException("文件修改尚无与你看到的 Diff 精确绑定的校验上下文；未派发批准")
         reconcileUnknown()
         syncThread(thread)
         checkUnknown(project, thread)
@@ -215,14 +227,26 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
         if (current == null || current.projectId != project || current.threadId != thread || current.epoch != epoch || current.generation != original.generation || current.status != "pending")
             throw ClientStateException("此请求已过期、取消或由其他设备处理；未派发响应")
         if (!NativeInteractionForms.validate(current, response)) throw ClientStateException("响应不符合当前原生请求允许的选项或表单约束")
+        if (approvesFileChange && !fileChangeApprovalStillCurrent(original, current, displayedDigest))
+            throw ClientStateException("文件修改或请求已变化，请重新查看完整 Diff；未派发批准")
+        val verifiedVersion = invalidationVersion
         try {
             executeWrite("interaction.respond", project, thread, "interactions/${segment(id)}/response", extraGuard = {
-                state.value.interactions.any { it.id == id && it.epoch == current.epoch && it.generation == current.generation && it.status == "pending" }
+                state.value.interactions.any { live -> live.id == id && live.projectId == project && live.threadId == thread &&
+                    live.epoch == current.epoch && live.generation == current.generation && live.status == "pending" &&
+                    (!approvesFileChange || (invalidationVersion == verifiedVersion && fileChangeApprovalStillCurrent(original, live, displayedDigest))) }
             }) { operationId -> buildJsonObject {
                 put("operationId", operationId); put("projectId", project); put("epoch", current.epoch)
                 put("generation", current.generation); put("response", response)
             } }
-        } finally { scheduleSync() }
+        } finally { if (approvesFileChange) revokeFileChangeContexts(); scheduleSync() }
+    }
+
+    private fun revokeFileChangeContexts() {
+        fileChangeEvidenceVersion++
+        fileChangeContexts.clear()
+        if (state.value.interactions.any { it.fileChangeContext != null }) mutableState.value = state.value.copy(
+            interactions = state.value.interactions.map { if (it.kind == "fileChange") NativeInteractionForms.bindFileChangeContext(it, null) else it })
     }
 
     fun refreshInspector() = action {
@@ -317,15 +341,45 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
     fun openNotification(route: dev.oraculum.poc.notifications.NotificationRoute) = action(queue = true) {
         if (route.scopeKey != scopeKey) throw ClientStateException("此通知属于另一配对身份；当前会话未改变")
         if (!state.value.online) connectInternal()
-        refreshProjects()
-        if (state.value.projects.none { it.id == route.projectId }) throw ClientStateException("通知项目已不可访问")
+        val generation = connectionGeneration
+        val version = invalidationVersion
+        val readEpoch = epoch
+        val eventVersion = receivedEventVersion
+        // Do not clear the current conversation/draft while a target native read may time out.
+        val target = try {
+            readNotificationTarget(route.projectId, route.threadId,
+                readProjects = { resource(client.get("projects")) },
+                readThreads = { cursor -> resource(client.get("projects/${segment(route.projectId)}/threads", buildMap {
+                    put("limit", "20"); put("archived", "false"); cursor?.let { put("cursor", it) }
+                })) },
+                readSnapshot = { readSnapshot(route.projectId, route.threadId) })
+        } catch (error: NotificationTargetUnavailable) { throw ClientStateException(error.message.orEmpty()) }
+        catch (error: NotificationTargetReadFailed) {
+            val detail = "通知定位：${error.stage.label}失败（${error.elapsedMillis} ms）；当前会话已保留。"
+            val cause = error.cause
+            // Preserve authentication/connection classification; diagnostics never include native
+            // params, response contents, cursor tokens, file paths or credentials.
+            if (cause is GatewayException) throw GatewayException(cause.code, "$detail ${cause.userMessage}", cause.httpStatus)
+            throw ClientStateException(detail)
+        }
+        if (route.scopeKey != scopeKey || readEpoch != epoch || target.snapshot.string("epoch") != epoch || eventVersion != receivedEventVersion ||
+            !snapshotStillCurrent(generation, connectionGeneration, version, invalidationVersion) || position?.epoch != epoch ||
+            (position?.sequence ?: Long.MAX_VALUE) > (target.snapshot.number("observedEndSeq") ?: -1))
+            throw ClientStateException("读取通知目标时连接或原生状态已变化；保留当前会话，请重试定位")
+        // The non-suspending selection change commits only after every target read succeeded.
         resetThread()
-        mutableState.value = state.value.copy(selectedProjectId = route.projectId, threads = emptyList())
-        refreshThreads(route.projectId)
-        // A direct authenticated native read validates the notification's original project scope.
-        resource(client.get("projects/${segment(route.projectId)}/threads/${segment(route.threadId)}"))
-        selectThreadInternal(route.threadId)
-        mutableState.value = state.value.copy(navigationRequest = if (route.inspector != "conversation") "inspector:${UUID.randomUUID()}" else "conversation:${UUID.randomUUID()}")
+        applyProjects(target.projects)
+        mutableState.value = state.value.copy(selectedProjectId = route.projectId, selectedThreadId = route.threadId)
+        applyThreads(target.firstThreads)
+        nextThreadCursor = target.firstThreads.string("nextCursor")
+        if (state.value.threads.none { it.id == route.threadId }) mutableState.value = state.value.copy(threads = state.value.threads + threadOption(target.thread))
+        val committedVersion = invalidationVersion
+        // Apply the already-read snapshot before any local IO can let a new event race with it.
+        applyVerifiedSnapshot(route.projectId, route.threadId, target.snapshot, committedVersion, generation, fileChangeEvidenceVersion)
+        local.preferences.saveSelection(requireScope(), route.projectId, route.threadId)
+        mutableState.value = state.value.copy(draft = local.state.draft(requireScope(), route.projectId, route.threadId)?.text.orEmpty(),
+            navigationRequest = if (route.inspector != "conversation") "inspector:${UUID.randomUUID()}" else "conversation:${UUID.randomUUID()}")
+        syncFiles()
     }
 
     fun endpointChange(value: String) {
@@ -618,6 +672,12 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
             }
             override fun onEvent(event: JsonObject) {
                 viewModelScope.launch {
+                    if (generation != connectionGeneration) return@launch
+                    receivedEventVersion++
+                    // Revocation cannot wait behind notification/receipt IO for an older event.
+                    // This establishes no new facts; complete proof still requires a fresh snapshot.
+                    val eventThread = event.obj("scope")?.string("threadId")
+                    if (eventThread == null || eventThread == state.value.selectedThreadId) revokeFileChangeContexts()
                     if (generation == connectionGeneration) eventMutex.withLock {
                         if (generation != connectionGeneration) return@withLock
                         try { handleEvent(event) } catch (error: Exception) { handleFailure(error) }
@@ -761,6 +821,8 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
         if (!state.value.online || state.value.selectedThreadId != thread || position == null) return
         val version = invalidationVersion
         val generation = connectionGeneration
+        revokeFileChangeContexts()
+        val evidenceVersion = fileChangeEvidenceVersion
         snapshotCurrent = false
         updateControls()
         val data = try {
@@ -769,7 +831,11 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
             if (error.code == "NATIVE_HISTORY_NOT_MATERIALIZED" && prepareFirstTurn(project, thread)) return
             if (error.httpStatus in listOf(403, 404) && !error.authInvalid) { unavailableThread(); return } else throw error
         }
-        if (state.value.selectedThreadId != thread || data.string("epoch") != epoch) return
+        applyVerifiedSnapshot(project, thread, data, version, generation, evidenceVersion)
+    }
+
+    private suspend fun applyVerifiedSnapshot(project: String, thread: String, data: JsonObject, version: Long, generation: Int, evidenceVersion: Long) {
+        if (state.value.selectedProjectId != project || state.value.selectedThreadId != thread || data.string("epoch") != epoch) return
         if (!snapshotStillCurrent(generation, connectionGeneration, version, invalidationVersion)) {
             scheduleSync()
             return
@@ -779,8 +845,17 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
         if (nativeThread.flag("archived")) { unavailableThread(); return }
         threadStatus = nativeThread.string("status") ?: "unknown"
         val readback = permissionReadbackUi(nativeThread)
-        mutableState.value = state.value.copy(actualModel = nativeThread.string("model"), actualEffort = nativeThread.string("reasoningEffort"),
-            interactions = data.array("interactions").mapNotNull { (it as? JsonObject)?.let(NativeInteractionForms::parse) })
+        // A pending approval makes synchronization "synchronizing". It may still carry complete
+        // Item facts, but only if no Gateway event occurred during the read and the scope is exact.
+        if (evidenceVersion == fileChangeEvidenceVersion && nativeThread.string("id") == thread && nativeThread.string("projectId") == project &&
+            data.number("observedStartSeq") != null && data.number("observedStartSeq") == data.number("observedEndSeq") &&
+            position?.epoch == epoch && (position?.sequence ?: Long.MAX_VALUE) <= (data.number("observedEndSeq") ?: -1))
+            fileChangeContexts.snapshot(FileChangeApprovalScope(epoch, project, thread), history)
+        val interactions = data.array("interactions").mapNotNull { (it as? JsonObject)?.let { raw ->
+            val parsed = NativeInteractionForms.parse(raw)
+            NativeInteractionForms.bindFileChangeContext(parsed, fileChangeContexts.forInteraction(parsed))
+        } }
+        mutableState.value = state.value.copy(actualModel = nativeThread.string("model"), actualEffort = nativeThread.string("reasoningEffort"), interactions = interactions)
         inspectorProjection.history(history, replace = true)
         firstTurnPermit.invalidate(thread)
         projection.snapshot(history, preserveTerminal = !replaceTerminalOnSnapshot && (historyRevision == null || historyRevision == history.string("historyRevision")))
@@ -799,10 +874,10 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
         withCache { local.cache.deleteThread(currentScope, project, thread) }
         cache("snapshot", thread, data, project, thread)
         saveProjection()
-        val interactions = data.array("interactions").isNotEmpty()
+        val hasInteractions = data.array("interactions").isNotEmpty()
         mutableState.value = state.value.copy(historyWarning = when {
             history.flag("truncated") || projection.limited -> "历史含受限投影；可在 Inspector 读取并校验完整 Item 详情"
-            interactions -> "原生执行正在等待交互；请查看当前请求并明确响应"
+            hasInteractions -> "原生执行正在等待交互；请查看当前请求并明确响应"
             nextHistoryCursor != null || itemCursors.isNotEmpty() -> "已加载最近历史，可继续加载更早内容"
             else -> null
         })
@@ -835,7 +910,10 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
         val relevant = scope?.string("threadId") == null || scope.string("threadId") == state.value.selectedThreadId
         val eventThread = scope?.string("threadId")
         val eventKind = event.string("kind")
-        if (relevant && decision != EventDecision.SKIP) invalidatePermissionReadback()
+        if (relevant && decision != EventDecision.SKIP) {
+            revokeFileChangeContexts()
+            invalidatePermissionReadback()
+        }
         if (relevant && eventThread == state.value.selectedThreadId) {
             inspectorProjection.event(event)
             mutableState.value = state.value.copy(inspector = inspectorProjection.state(state.value.inspector))
@@ -1136,6 +1214,7 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun resetThread() {
+        revokeFileChangeContexts()
         syncJob?.cancel(); cacheJob?.cancel(); anchorJob?.cancel()
         snapshotCurrent = false; activeTurnId = null; threadStatus = "unknown"; correctionAttempts = 0
         nextHistoryCursor = null; itemCursors.clear(); historyRevision = null; historyPages = 0
@@ -1267,6 +1346,7 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun disconnectTransport() {
+        revokeFileChangeContexts()
         invalidatePermissionReadback()
         connectionGeneration++
         pendingConnectionReady?.cancel()

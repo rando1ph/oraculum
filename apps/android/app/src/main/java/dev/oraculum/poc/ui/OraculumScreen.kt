@@ -40,6 +40,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import dev.oraculum.poc.R
+import dev.oraculum.poc.repository.boundedContentPreview
+import dev.oraculum.poc.repository.CONTENT_PREVIEW_NOTICE
 import dev.oraculum.poc.files.AttachmentChips
 import dev.oraculum.poc.files.AttachmentPickerButton
 import dev.oraculum.poc.files.FilesActions
@@ -122,7 +124,7 @@ fun OraculumScreen(
                     if (state.unknownWarning != null || state.unresolvedOperations.isNotEmpty()) {
                         Surface(color = MaterialTheme.colorScheme.errorContainer) {
                             Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Text("有操作结果尚未确认，发送已暂停", Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onErrorContainer)
+                                Text("存在待确认操作；受影响会话暂停发送", Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onErrorContainer)
                                 TextButton({ panel = "unknown" }, Modifier.testTag("unknown-recovery")) { Text("查看与对账", color = MaterialTheme.colorScheme.onErrorContainer) }
                             }
                         }
@@ -355,7 +357,8 @@ private fun Conversation(state: PocUiState, actions: PocActions, modifier: Modif
             }
         }
         items(state.interactions, key = { "interaction-${it.id}" }) { interaction ->
-            NativeInteractionPanel(interaction, state.online && !state.busy && state.unknownWarning == null) { response -> actions.onRespondInteraction(interaction.id, response) }
+            NativeInteractionPanel(interaction, state.online && !state.busy && state.unknownWarning == null,
+                onApproveFileChange = { response, digest -> actions.onRespondFileChange(interaction.id, response, digest) }) { response -> actions.onRespondInteraction(interaction.id, response) }
         }
     }
 }
@@ -404,6 +407,7 @@ private fun ColumnScope.ModelPanel(state: PocUiState, actions: PocActions, onClo
         MutedText("设置用于下一次执行，选项来自 Gateway 的可用模型。")
         Text("当前原生模型：${state.actualModel ?: "尚未确认"} · ${state.actualEffort ?: "默认思考强度"}", style = MaterialTheme.typography.bodySmall)
         if (state.models.isEmpty()) MutedText("尚未取得可用模型。连接后刷新状态。")
+        if (state.modelsLimited) MutedText("当前仅显示 Gateway 已返回的模型页；模型目录尚未完整加载。")
         state.models.forEach { model ->
             NavigationRow(model.label, model.description, state.selectedModel == model.id, "model-${model.id}", !state.busy) { actions.onSelectModel(model.id) }
         }
@@ -460,7 +464,8 @@ private fun ColumnScope.InspectorPanel(state: PocUiState, actions: PocActions, t
                 Text(state.executionLabel.ifBlank { "尚无正在执行的 Turn" })
                 if (state.interactions.isNotEmpty()) {
                     SectionLabel("等待你的处理")
-                    state.interactions.forEach { interaction -> NativeInteractionPanel(interaction, state.online && !state.busy && state.unknownWarning == null) { actions.onRespondInteraction(interaction.id, it) } }
+                    state.interactions.forEach { interaction -> NativeInteractionPanel(interaction, state.online && !state.busy && state.unknownWarning == null,
+                onApproveFileChange = { response, digest -> actions.onRespondFileChange(interaction.id, response, digest) }) { actions.onRespondInteraction(interaction.id, it) } }
                 }
                 if (state.inspector.plan.isNotEmpty()) { SectionLabel("原生 Plan 更新"); state.inspector.plan.forEach { InspectorEntryCard(it, state, actions) } }
                 if (state.inspector.execution.isEmpty()) MutedText("尚无已加载的工具执行记录。")
@@ -517,17 +522,22 @@ private fun InspectorEntryCard(entry: InspectorEntry, state: PocUiState, actions
 
 @Composable
 private fun DiffContent(diff: String) {
+    val preview = remember(diff) { boundedContentPreview(sequenceOf(diff)) }
     ReadingContent {
         val dark = MaterialTheme.colorScheme.background.red < .3f
         Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = RoundedCornerShape(16.dp)) {
-            SelectionContainer {
-                Column(Modifier.horizontalScroll(rememberScrollState()).padding(12.dp).semantics { contentDescription = "Diff，可横向滚动；加号表示新增，减号表示删除" }) {
-                    diff.lines().forEach { line ->
-                        val added = line.startsWith('+') && !line.startsWith("+++")
-                        val removed = line.startsWith('-') && !line.startsWith("---")
-                        val color = when { added -> if (dark) Color(0xFFB8E986) else Color(0xFF315500); removed -> if (dark) Color(0xFFFCA5A5) else Color(0xFF9A2424); else -> MaterialTheme.colorScheme.onSurface }
-                        Text(line, Modifier.fillMaxWidth().background(when { added -> Color(0xFF74A12E).copy(alpha = .18f); removed -> Color(0xFFEF4444).copy(alpha = .14f); else -> Color.Transparent }).padding(horizontal = 4.dp, vertical = 2.dp),
-                            color = color, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall, softWrap = false)
+            Column {
+                if (preview.truncated) Text(CONTENT_PREVIEW_NOTICE, Modifier.padding(12.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                SelectionContainer {
+                    Column(Modifier.horizontalScroll(rememberScrollState()).padding(12.dp).semantics { contentDescription = "Diff，可横向滚动；加号表示新增，减号表示删除" }) {
+                        // The shared whole-view budget bounds this to 256 rows / 64 Ki characters.
+                        preview.text.lineSequence().forEach { line ->
+                            val added = line.startsWith('+') && !line.startsWith("+++")
+                            val removed = line.startsWith('-') && !line.startsWith("---")
+                            val color = when { added -> if (dark) Color(0xFFB8E986) else Color(0xFF315500); removed -> if (dark) Color(0xFFFCA5A5) else Color(0xFF9A2424); else -> MaterialTheme.colorScheme.onSurface }
+                            Text(line, Modifier.fillMaxWidth().background(when { added -> Color(0xFF74A12E).copy(alpha = .18f); removed -> Color(0xFFEF4444).copy(alpha = .14f); else -> Color.Transparent }).padding(horizontal = 4.dp, vertical = 2.dp),
+                                color = color, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall, softWrap = false)
+                        }
                     }
                 }
             }

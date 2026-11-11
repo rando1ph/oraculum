@@ -77,4 +77,41 @@ class InspectorProjectionTest {
         assertEquals(listOf("failed", "interrupted"), inspector.state(InspectorUiState()).execution.map { it.status })
         assertEquals("native failure", inspector.state(InspectorUiState()).execution.first().body)
     }
+    @Test fun combinedFileChangesHaveOneAggregatePreviewBudget() {
+        val projection = InspectorProjection()
+        repeat(40) { index ->
+            projection.item(buildJsonObject {
+                put("id", "change-$index"); put("type", "fileChange")
+                put("changes", buildJsonArray { add(buildJsonObject { put("path", "file-$index"); put("diff", "+" + "x".repeat(8192)) }) })
+            }, "turn")
+        }
+        val diff = projection.state(InspectorUiState()).diff!!
+        assertTrue(diff.length <= CONTENT_PREVIEW_MAX_CHARACTERS + CONTENT_PREVIEW_NOTICE.length + 2)
+        assertTrue(diff.endsWith(CONTENT_PREVIEW_NOTICE))
+        assertFalse(diff.contains("file-39"))
+    }
+
+    @Test fun previewStopsReadingAdditionalPartsAtAggregateBudget() {
+        var partsRead = 0
+        val parts = sequence {
+            repeat(250) { partsRead++; yield("x".repeat(8192)) }
+        }
+        val preview = boundedContentPreview(parts)
+        assertTrue(preview.truncated)
+        assertTrue(preview.text.length <= CONTENT_PREVIEW_MAX_CHARACTERS)
+        assertTrue(partsRead < 12)
+    }
+
+    @Test fun shortLineFloodAndUnicodeBoundaryRemainBounded() {
+        val preview = boundedContentPreview(sequenceOf("+x\n".repeat(100_000)))
+        assertTrue(preview.truncated)
+        assertTrue(preview.text.lineSequence().count() <= CONTENT_PREVIEW_MAX_LINES)
+        val unicode = boundedContentPreview(sequenceOf("ab😀z"), maxCharacters = 3)
+        assertEquals("ab", unicode.text)
+        assertTrue(unicode.truncated)
+        val small = boundedContentPreview(sequenceOf("one", "two"))
+        assertEquals("one\n\ntwo", small.text)
+        assertFalse(small.truncated)
+    }
+
 }

@@ -37,4 +37,29 @@ class MarkdownContentTest {
         assertEquals(1, blocks.last().depth)
         assertEquals("☑", blocks.last().label)
     }
+    @Test fun shortLineFloodDoesNotCreateAnUnboundedComposeBlockList() {
+        val blocks = markdownBlocks("x\n".repeat(64 * 1024))
+        assertTrue(blocks.size <= MARKDOWN_PREVIEW_MAX_BLOCKS + 1)
+        assertEquals("notice", blocks.last().kind)
+        assertTrue(blocks.last().lines.single().contains("预览截断"))
+    }
+
+    @Test fun hugeSingleLineAndWideTablesHaveExplicitPreviewLimits() {
+        val blocks = markdownBlocks("x".repeat(128 * 1024))
+        assertEquals("notice", blocks.last().kind)
+        assertTrue(blocks.first().lines.single().length <= dev.oraculum.poc.repository.CONTENT_PREVIEW_MAX_CHARACTERS)
+        val wideTable = "|" + " A |".repeat(1000) + "\n|" + " --- |".repeat(1000) + "\n|" + " value |".repeat(1000)
+        val table = markdownBlocks(wideTable)
+        assertEquals("notice", table.last().kind)
+        assertTrue(table.first().label.split(',').size <= MARKDOWN_PREVIEW_MAX_TABLE_COLUMNS)
+    }
+
+    @Test fun tableRowsShareOneCellBudgetAcrossTheMessage() {
+        val table = "| A | B |\n| --- | --- |\n" + "| x | y |\n".repeat(1000)
+        val blocks = markdownBlocks(table)
+        val cells = blocks.filter { it.kind == "table" }.sumOf { block -> block.lines.size * block.label.split(',').size }
+        assertTrue(cells <= MARKDOWN_PREVIEW_MAX_TABLE_CELLS)
+        assertEquals("notice", blocks.last().kind)
+    }
+
 }

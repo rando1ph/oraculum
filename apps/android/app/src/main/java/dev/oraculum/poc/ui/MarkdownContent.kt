@@ -23,15 +23,34 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import dev.oraculum.poc.repository.boundedContentPreview
+import dev.oraculum.poc.repository.CONTENT_PREVIEW_NOTICE
 
 internal data class MarkdownBlock(val kind: String, val lines: List<String>, val label: String = "", val depth: Int = 0)
 
+internal const val MARKDOWN_PREVIEW_MAX_BLOCKS = 128
+internal const val MARKDOWN_PREVIEW_MAX_TABLE_COLUMNS = 8
+internal const val MARKDOWN_PREVIEW_MAX_TABLE_CELLS = 128
+private val tableCellSeparator = Regex("(?<!\\\\)\\|")
+
+private fun isMarkdownTableSeparator(line: String): Boolean {
+    val cells = line.trim().removePrefix("|").removeSuffix("|")
+        .split('|', limit = MARKDOWN_PREVIEW_MAX_TABLE_COLUMNS + 1).take(MARKDOWN_PREVIEW_MAX_TABLE_COLUMNS)
+    return cells.isNotEmpty() && cells.all { cell ->
+        val marker = cell.trim().removePrefix(":").removeSuffix(":")
+        marker.length >= 3 && marker.all { it == '-' }
+    }
+}
+
 /** A local presentation parser: no HTML, remote image loads, script or command execution. */
 internal fun markdownBlocks(text: String): List<MarkdownBlock> {
-    val lines = text.replace("\r\n", "\n").split('\n')
+    val preview = boundedContentPreview(sequenceOf(text))
+    val lines = preview.text.replace("\r\n", "\n").split('\n')
     val result = mutableListOf<MarkdownBlock>()
+    var truncated = preview.truncated
+    var tableCellsRemaining = MARKDOWN_PREVIEW_MAX_TABLE_CELLS
     var i = 0
-    while (i < lines.size) {
+    parse@ while (i < lines.size && result.size < MARKDOWN_PREVIEW_MAX_BLOCKS) {
         val line = lines[i]
         val fence = Regex("^\\s*(`{3,}|~{3,})(.*)$").find(line)
         when {
@@ -44,15 +63,28 @@ internal fun markdownBlocks(text: String): List<MarkdownBlock> {
                 if (i < lines.size) i++
                 result += MarkdownBlock("code", code, fence.groupValues[2].trim())
             }
-            i + 1 < lines.size && line.contains('|') && Regex("^\\s*\\|?\\s*:?-{3,}:?\\s*(\\|\\s*:?-{3,}:?\\s*)+\\|?\\s*$").matches(lines[i + 1]) -> {
-                val table = mutableListOf(line)
-                val alignment = lines[i + 1].trim().removePrefix("|").removeSuffix("|").split('|').joinToString(",") {
+            i + 1 < lines.size && line.contains('|') && isMarkdownTableSeparator(lines[i + 1]) -> {
+                val separators = lines[i + 1].trim().removePrefix("|").removeSuffix("|")
+                    .split('|', limit = MARKDOWN_PREVIEW_MAX_TABLE_COLUMNS + 1)
+                if (separators.size > MARKDOWN_PREVIEW_MAX_TABLE_COLUMNS) truncated = true
+                val columns = separators.take(MARKDOWN_PREVIEW_MAX_TABLE_COLUMNS)
+                if (tableCellsRemaining < columns.size) { truncated = true; break@parse }
+                val alignment = columns.joinToString(",") {
                     val marker = it.trim()
                     when { marker.startsWith(':') && marker.endsWith(':') -> "center"; marker.endsWith(':') -> "right"; else -> "left" }
                 }
+                val table = mutableListOf(line)
+                tableCellsRemaining -= columns.size
                 i += 2
-                while (i < lines.size && lines[i].contains('|') && lines[i].isNotBlank()) table += lines[i++]
+                while (i < lines.size && lines[i].contains('|') && lines[i].isNotBlank()) {
+                    if (tableCellsRemaining < columns.size) { truncated = true; break }
+                    val cells = lines[i].trim().removePrefix("|").removeSuffix("|").split(tableCellSeparator, columns.size + 1)
+                    if (cells.size > columns.size) truncated = true
+                    table += lines[i++]
+                    tableCellsRemaining -= columns.size
+                }
                 result += MarkdownBlock("table", table, alignment)
+                if (i < lines.size && lines[i].contains('|') && lines[i].isNotBlank()) break@parse
             }
             Regex("^\\s*([-*_])(?:\\s*\\1){2,}\\s*$").matches(line) -> { result += MarkdownBlock("rule", emptyList()); i++ }
             Regex("^#{1,6}\\s").containsMatchIn(line) -> { result += MarkdownBlock("heading", listOf(line.replaceFirst(Regex("^#{1,6}\\s+"), "").replace(Regex("\\s+#+\\s*$"), "")), line.takeWhile { it == '#' }.length.toString()); i++ }
@@ -68,6 +100,7 @@ internal fun markdownBlocks(text: String): List<MarkdownBlock> {
             else -> { result += MarkdownBlock("text", listOf(line)); i++ }
         }
     }
+    if (i < lines.size || truncated) result += MarkdownBlock("notice", listOf(CONTENT_PREVIEW_NOTICE))
     return result
 }
 
@@ -81,6 +114,7 @@ fun MarkdownContent(text: String, modifier: Modifier = Modifier) {
                     "code" -> CodeBlock(block.lines.joinToString("\n"), block.label)
                     "table" -> MarkdownTable(block.lines, block.label.split(','))
                     "rule" -> HorizontalDivider(Modifier.padding(vertical = 4.dp))
+                    "notice" -> Text(block.lines.single(), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
                     "heading" -> InlineMarkdown(block.lines.first(), style = when (block.label) {
                         "1" -> MaterialTheme.typography.headlineLarge
                         "2" -> MaterialTheme.typography.headlineSmall
@@ -107,7 +141,10 @@ fun MarkdownContent(text: String, modifier: Modifier = Modifier) {
 
 @Composable
 private fun MarkdownTable(lines: List<String>, alignments: List<String>) {
-    val rows = remember(lines) { lines.map { it.trim().removePrefix("|").removeSuffix("|").split(Regex("(?<!\\\\)\\|")).map { cell -> cell.trim().replace("\\|", "|") } } }
+    val rows = remember(lines, alignments) { lines.map {
+        it.trim().removePrefix("|").removeSuffix("|").split(tableCellSeparator, MARKDOWN_PREVIEW_MAX_TABLE_COLUMNS + 1)
+            .take(alignments.size.coerceAtMost(MARKDOWN_PREVIEW_MAX_TABLE_COLUMNS)).map { cell -> cell.trim().replace("\\|", "|") }
+    } }
     Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh, shape = RoundedCornerShape(12.dp)) {
         Column(Modifier.horizontalScroll(rememberScrollState()).semantics { contentDescription = "表格，可横向滚动" }.padding(8.dp)) {
             rows.forEachIndexed { rowIndex, row ->
@@ -129,6 +166,7 @@ private fun MarkdownTable(lines: List<String>, alignments: List<String>) {
 @Composable
 internal fun CodeBlock(text: String, language: String = "", modifier: Modifier = Modifier) {
     val clipboard = LocalClipboardManager.current
+    val preview = remember(text) { boundedContentPreview(sequenceOf(text)) }
     var copied by remember(text) { mutableStateOf(false) }
     ReadingContent {
         Surface(modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.surfaceContainerHigh,
@@ -136,11 +174,12 @@ internal fun CodeBlock(text: String, language: String = "", modifier: Modifier =
             Column {
                 Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text(language.ifBlank { "代码" }, Modifier.padding(vertical = 16.dp).weight(1f), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
-                    TextButton(onClick = { clipboard.setText(AnnotatedString(text)); copied = true }, modifier = Modifier.heightIn(min = 48.dp)) { Text(if (copied) "已复制" else "复制") }
+                    TextButton(onClick = { clipboard.setText(AnnotatedString(preview.text)); copied = true }, modifier = Modifier.heightIn(min = 48.dp)) { Text(if (copied) "已复制" else if (preview.truncated) "复制预览" else "复制") }
                 }
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                if (preview.truncated) Text(CONTENT_PREVIEW_NOTICE, Modifier.padding(12.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 SelectionContainer {
-                    Text(text, Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(16.dp).semantics { contentDescription = "代码，可横向滚动" },
+                    Text(preview.text, Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(16.dp).semantics { contentDescription = "代码，可横向滚动" },
                         style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace, lineHeight = MaterialTheme.typography.bodySmall.lineHeight * 1.125f), softWrap = false)
                 }
             }
@@ -155,7 +194,7 @@ private val inlineMarkdownPattern = Regex("""(?<!\\)(\[([^]\n]+)]\(([^)\s]+)\)|`
 
 internal fun markdownInlineTokens(text: String): List<MarkdownInlineToken> = buildList {
     var cursor = 0
-    inlineMarkdownPattern.findAll(text).forEach { match ->
+    inlineMarkdownPattern.findAll(text).take(256).forEach { match ->
         if (match.range.first > cursor) add(MarkdownInlineToken("text", text.substring(cursor, match.range.first)))
         add(when {
             match.groupValues[2].isNotEmpty() -> MarkdownInlineToken("link", match.groupValues[2], match.groupValues[3])

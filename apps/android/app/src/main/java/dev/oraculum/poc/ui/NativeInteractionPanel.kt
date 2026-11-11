@@ -26,13 +26,19 @@ import kotlinx.serialization.json.*
 
 /** Fields live only in composition: secret answers are never saved in a Bundle, cache or draft. */
 @Composable
-fun NativeInteractionPanel(interaction: InteractionUi, enabled: Boolean, onRespond: (JsonObject) -> Unit) {
+fun NativeInteractionPanel(interaction: InteractionUi, enabled: Boolean,
+    onApproveFileChange: ((JsonObject, String) -> Unit)? = null, onRespond: (JsonObject) -> Unit) {
     key(interaction.id, interaction.epoch, interaction.generation, interaction.status) {
         // ViewModel serializes attempts and publishes busy/unknown state. A tap is not
         // evidence of delivery: read-only preflight can fail before a write is reserved.
         val actionable = NativeInteractionForms.canRespond(interaction, enabled)
+        val displayedContext = interaction.fileChangeContext
         val send: (JsonObject) -> Unit = { response ->
-            if (actionable && NativeInteractionForms.validate(interaction, response)) onRespond(response)
+            if (actionable && NativeInteractionForms.validate(interaction, response)) {
+                if (interaction.kind == "fileChange" && (response["decision"] as? JsonPrimitive)?.content == "accept") {
+                    displayedContext?.let { onApproveFileChange?.invoke(response, it.digest) }
+                } else onRespond(response)
+            }
         }
         Card(
             modifier = Modifier.fillMaxWidth().testTag("interaction_${interaction.id}"),
@@ -54,9 +60,11 @@ fun NativeInteractionPanel(interaction: InteractionUi, enabled: Boolean, onRespo
                     when (interaction.kind) {
                         "command", "fileChange", "permissions" -> {
                             for (decision in interaction.decisions) {
+                                val response = buildJsonObject { put("type", "approval"); put("decision", decision) }
                                 OutlinedButton(
-                                    onClick = { send(buildJsonObject { put("type", "approval"); put("decision", decision) }) },
-                                    enabled = actionable,
+                                    onClick = { send(response) },
+                                    enabled = actionable && NativeInteractionForms.validate(interaction, response) &&
+                                        (interaction.kind != "fileChange" || decision != "accept" || onApproveFileChange != null),
                                     modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("interaction_${interaction.id}_$decision"),
                                 ) { Text(decisionLabel(decision, interaction.kind)) }
                             }
@@ -73,6 +81,37 @@ fun NativeInteractionPanel(interaction: InteractionUi, enabled: Boolean, onRespo
 @Composable
 private fun NativeRequestDetails(interaction: InteractionUi) {
     val request = interaction.request
+    if (interaction.kind == "fileChange") {
+        val context = interaction.fileChangeContext
+        if (context == null) {
+            Text("尚无与此原生 Item 精确绑定的完整文件路径和 Diff，或请求超出可安全展示范围（20 个文件 / 16 KiB / 256 行 Diff）。当前不能批准；可使用原生允许的拒绝或取消，或在宿主机核对处理。",
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+            if (request["grantRoot"] != null && request["grantRoot"] != JsonNull)
+                Text("此请求包含尚未确认为稳定能力的会话写入授权范围，当前客户端不批准该扩展授权。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+        } else {
+            Text("以下为当前原生 Item 的全部文件修改。批准前将只读刷新，并核对请求代次与完整内容摘要；内容变化时需重新查看。", style = MaterialTheme.typography.bodySmall)
+            for ((index, change) in context.changes.withIndex()) {
+                SelectionContainer {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.testTag("interaction_${interaction.id}_change_$index")) {
+                        Text("${when (change.kind) { "add" -> "新增"; "delete" -> "删除"; else -> "更新" }}：${change.path}",
+                            fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodyMedium)
+                        change.movePath?.let { Text("移动至：$it", fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodyMedium) }
+                        // The approval budget is enforced before evidence is created. Never truncate a
+                        // patch here while leaving its approval button active.
+                        Text(change.diff.ifEmpty { "（原生 Diff 为空）" }, Modifier.fillMaxWidth()
+                            .background(MaterialTheme.colorScheme.surfaceContainerLowest, RoundedCornerShape(8.dp))
+                            .horizontalScroll(rememberScrollState()).padding(12.dp),
+                            fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
+            SelectionContainer { Text("SHA-256：${context.digest}", style = MaterialTheme.typography.labelSmall, fontFamily = FontFamily.Monospace) }
+        }
+        SelectionContainer {
+            Text("Thread：${interaction.threadId}\nTurn：${(request["turnId"] as? JsonPrimitive)?.content.orEmpty()}\nItem：${(request["itemId"] as? JsonPrimitive)?.content.orEmpty()}",
+                style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
+        }
+    }
     if (interaction.kind == "command") {
         val details = NativeInteractionForms.commandApprovalDetails(request)
         if (details != null) {

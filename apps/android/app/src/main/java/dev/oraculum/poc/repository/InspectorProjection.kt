@@ -62,16 +62,22 @@ class InspectorProjection {
             "turn/plan/updated" -> eventPlan = data.array("plan").mapIndexedNotNull { i, raw -> (raw as? JsonObject)?.let { step ->
                 InspectorEntry("plan:$i", step.string("step") ?: return@let null, data.string("explanation").orEmpty(), step.string("status").orEmpty())
             } }
-            "turn/diff/updated" -> eventDiff = data.string("diff")
+            "turn/diff/updated" -> eventDiff = data.string("diff")?.let { boundedContentPreview(sequenceOf(it)).displayText() }
             "thread/tokenUsage/updated" -> eventUsage = data.obj("tokenUsage")?.let(::formatUsage)
         }
     }
     fun state(prior: InspectorUiState): InspectorUiState = prior.copy(
         execution = turns.values.toList() + items.values.filter { types[it.id] !in setOf("userMessage", "agentMessage", "plan", "fileChange") },
         plan = eventPlan.ifEmpty { items.values.filter { types[it.id] == "plan" } },
-        diff = eventDiff ?: items.values.filter { types[it.id] == "fileChange" }.takeIf { it.isNotEmpty() }?.joinToString("\n\n") { it.body },
+        diff = eventDiff ?: fileChangePreview(),
         agents = items.values.filter { types[it.id]?.startsWith("collab") == true }, usage = eventUsage,
     )
+    private fun fileChangePreview(): String? {
+        val changes = items.values.asSequence().filter { types[it.id] == "fileChange" }
+        if (changes.none()) return null
+        // Stop while aggregating; never allocate the full multi-Item diff first.
+        return boundedContentPreview(changes.map { it.body }).displayText()
+    }
     private fun formatUsage(value: JsonObject): String = buildList {
         value.obj("total")?.let { add("累计：${usageLine(it)}") }
         value.obj("last")?.let { add("最近 Turn：${usageLine(it)}") }
@@ -136,3 +142,37 @@ private fun boundedJson(value: JsonElement, limit: Int = 128 * 1024): String = b
     }
     appendValue(value)
 }.take(limit)
+
+/** Whole-view budgets apply before joining/splitting, independently of native Item limits. */
+internal const val CONTENT_PREVIEW_MAX_CHARACTERS = 64 * 1024
+internal const val CONTENT_PREVIEW_MAX_LINES = 256
+internal const val CONTENT_PREVIEW_NOTICE = "预览截断，请分段查看。可读取对应 Item 详情或打开项目文件。"
+internal data class ContentPreview(val text: String, val truncated: Boolean) {
+    fun displayText(): String = if (truncated) "$text\n\n$CONTENT_PREVIEW_NOTICE" else text
+}
+
+internal fun boundedContentPreview(
+    parts: Sequence<String>,
+    maxCharacters: Int = CONTENT_PREVIEW_MAX_CHARACTERS,
+    maxLines: Int = CONTENT_PREVIEW_MAX_LINES,
+): ContentPreview {
+    require(maxCharacters > 0 && maxLines > 0)
+    val result = StringBuilder(minOf(maxCharacters, 4096))
+    var lines = 1
+    var truncated = false
+    fun appendWithinBudget(part: String): Boolean {
+        for (character in part) {
+            if (result.length == maxCharacters || (character == '\n' && lines == maxLines)) return false
+            result.append(character)
+            if (character == '\n') lines++
+        }
+        return true
+    }
+    var first = true
+    for (part in parts) {
+        if ((!first && !appendWithinBudget("\n\n")) || !appendWithinBudget(part)) { truncated = true; break }
+        first = false
+    }
+    if (truncated && result.lastOrNull()?.isHighSurrogate() == true) result.setLength(result.length - 1)
+    return ContentPreview(result.toString(), truncated)
+}

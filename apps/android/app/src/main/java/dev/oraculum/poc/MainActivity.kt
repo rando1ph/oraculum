@@ -75,6 +75,7 @@ class MainActivity : ComponentActivity() {
                     onLoadMoreDirectories = model::loadMoreDirectories,
                     onLoadMoreThreads = model::loadMoreThreads,
                     onRespondInteraction = model::respondInteraction,
+                    onRespondFileChange = model::respondFileChange,
                     onRefreshInspector = model::refreshInspector,
                     onLoadItemDetail = model::loadItemDetail,
                     onQueryOperation = model::queryOperation,

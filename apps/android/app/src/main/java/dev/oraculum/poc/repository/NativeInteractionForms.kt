@@ -22,6 +22,7 @@ data class InteractionUi(
     val url: String? = null,
     val supported: Boolean = true,
     val request: JsonObject = JsonObject(emptyMap()),
+    val fileChangeContext: FileChangeApprovalContext? = null,
 )
 
 /** Display facts from the stable native command/network approval fields. */
@@ -61,13 +62,17 @@ object NativeInteractionForms {
     private const val MAX_BYTES = 128 * 1024
     private const val MAX_SAFE_INTEGER = 9_007_199_254_740_991.0
 
-    fun parse(value: JsonObject): InteractionUi {
+    fun parse(value: JsonObject, context: FileChangeApprovalContext? = null): InteractionUi {
         val request = value["request"] as? JsonObject ?: JsonObject(emptyMap())
         val kind = value.text("kind").orEmpty()
         val status = value.text("status").orEmpty()
         val available = request["availableDecisions"]
-        val allowed = if (available == null) decisions else (available as? JsonArray)?.mapNotNull { it.stringValue() }
+        val nativeAllowed = if (available == null) decisions else (available as? JsonArray)?.mapNotNull { it.stringValue() }
             ?.filter { it in decisions }?.distinct().orEmpty()
+        // Request IDs alone prove no patch. Positive approval requires complete current Item facts.
+        val boundContext = context?.takeIf { it.matchesRequest(value.text("epoch"), value.text("projectId"),
+            value.text("threadId"), kind, status, request) && it.matchesIdentity(value.text("interactionId"), (value["generation"] as? JsonPrimitive)?.longOrNull) }
+        val allowed = nativeAllowed.filter { kind != "fileChange" || it != "accept" || boundContext != null }
         val questions = if (kind == "input") questions(request) else emptyList()
         val fields = if (kind == "elicitation" && request.text("mode") in formModes) elicitationFields(request["requestedSchema"]) else emptyList()
         val title = when (kind) {
@@ -76,7 +81,7 @@ object NativeInteractionForms {
                 "humanCommand" -> "人工命令审批（当前不支持）"
                 else -> if (request["networkApprovalContext"] is JsonObject) "网络访问审批" else "命令审批"
             }
-            "fileChange" -> "文件修改审批"
+            "fileChange" -> if (boundContext != null) "文件修改审批" else "文件修改审批（当前仅可拒绝或取消）"
             "permissions" -> "权限审批（仅本轮）"
             "input" -> "需要你的回答"
             "elicitation" -> request.text("serverName")?.let { "$it 请求确认" } ?: "扩展请求确认"
@@ -98,9 +103,16 @@ object NativeInteractionForms {
             decisions = if (kind in setOf("command", "fileChange", "permissions")) allowed else decisions,
             questions = questions.orEmpty(), fields = fields.orEmpty(),
             url = request.text("url")?.takeIf { kind == "elicitation" && request.text("mode") == "url" && safeWebUrl(it) },
-            supported = supported, request = request,
+            supported = supported, request = request, fileChangeContext = boundContext,
         )
     }
+
+    /** Rebuild from original native fields; revoked evidence never leaves a stale accept option. */
+    fun bindFileChangeContext(interaction: InteractionUi, context: FileChangeApprovalContext?): InteractionUi = parse(buildJsonObject {
+        put("interactionId", interaction.id); put("projectId", interaction.projectId); put("threadId", interaction.threadId)
+        put("epoch", interaction.epoch); put("generation", interaction.generation); put("kind", interaction.kind)
+        put("status", interaction.status); put("request", interaction.request)
+    }, context)
 
     /**
      * Codex stable v2 CommandExecutionRequestApprovalParams.kind defaults to command;
@@ -132,6 +144,7 @@ object NativeInteractionForms {
         return when (interaction.kind) {
             "command", "fileChange", "permissions" -> response.keysWithin("type", "decision") &&
                 response.text("type") == "approval" && response.text("decision") in interaction.decisions &&
+                (interaction.kind != "fileChange" || response.text("decision") != "accept" || interaction.fileChangeContext?.matchesPending(interaction) == true) &&
                 response.text("decision") in decisions && (interaction.request["availableDecisions"] == null ||
                 (interaction.request["availableDecisions"] as? JsonArray)?.any { it.stringValue() == response.text("decision") } == true)
             "input" -> {
