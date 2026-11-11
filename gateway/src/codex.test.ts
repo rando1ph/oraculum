@@ -62,6 +62,12 @@ describe('official Codex stdio boundary', () => {
     await adapter.listModels();
     expect((await messages()).find(message => message.id === 'native-1')).toMatchObject({ error: { code: -32601 } });
   });
+  it('invalidates unsupported native state notifications without forwarding their private payload',async()=>{
+    const {adapter}=await setup('unknown-notification');const observed:unknown[]=[];
+    adapter.on('notification',event=>observed.push(event));await adapter.listModels();
+    expect(observed).toContainEqual({method:'gateway/unsupportedNativeEvent',params:{threadId:'thread-1'}});
+    expect(JSON.stringify(observed)).not.toContain('must-not-forward');
+  });
   it('bounds pending operations before forwarding more requests', async () => {
     const { adapter, messages } = await setup('timeout', { maxPending: 1, readTimeoutMs: 30 });
     const first = adapter.listModels();

@@ -188,6 +188,10 @@ export class CodexAdapter extends EventEmitter {
         if (this.listenerCount('request')) this.emit('request', request);
         else void this.rejectRequest(request.id, 'Gateway has no handler for this native request').catch(() => {});
       } else if (notifications.has(message.method)) this.emit('notification', { method: message.method, params: message.params });
+      else if (/^(thread|turn|item)\//.test(message.method)) {
+        const threadId=identifier(message.params.threadId)&&message.params.threadId.length<=256?message.params.threadId:undefined;
+        this.emit('notification',{method:'gateway/unsupportedNativeEvent',params:threadId?{threadId}:{}});
+      }
       return;
     }
     if (!rpcId(message.id)) throw new Error('Invalid native response ID');

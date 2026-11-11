@@ -332,3 +332,17 @@ describe('HTTP resource budgets and download integrity', () => {
     expect(download.headers.get('content-digest')).toBe(`sha-256=:${createHash('sha256').update(download.text).digest('base64')}:`);
   });
 });
+
+describe('unknown native state recovery',()=>{
+ it('invalidates issued cursors and tells clients to resynchronize after new native state',async()=>{
+  const f=await setup(),device=await f.pair(),projectId=await register(f,device),threadId=await start(f,device,projectId);
+  f.codex.nativeThreads.get(threadId)!.turns=[{id:'older',status:'completed',items:[]},{id:'newer',status:'completed',items:[]}];
+  const page=await f.request(`/threads/${threadId}/history/query`,{device,body:{projectId,limit:1}});expect(page.json.data.nextCursor).toBeTruthy();
+  const ws=await f.connect(device);ws.socket.send(JSON.stringify({type:'resume',epoch:f.service.epoch,afterSeq:0}));await ws.waitFor(message=>message.type==='connection');
+  f.codex.emit('notification',{method:'gateway/unsupportedNativeEvent',params:{threadId}});await f.service.settled();
+  expect((await ws.waitFor(message=>message.kind==='history.invalidated')).payload.reasonCode).toBe('UNSUPPORTED_NATIVE_EVENT');
+  const stale=await f.request(`/threads/${threadId}/history/query`,{device,body:{projectId,limit:1,cursor:page.json.data.nextCursor}});expect(stale.status).toBe(409);
+  f.codex.emit('notification',{method:'item/completed',params:{threadId,item:{id:'compact',type:'contextCompaction'}}});await f.service.settled();
+  expect(ws.messages.filter(message=>message.kind==='history.invalidated').length).toBeGreaterThanOrEqual(1);
+ });
+});

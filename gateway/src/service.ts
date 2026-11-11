@@ -148,6 +148,9 @@ export class GatewayService {
     }
     private async notification(message: NativeNotification) {
         const p = message.params;
+        if(message.method==='gateway/unsupportedNativeEvent'&&typeof p.threadId!=='string'){
+            this.history.clear();this.broadcast({kind:'history.invalidated',impact:'state',scope:{},payload:{reasonCode:'UNSUPPORTED_NATIVE_EVENT'}});return;
+        }
         if (message.method === 'thread/started' && record(p.thread) && typeof p.thread.id === 'string' && typeof p.thread.cwd === 'string') {
             const project = this.store.listProjects().find(project => project.canonicalPath === (p.thread as Record<string, unknown>).cwd);
             if (project) {
@@ -160,6 +163,10 @@ export class GatewayService {
         if (!threadId || !projectId)
             return;
         await this.projects.validate(projectId);
+        if(message.method==='gateway/unsupportedNativeEvent'||((message.method==='item/started'||message.method==='item/completed')&&record(p.item)&&p.item.type==='contextCompaction')){
+            this.history.invalidate(threadId);this.broadcast({kind:'history.invalidated',impact:'state',scope:{projectId,threadId},payload:{reasonCode:message.method==='gateway/unsupportedNativeEvent'?'UNSUPPORTED_NATIVE_EVENT':'NATIVE_COMPACTION'}});
+            if(message.method==='gateway/unsupportedNativeEvent')return;
+        }
         const scope = { projectId, threadId, ...(typeof p.turnId === 'string' ? { turnId: p.turnId } : {}), ...(typeof p.itemId === 'string' ? { itemId: p.itemId } : {}) };
         if (message.method === 'turn/started' && record(p.turn) && typeof p.turn.id === 'string')
             this.activeTurns.set(threadId, p.turn.id);

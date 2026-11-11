@@ -26,6 +26,7 @@ createInterface({ input: process.stdin }).on('line', line => {
     provider: [-32000, 'Provider authorization failed: secret-value'], rejection: [-32602, 'Invalid input'],
   };
   if (errors[mode]) { const [code, messageText] = errors[mode]; send({ id: message.id, error: { code, message: messageText } }); return; }
+  if(mode==='unknown-notification'&&message.method==='model/list')send({method:'thread/futureCriticalState',params:{threadId:'thread-1',privateNativePayload:'must-not-forward'}});
   let result;
   switch (message.method) {
     case 'model/list': result = { data: [{ id: 'model-1', model: 'model-1', displayName: 'Model', supportedReasoningEfforts: [{ reasoningEffort: 'low' }] }], nextCursor: null }; break;
