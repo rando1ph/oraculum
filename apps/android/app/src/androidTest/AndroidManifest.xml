@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!-- Separate test-APK process/UID receives an actual, read-only system share. -->
+        <activity
+            android:name="dev.oraculum.poc.e2e.Phase3ShareReceiverActivity"
+            android:exported="true"
+            android:label="Phase 3 share receiver"
+            android:theme="@android:style/Theme.Material.Light.NoActionBar">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/markdown" />
+            </intent-filter>
+        </activity>
+        <!-- A second distinct target makes the system's receiver-choice flow observable. -->
+        <activity-alias
+            android:name="dev.oraculum.poc.e2e.Phase3AlternateShareReceiver"
+            android:targetActivity="dev.oraculum.poc.e2e.Phase3ShareReceiverActivity"
+            android:exported="true"
+            android:label="Phase 3 alternate receiver">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/markdown" />
+            </intent-filter>
+        </activity-alias>
+        <!-- Instrumentation APK only: a real SAF source containing generated test files. -->
+        <provider
+            android:name="dev.oraculum.poc.e2e.Phase3DocumentsProvider"
+            android:authorities="dev.oraculum.poc.debug.test.phase3documents"
+            android:exported="true"
+            android:grantUriPermissions="true"
+            android:permission="android.permission.MANAGE_DOCUMENTS">
+            <intent-filter>
+                <action android:name="android.content.action.DOCUMENTS_PROVIDER" />
+            </intent-filter>
+        </provider>
+    </application>
+</manifest>

@@ -10,7 +10,12 @@ import sys
 
 PACKAGE = 'dev.oraculum.poc.debug'
 RUNNER = PACKAGE + '.test/androidx.test.runner.AndroidJUnitRunner'
-JOURNEYS = {'workspace': 'dev.oraculum.poc.e2e.Phase3WorkspaceJourneyTest', 'files': 'dev.oraculum.poc.e2e.Phase3FilesJourneyTest'}
+JOURNEYS = {
+    'workspace': 'dev.oraculum.poc.e2e.Phase3WorkspaceJourneyTest',
+    'files': 'dev.oraculum.poc.e2e.Phase3FilesJourneyTest',
+    'recovery': 'dev.oraculum.poc.e2e.Phase3RecoveryJourneyTest',
+    'notifications': 'dev.oraculum.poc.e2e.Phase3BackgroundNotificationTest',
+}
 
 
 def main():
@@ -75,7 +80,7 @@ def main():
         names = adb('shell', 'run-as', PACKAGE, 'ls', 'files/phase3-evidence').decode().splitlines()
         count = 0
         for name in names:
-            if not re.fullmatch(r'[A-Za-z0-9-]+\.(png|json)', name) or name in ('checkpoint.json', 'unknown-checkpoint.json'):
+            if not re.fullmatch(r'[A-Za-z0-9-]+\.(png|json)', name) or name in ('checkpoint.json', 'unknown-checkpoint.json', 'recovery-checkpoint.json'):
                 continue
             content = adb('exec-out', 'run-as', PACKAGE, 'cat', 'files/phase3-evidence/' + name)
             (args.output / name).write_bytes(content)
