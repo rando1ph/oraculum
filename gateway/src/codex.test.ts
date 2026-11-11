@@ -44,9 +44,13 @@ describe('official Codex stdio boundary', () => {
     try { await other.startTurn({ threadId: 'thread-1', input: [{ type: 'text', text: 'test' }] }); }
     catch (error) { expect(error).toBeInstanceOf(CodexError); expect((error as Error).message).not.toContain('secret-value'); expect(error).toMatchObject({ outcome: 'unknown' }); }
   });
-  it.each([['unsupported', 'NATIVE_UNSUPPORTED'], ['experimental', 'NATIVE_EXPERIMENTAL'], ['pagination', 'NATIVE_PAGINATION_UNSUPPORTED'], ['invalidCursor', 'NATIVE_REJECTED']])('classifies %s without broad unsupported matching', async (mode, code) => {
+  it.each([['unsupported', 'NATIVE_UNSUPPORTED'], ['experimental', 'NATIVE_EXPERIMENTAL'], ['pagination', 'NATIVE_PAGINATION_UNSUPPORTED'], ['paginationFeature','NATIVE_PAGINATION_UNSUPPORTED'], ['invalidCursor', 'NATIVE_REJECTED']])('classifies %s without broad unsupported matching', async (mode, code) => {
     const { adapter } = await setup(mode);
     await expect(adapter.listTurns({ threadId: 'thread-1' })).rejects.toMatchObject({ code });
+  });
+  it('classifies the specific unimplemented native item paging response',async()=>{
+    const {adapter}=await setup('itemPaginationFeature');
+    await expect(adapter.listItems({threadId:'thread-1',turnId:'turn-1'})).rejects.toMatchObject({code:'NATIVE_PAGINATION_UNSUPPORTED'});
   });
   it('isolates optional failures from the core adapter lifecycle', async () => {
     const { adapter } = await setup('unsupported');

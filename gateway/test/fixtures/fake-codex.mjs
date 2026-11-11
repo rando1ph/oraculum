@@ -22,7 +22,7 @@ createInterface({ input: process.stdin }).on('line', line => {
   if (mode === 'bad-response') { send({ id: message.id, result: { turn: { id: 'turn-1', status: 'inProgress' } } }); return; }
   const errors = {
     unsupported: [-32601, 'Method not found'], experimental: [-32602, 'This method requires experimentalApi capability'],
-    pagination: [-32600, 'This thread does not support pagination'], invalidCursor: [-32602, 'Invalid pagination cursor'],
+    pagination: [-32600, 'This thread does not support pagination'], paginationFeature: [-32601,'paginated_threads is not supported yet'], itemPaginationFeature: [-32601,'thread/items/list is not supported yet'], invalidCursor: [-32602, 'Invalid pagination cursor'],
     provider: [-32000, 'Provider authorization failed: secret-value'], rejection: [-32602, 'Invalid input'],
   };
   if (errors[mode]) { const [code, messageText] = errors[mode]; send({ id: message.id, error: { code, message: messageText } }); return; }

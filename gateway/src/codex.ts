@@ -47,6 +47,10 @@ const notifications = new Set(['thread/started', 'thread/status/changed', 'threa
 
 function nativeError(method: string, code: number, message: string): CodexError {
   // Do not classify generic "unsupported", timeout, authorization or provider failures as pagination fallback.
+  if (['thread/turns/list','thread/items/list'].includes(method) && code===-32601 &&
+    (message==='paginated_threads is not supported yet'||message===`${method} is not supported yet`)) {
+    return new CodexError('NATIVE_PAGINATION_UNSUPPORTED','This native store has not implemented paginated history','rejected',code);
+  }
   if (code === -32601) return new CodexError('NATIVE_UNSUPPORTED', `Codex does not support ${method}`, 'rejected', code);
   if (code === -32602 && /(?:requires|require|must enable|enable).*experimentalApi|experimentalApi.*(?:required|disabled|not enabled)/i.test(message)) {
     return new CodexError('NATIVE_EXPERIMENTAL', `Codex requires experimental API for ${method}`, 'rejected', code);

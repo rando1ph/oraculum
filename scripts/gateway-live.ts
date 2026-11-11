@@ -12,7 +12,7 @@ import type { Duplex } from 'node:stream';
 import WebSocket from 'ws';
 import { GatewayStore, randomCredential } from '../gateway/src/store';
 import { initGatewayConfig } from '../gateway/src/config';
-import { CodexAdapter, record } from '../gateway/src/codex';
+import { CodexAdapter, CodexError, record } from '../gateway/src/codex';
 import { GatewayService } from '../gateway/src/service';
 import { createGatewayServer } from '../gateway/src/server';
 
@@ -98,6 +98,11 @@ async function openEvents(device = devices[0], afterSeq = 0, knownEpoch = epoch)
 async function boot() {
   adapter = new CodexAdapter({ cwd: projectPath, executable: config.codexCommand });
   await adapter.start();
+  const note=(method:string,error:unknown)=>{if(error instanceof CodexError){evidence.nativeReadErrors??=[];if(evidence.nativeReadErrors.length<50)evidence.nativeReadErrors.push({method,code:error.code,nativeCode:error.nativeCode,message:error.message});}throw error;};
+  const read=adapter.readThread.bind(adapter),turns=adapter.listTurns.bind(adapter),items=adapter.listItems.bind(adapter);
+  adapter.readThread=(...args)=>read(...args).catch(error=>note('thread/read',error));
+  adapter.listTurns=(...args)=>turns(...args).catch(error=>note('thread/turns/list',error));
+  adapter.listItems=(...args)=>items(...args).catch(error=>note('thread/items/list',error));
   service = new GatewayService(store, config, adapter, { codexVersion: evidence.codexVersion });
   server = await createGatewayServer(service, config); await server.listen({ host: config.host, port });
 }
@@ -113,7 +118,18 @@ const startTurn = async (text: string, extra: Record<string, unknown> = {}) => {
   assert.equal(typeof operation.nativeTurnId, 'string', 'Native turn ID missing');
   evidence.nativeTurns.push({ operationId, turnId: operation.nativeTurnId }); return operation;
 };
-async function snapshot() { return resource(await api('POST', `/threads/${threadId}/snapshot`, { projectId })); }
+async function snapshot() {
+  // A read-only recovery client may re-read a stale/native-unavailable projection;
+  // never apply this policy to a Turn, resume, approval or other mutation.
+  for(let attempt=0;attempt<3;attempt++){
+    const response=json(await api('POST',`/threads/${threadId}/snapshot`,{projectId},devices[0],[200,409,503]));
+    if(record(response.data))return resource(response);
+    const code=response.error?.code;
+    assert.ok(attempt<2&&['HISTORY_STALE','NATIVE_UNSUPPORTED','NATIVE_PAGINATION_UNSUPPORTED'].includes(code),'Snapshot failed outside the bounded read recovery policy');
+    evidence.snapshotReadRetries??=[];evidence.snapshotReadRetries.push({code,attempt:attempt+1});await sleep(100);
+  }
+  throw new Error('Snapshot read recovery exhausted');
+}
 async function finished(turnId: string) {
   return until(async () => { const value = await snapshot(); const history = json(value.history); const turn = history.items.find((item: any) => item.id === turnId); return turn && turn.status !== 'inProgress' ? { snapshot: value, turn } : null; }, 'Native turn did not reach a terminal history state');
 }
