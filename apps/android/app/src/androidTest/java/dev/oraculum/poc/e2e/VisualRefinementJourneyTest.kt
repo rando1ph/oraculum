@@ -58,6 +58,24 @@ class VisualRefinementJourneyTest {
             state.interactions.none { it.status == "pending" })
     }
 
+    // fontScale replaces the Activity. Await its new attached window without
+    // Compose's next-frame idler, whose callback may belong to the detached root.
+    private fun changeFontScale(target: Float, command: String) {
+        val previous = compose.activity
+        val replacesActivity = kotlin.math.abs(previous.resources.configuration.fontScale - target) > .01f
+        shell(command)
+        val deadline = System.currentTimeMillis() + 30_000
+        while (System.currentTimeMillis() < deadline) {
+            val current = runCatching { compose.activity }.getOrNull()
+            if (current != null && kotlin.math.abs(current.resources.configuration.fontScale - target) < .01f &&
+                current.lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED) &&
+                current.window.decorView.isAttachedToWindow &&
+                (!replacesActivity || (current !== previous && previous.isDestroyed))) return
+            Thread.sleep(80)
+        }
+        fail("Font configuration did not settle on an attached resumed Activity")
+    }
+
     private fun screenshot(name: String) {
         compose.waitForIdle()
         val bitmap = checkNotNull(instrumentation.uiAutomation.takeScreenshot())
@@ -203,8 +221,7 @@ class VisualRefinementJourneyTest {
         assertTrue("Retain the unsent checkpoint draft for send reachability", before.draft.isNotBlank())
         val oldScale = shell("settings get system font_scale").trim().toFloatOrNull()
         try {
-            shell("settings put system font_scale 2.0")
-            until("System 200 percent font applied") { compose.activity.resources.configuration.fontScale >= 1.9f }
+            changeFontScale(2f, "settings put system font_scale 2.0")
             compose.onNodeWithTag("draft").assertIsDisplayed()
             assertAction("send", "发送消息")
             until("Foreground snapshot converges after font configuration change") { it.online && !it.busy && it.canSend }
@@ -231,7 +248,7 @@ class VisualRefinementJourneyTest {
             record("visual-large-font", JSONObject().put("minimumActionTargetDp", 48)
                 .put("sendNotActivated", true).put("permissionConfirmationCancelled", true))
         } finally {
-            shell(if (oldScale == null) "settings delete system font_scale" else "settings put system font_scale $oldScale")
+            changeFontScale(oldScale ?: 1f, if (oldScale == null) "settings delete system font_scale" else "settings put system font_scale $oldScale")
         }
     }
 
@@ -247,8 +264,7 @@ class VisualRefinementJourneyTest {
         val decision = if ("decline" in request.decisions) "decline" else "cancel"
         val oldScale = shell("settings get system font_scale").trim().toFloatOrNull()
         try {
-            shell("settings put system font_scale 2.0")
-            until("System 200 percent font applied") { compose.activity.resources.configuration.fontScale >= 1.9f }
+            changeFontScale(2f, "settings put system font_scale 2.0")
             compose.onNodeWithTag("pending-interactions").performClick()
             assertAction("close-panel", "关闭面板")
             val action = compose.onAllNodesWithTag("interaction_${request.id}_$decision").onLast()
@@ -262,7 +278,7 @@ class VisualRefinementJourneyTest {
             compose.onNodeWithTag("close-panel").performClick()
             record("visual-large-font-approval", JSONObject().put("interactionId", request.id).put("decision", decision))
         } finally {
-            shell(if (oldScale == null) "settings delete system font_scale" else "settings put system font_scale $oldScale")
+            changeFontScale(oldScale ?: 1f, if (oldScale == null) "settings delete system font_scale" else "settings put system font_scale $oldScale")
         }
     }
 
