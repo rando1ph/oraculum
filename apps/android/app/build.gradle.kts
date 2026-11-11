@@ -3,10 +3,15 @@ import groovy.json.JsonSlurper
 import groovy.json.JsonOutput
 import org.gradle.api.artifacts.component.ModuleComponentIdentifier
 import java.security.MessageDigest
+import java.security.cert.CertificateFactory
+import java.security.cert.X509Certificate
 
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+    id("org.jetbrains.kotlin.plugin.compose")
+    id("org.jetbrains.kotlin.plugin.serialization")
+    id("com.google.devtools.ksp")
 }
 val releaseIdentity = JsonSlurper().parse(rootProject.file("../../release.json")) as Map<*, *>
 val releaseName = releaseIdentity["version"] as String
@@ -45,6 +50,7 @@ android {
         targetSdk = 35
         versionCode = releaseCode
         versionName = releaseName
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     buildTypes {
         getByName("debug") {
@@ -61,7 +67,7 @@ android {
             signingConfig = null
         }
     }
-    buildFeatures { buildConfig = true }
+    buildFeatures { buildConfig = true; compose = true }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -70,9 +76,71 @@ android {
 }
 
 dependencies {
-    implementation("androidx.webkit:webkit:1.12.1")
+    implementation(platform("androidx.compose:compose-bom:2025.04.01"))
+    implementation("androidx.activity:activity-compose:1.10.1")
+    implementation("androidx.compose.material3:material3")
+    implementation("androidx.compose.ui:ui-tooling-preview")
+    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.9.1")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.9.1")
+    implementation("androidx.core:core-ktx:1.16.0")
+    implementation("androidx.room:room-runtime:2.7.2")
+    implementation("androidx.room:room-ktx:2.7.2")
+    ksp("androidx.room:room-compiler:2.7.2")
+    implementation("androidx.datastore:datastore-preferences:1.1.7")
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.1")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
     testImplementation("junit:junit:4.13.2")
+    testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
+    testImplementation("com.squareup.okhttp3:okhttp-tls:4.12.0")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")
+    androidTestImplementation(platform("androidx.compose:compose-bom:2025.04.01"))
+    androidTestImplementation("androidx.compose.ui:ui-test-junit4")
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation("androidx.test:rules:1.6.1")
+    androidTestImplementation("androidx.test.espresso:espresso-core:3.6.1")
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
 }
+
+android.sourceSets["main"].java.srcDir(rootProject.file("../../packages/gateway-protocol/generated"))
+ksp { arg("room.schemaLocation", "$projectDir/schemas") }
+
+// A disposable local CA may be included in Debug builds only. It is never a
+// product trust override, release asset, or hostname-verification bypass.
+val debugCa = providers.gradleProperty("oraculumDebugCa").orNull
+val prepareDebugTrust by tasks.registering {
+    val destination = layout.buildDirectory.dir("generated/debug-trust/res")
+    inputs.property("debugCa", debugCa.orEmpty())
+    if (debugCa != null) inputs.file(file(debugCa))
+    outputs.dir(destination)
+    doLast {
+        val directory = destination.get().asFile
+        delete(directory)
+        directory.resolve("xml").mkdirs()
+        val debugOverride = if (debugCa != null) {
+            val source = file(debugCa)
+            val bytes = source.readBytes()
+            require(!bytes.toString(Charsets.US_ASCII).contains("PRIVATE KEY")) { "Debug CA must not contain private key material" }
+            val certificate = CertificateFactory.getInstance("X.509")
+                .generateCertificate(bytes.inputStream()) as X509Certificate
+            require(certificate.basicConstraints >= 0) { "Debug trust input must be a CA certificate" }
+            certificate.checkValidity()
+            directory.resolve("raw").mkdirs()
+            directory.resolve("raw/oraculum_debug_ca.pem").writeBytes(bytes)
+            "<debug-overrides><trust-anchors><certificates src=\"@raw/oraculum_debug_ca\" /></trust-anchors></debug-overrides>"
+        } else ""
+        directory.resolve("xml/network_security_config.xml").writeText("""
+            <?xml version="1.0" encoding="utf-8"?>
+            <network-security-config>
+                <base-config cleartextTrafficPermitted="false"><trust-anchors><certificates src="system" /></trust-anchors></base-config>
+                $debugOverride
+            </network-security-config>
+        """.trimIndent() + "\n")
+    }
+}
+android.sourceSets["debug"].res.srcDir(layout.buildDirectory.dir("generated/debug-trust/res"))
+tasks.matching { it.name == "preDebugBuild" }.configureEach { dependsOn(prepareDebugTrust) }
 
 // Reuse the approved original without duplicating or redesigning the brand asset.
 val prepareBrandIcon by tasks.registering(Copy::class) {
@@ -101,7 +169,8 @@ val prepareBuildIdentity by tasks.registering {
         val file = metadata.get().asFile
         file.parentFile.mkdirs()
         file.writeText(JsonOutput.toJson(mapOf("format" to 1, "sourceGit" to sourceGit,
-            "sourceDirty" to git("status", "--porcelain").isNotEmpty(),
+            // User-owned read-only design input is deliberately outside source publication.
+            "sourceDirty" to git("status", "--porcelain", "--", ".", ":(exclude)upgrade/stitch_oraculum_android_workspace/").isNotEmpty(),
             "version" to releaseName, "versionCode" to releaseCode)) + "\n")
     }
 }
