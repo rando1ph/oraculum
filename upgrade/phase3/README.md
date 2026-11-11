@@ -1,6 +1,6 @@
 # Oraculum 2.0 Phase 3｜Android 完整客户端工程报告
 
-报告日期：2026-11-12。**这是待归档交付报告：已验证的单元、仪器和真实 Gateway/Codex 旅程逐项登记。当前原生待审批快照缺少文件修改 Item，客户端正确阻止正向批准并安全取消原请求。未归档会话列表超时已定位，最小读取预算修正后，真实 Home 后台通知及同进程热/冷 Activity 定位完整旅程通过；不代表进程死亡后的送达。最终交付物及 SHA、截图索引和延续环境清理仍待完成。实现、自动化通过和独立视觉/人工验收分别记录；Phase 3 保持 In progress，等待独立审阅，未进入 Phase 4。**
+报告日期：2026-11-12。**Phase 3 工程交付已归档，保持 In progress，等待 Randolph 独立视觉审阅。Clean Build 15 从已提交源码 `ab90769430616c6e9290b3acb52ca2942ac6b8df` 成功生成主 Debug APK 和测试 APK，主包内嵌 `sourceDirty=false`。20 张既有真实 Emulator 原图和 VISUAL_REVIEW.md 已上传指定私有 Google Drive 并回读核对。已有 854/854 仓库、129/129 JVM、14/14 instrumentation 及后台通知通过证据保留，本次未重跑全套测试。fileChange 正向批准仍因原生证据不足而未通过；已验证安全阻断与取消。工程结果不代表视觉接受，Phase 4 未启动。**
 
 正典：[Phase 3 正式任务](https://app.notion.com/p/4155421e690b81d1bea3d08e5b1008dc)、[升级子项目](https://app.notion.com/p/4135421e690b815eb404c3024c860134)、[父项目](https://app.notion.com/p/3ff5421e690b81bdae14c0675f0b3acf)。前置交付：[Phase 0 Android/Stitch 规格](../phase0/05-Android与Stitch落地.md)、[Phase 1 Gateway](../phase1/README.md)、[Phase 2 原生 PoC](../phase2/README.md)。本阶段详细设计与协议边界分别见 [DESIGN_MAPPING.md](DESIGN_MAPPING.md) 和 [CAPABILITIES.md](CAPABILITIES.md)。
 
@@ -11,7 +11,7 @@ Android 使用 Kotlin + Jetpack Compose + Material 3，复用 Phase 2 GatewayCli
 | 范围 | 当前源码实现 | 实现入口 | 最终验收 |
 | --- | --- | --- | --- |
 | P3.1 原生工作区 | 左导航、中央对话/Composer、右 Inspector；窄屏独立模态面板，宽屏可并排对话与 Inspector；系统返回、IME、有限高度输入区、文字与代码滚动 | [OraculumScreen.kt](../../apps/android/app/src/main/java/dev/oraculum/poc/ui/OraculumScreen.kt) | 三面板/返回/真实 IME/横屏/200% 字号旅程通过；TalkBack 未实听，最终人工验收待审 |
-| P3.1 设计系统与偏好 | Matcha Light / Dark / OLED Dark；原生字体、色阶/圆角、语义按钮；本机用户/助手别名和阅读字号偏好 | [OraculumTheme.kt](../../apps/android/app/src/main/java/dev/oraculum/poc/ui/OraculumTheme.kt)、[ClientPreferences.kt](../../apps/android/app/src/main/java/dev/oraculum/poc/storage/ClientPreferences.kt) | 三主题旅程通过并有真实图；自定义图片头像未实现，最终选图/产物关联待归档 |
+| P3.1 设计系统与偏好 | Matcha Light / Dark / OLED Dark；原生字体、色阶/圆角、语义按钮；本机用户/助手别名和阅读字号偏好 | [OraculumTheme.kt](../../apps/android/app/src/main/java/dev/oraculum/poc/ui/OraculumTheme.kt)、[ClientPreferences.kt](../../apps/android/app/src/main/java/dev/oraculum/poc/storage/ClientPreferences.kt) | 三主题旅程通过；精选原图与 SHA 已归档至视觉索引；自定义图片头像未实现 |
 | P3.1 消息与内容 | 原生 Markdown 常用子集、可选择文本、代码复制/横向滚动、GFM 表格与任务列表 | [MarkdownContent.kt](../../apps/android/app/src/main/java/dev/oraculum/poc/ui/MarkdownContent.kt) | 真实 Markdown 回复与大字体旅程通过；复杂 GFM 不作完整兼容承诺 |
 | P3.2 项目/会话与模型 | 授权目录浏览/注册、线程分页、本地筛选、显式新建/恢复、上次线程恢复；真实模型与 effort、下一次执行 preset；线程切换清理模型 override | [PocViewModel.kt](../../apps/android/app/src/main/java/dev/oraculum/poc/PocViewModel.kt) | 真实配对/注册/新线程/模型目录/恢复通过；非已运行子路径不推定全覆盖 |
 | P3.2 交互与 Inspector | 真实审批、受约束输入/elicitation、原生 Turn 完成/失败/中断、工具/Plan/Diff、可识别子代理活动、token 用量与只读扩展；完整文件修改与请求绑定后才可批准 | [NativeInteractionPanel.kt](../../apps/android/app/src/main/java/dev/oraculum/poc/ui/NativeInteractionPanel.kt)、[InspectorProjection.kt](../../apps/android/app/src/main/java/dev/oraculum/poc/repository/InspectorProjection.kt) | 真实命令审批取消、工具/Diff/用量/扩展通过；本次 Codex 待审批快照不含完整 fileChange Item，正向旅程失败且 accept 保持禁用；build 13 原请求安全取消通过、目标文件未生成。条件式正向路径仅有单元/静态证据 |
@@ -28,7 +28,7 @@ Android 使用 Kotlin + Jetpack Compose + Material 3，复用 Phase 2 GatewayCli
 
 初次静态色对验证见设计映射：指定的普通文字、主按钮及错误卡实色色对最低为 Dark/OLED 主容器文字的 4.55:1。该结果不包含混色/禁用 alpha、系统栏和 TalkBack，也不替代最终 Emulator 可访问性验证。
 
-**原件复核：2026-11-12 02:37（Asia/Shanghai）再次只读重算全部 12 文件，路径集合、字节数与 SHA-256 均匹配本阶段 `.local/evidence/oraculum-v2-phase3/stitch-baseline.json`；该基线也与 Phase 0 原件表一致。** 未修改、移动、重新生成或提交 Stitch 原件。最终清理归档仍需复核保全结果。
+**原件复核：2026-11-12 02:37（Asia/Shanghai）再次只读重算全部 12 文件，路径集合、字节数与 SHA-256 均匹配本阶段 `.local/evidence/oraculum-v2-phase3/stitch-baseline.json`；该基线也与 Phase 0 原件表一致。** 未修改、移动、重新生成或提交 Stitch 原件。Finalization 于 03:20 再次只读核验全部 12 原件一致，见最终交付索引。
 
 实现对原稿的明确差异：移动面板为保证触控和长中文使用更宽的可用内容区；宽屏采用对话 + Inspector，并保留导航抽屉，不机械按 840dp 强塞三列。设置提供本机别名和阅读字号，图片头像编辑尚未实现。最终截图对照应标出这些差异，不把“同一设计系统”写成像素级逐项等同。
 
@@ -79,9 +79,9 @@ Android 使用 Kotlin + Jetpack Compose + Material 3，复用 Phase 2 GatewayCli
 
 Android 正式 applicationId 保持 `dev.oraculum.poc`；本阶段仅 `dev.oraculum.poc.debug`，不卸载正式应用、不使用原长期签名证书、不运行正式签名脚本。没有重复卸载已结项的 Ubuntu Desktop/Bridge，没有正式安装/启用 Gateway，也没有改动 VPS、Caddy、SSH、systemd 或生产网络。
 
-## 5. 验证记录（最终填写）
+## 5. 验证记录与 Clean Build 15
 
-本轮证据根目录为 `.local/evidence/oraculum-v2-phase3/`。下面结果须由最终日志填写，不能以“测试源码存在”替代运行；真实 Codex、合成协议、故障注入与物理机范围分别记录。Phase 2 的既有通过记录不计成本轮重新执行结果。
+本轮证据根目录为 `.local/evidence/oraculum-v2-phase3/`。下面逐项保留已有真实日志；Finalization 仅执行一次 Clean Build 15，未重复运行已完成测试。真实 Codex、合成协议、故障注入与物理机范围分别记录。Phase 2 的既有通过记录不计成本轮重新执行结果。
 
 | 检查 | 本轮最终结果 | 证据与覆盖边界 |
 | --- | --- | --- |
@@ -89,11 +89,12 @@ Android 正式 applicationId 保持 `dev.oraculum.poc`；本阶段仅 `dev.oracu
 | TypeScript / 仓库单测 | 最新 `pnpm test` **854/854 通过，73/73 文件，8.45s**；`pnpm check` 通过 | `repository-tests-final.txt`、`typescript-check-final.txt`；包含 Gateway 列表读取预算修正。此前 852/852 的 `repository-tests.txt` 保留为历史记录，不累加测试数 |
 | Gateway 最小增量 / 协议 | 聚焦测试 **252/252 通过，13/13 文件**；生成 **71 DTO**，TypeScript/Ajv **80 往返、22 非法 fixture 拒绝**，Kotlin 编译 71 DTO 并通过同源 **80 往返** | 已核对 `gateway-tests.txt`（00:52:25，8.91s）和 `protocol-verification.txt`；后者确认生成、TS 编译、运行时校验和 Kotlin 往返通过。Android 最终源码构建另列 |
 | Gateway 列表读取预算回归 | adapter 聚焦 **28/28 通过**，随后已纳入全仓 854 项复测 | `gateway/src/codex.test.ts` 的本轮输出亦见 `repository-tests-final.txt`；只改默认 thread/list 预算，显式 readTimeoutMs 优先，其余方法预算保持原值 |
-| Android Debug 主/测试 APK、JVM、lint | build 14 **BUILD SUCCESSFUL（1m20s）**；归档 JVM XML 确认 **129/129，17 suites**，0 failure/error/skipped；lint **0 error、14 warnings**。build 13 为 127/127、16 suites，build 12 为 126/126、16 suites，build 11 为 106/106、14 suites | `android-integration-build-14.txt`、`build14-reports/TEST-*.xml`、`build14-reports/lint-results-debug.xml`；包含原生读取阶段诊断，交付 APK 与最终提交的对应关系仍 `PENDING` |
+| Android Debug 主/测试 APK、JVM、lint | build 14 **BUILD SUCCESSFUL（1m20s）**；归档 JVM XML 确认 **129/129，17 suites**，0 failure/error/skipped；lint **0 error、14 warnings**。build 13 为 127/127、16 suites，build 12 为 126/126、16 suites，build 11 为 106/106、14 suites | `android-integration-build-14.txt`、`build14-reports/TEST-*.xml`、`build14-reports/lint-results-debug.xml`；包含原生读取阶段诊断。该表测试来自既有 build14，最终交付为下列 clean build15，不混用产物身份 |
+| Clean Build 15 最终交付 | **BUILD SUCCESSFUL in 58s**，77 个任务全部执行；`clean --no-build-cache` 重建主/测试 APK；退出码 0，58.782s；主包 `sourceGit=ab90769…`、`sourceDirty=false`，两包 Debug 签名校验通过 | `android-clean-build-15.txt`、`build15-execution.json`；无一次性 fixture CA。未重跑 JVM、instrumentation、真实 E2E 或 lint，已有结果继续保留；完整 SHA/路径见 [DELIVERY_INDEX.md](DELIVERY_INDEX.md) |
 | 系统 instrumentation 完整复测 | 单批 **OK (14 tests)**，1.788s：7 项 LocalPersistenceTest、1 项 CredentialVaultInstrumentedTest、3 项通知、2 项附件保留、1 项取消结算 | `android-system-instrumentation-final.txt`；本次同批 runner 完整通过。下面此前通知/保留分批结果为历史复测记录，不能再累加成新的独立覆盖数 |
 | 通知系统 instrumentation | 修正 JUnit `@After` 返回值后，**OK (3 tests)**，0.177s | `notification-instrumentation-final.txt`：渠道/隐私/immutable Intent、持久去重与 resolved 撤销；合成 fixture，不代替真实后台事件旅程 |
 | 文件保留/取消 instrumentation | **OK (3 tests)**，1.087s：2 项 AttachmentRetentionTest + 1 项 FilesCancellationTest | `files-retention-instrumentation.txt`；终态有界保留、未知记录保全和删除取消结算等与真实 Codex E2E 分开 |
-| 真实 Gateway/Codex 首轮 | 首轮及稳定状态检查均 **OK (1 test)**，耗时 69.803s / 7.242s | `native-initial-final.txt`、`native-settled.txt`：配对→专用项目→显式线程→真实 Markdown 回答；最终 operation/Turn 总数及 config 哈希另行归档 |
+| 真实 Gateway/Codex 首轮 | 首轮及稳定状态检查均 **OK (1 test)**，耗时 69.803s / 7.242s | `native-initial-final.txt`、`native-settled.txt`：配对→专用项目→显式线程→真实 Markdown 回答；最后保存计数与 config 保全结果见第 5 节及最终交付索引 |
 | 三面板/主题/IME/横屏/200% 字号 | build 13 最新主题/面板/真实 IME 与横屏大字体旅程分别 **OK (1 test)**（25.685s / 9.075s）；此前对应旅程也通过 | `themes-ime-build13.txt`、`landscape-font-build13.txt`，最新真实截图已收集；此前 `themes-ime-verified.txt`、`landscape-font-final.txt` 保留。测试在 finally 恢复原硬键盘 IME 设置；此前已核对恢复为 0。TalkBack **未实听** |
 | 通知权限 | 系统请求、拒绝与设置启用旅程 **OK (1 test)**（9.732s） | `notification-permission.txt`、截图 17–19；只证明权限路径，不能替代后台提醒或通知 ledger 测试 |
 | 真实前台完成通知 | **OK (1 test)**（14.057s） | `native-foreground-notification.txt`、`screenshots/foreground-notification.json`；Activity 全程 RESUMED，显式发送后出现新通知，通知 tag 精确匹配本次 native Turn，证明前台真实完成通知，不外推后台或冷启动 |
@@ -107,7 +108,7 @@ Android 正式 applicationId 保持 `dev.oraculum.poc`；本阶段仅 `dev.oracu
 | 授权成果/下载/系统分享 | 完整性下载/无接收器 Sharesheet 弹出及返回、摘要篡改拒绝、截断拒绝分别 **OK (1 test)**（9.520s / 7.036s / 8.572s）。build 12 系统 chooser 明确选择独立 UID 接收器，核验 **131B**、摘要及只读权限，完整旅程 **OK (1 test)**（14.698s） | `files-host-preview-share-final.txt`、`files-digest-rejection.txt`、`files-truncated-rejection.txt`、`files-share-receiver-final.txt`、`screenshots/host-preview-system-share.json`。已直接核对 JSON：resolver_selection、systemChooserObserved/explicitReceiverSelection/receiverVerified/receiverReadOnlyGrant 均成立，摘要 `92ba25eb3cd32527ef0ef220d24ce6f29978ad295459891e1ffd5c0236c6c8b1`；14c 为实际接收图。build 11 的 receiver body 成功和失败 runner 均保留；PDF/Office 实际接收器未覆盖 |
 | Home 后台提醒与点击定位 | 预算修正后完整旅程 **OK (1 test)**，80.726s：真实 Home/Activity STOPPED、后台收到本次 Turn 精确匹配的新通知、热启动及同进程新建 Activity/VM 的 PendingIntent 定位均通过 | `native-background-notification-continuation.txt`、`screenshots/background-notification.json`、08/08b；JSON 明确 sameProcess=true、processDeathDeliveryTested=false。实际列表读取 9010/9769/9344/8440 ms 均成功；build 12–14 失败日志继续保留 |
 | 延续 fixture / epoch 恢复 | **OK (1 test)**，7.360s；沿用原测试身份、状态和 TLS endpoint，在新的隔离 epoch 中由用户操作显式 resume；累计 thread.resume=2，Turn 仍为 12 | `recovery-epoch-continuation.txt`；本轮仅增加显式 resume，重连未自动新建/发送。隔离延续脚本保存在证据目录 `resume-fixture.ts`，不进入产品逻辑 |
-| 清理与保全 | 初始 fixture 已正常停止：**cleanupErrors=[]、Codex config 未变、12 个 Turn**；延续环境最终停止和本轮 ADB/私有测试输入清理 `PENDING` | `fixture-initial-report.json`；测试专用 continuation 沿用身份/状态/TLS endpoint，不修改生产服务，最终清理报告与端口关闭核对仍需归档 |
+| 清理与保全 | 初始 fixture 正常停止：**cleanupErrors=[]、Codex config 未变、12 个 Turn**。Finalization 确认 continuation 无进程/端口监听，仅移除 40995/40149 ADB reverse 和 `no_backup/phase3-e2e.json`；身份/草稿/回执/数据库保留，Codex config 与 12 Stitch 原件哈希一致 | `fixture-initial-report.json`、`finalization-cleanup.json`。中断的 continuation 没有 graceful-stop 报告，其临时目录在本次清理前已不存在；未重启、未补造终态原生查询。最后保存 status 为 13 Turn / 2 resume / 3 upload / 3 interaction.respond |
 
 独立 fixture status 对账（仅本表所列阶段，不代表后续最终总数）：
 
@@ -120,7 +121,7 @@ Android 正式 applicationId 保持 `dev.oraculum.poc`；本阶段仅 `dev.oracu
 | 后续原始 fixture 停止 → 隔离 continuation → 用户显式恢复 | Turn 保持 12；thread.resume 累计从 1 增至 2 | 延续环境换 epoch 后仍须显式恢复，无新增 Turn；与前述早期计数分阶段记录 |
 | 延续环境真实后台通知旅程完成 | Turn 13、thread.resume 2、attachment.upload 3、interaction.respond 3 | 本次显式发送新增 1 个 Turn；通知热/冷 Activity 定位未增加 resume、上传或响应；见 `status-after-background-continuation.json` |
 
-早期对账来自 `status-before-upload-unknown.json`、`status-after-{upload-loss,upload-reconcile,turn-loss,turn-restart,turn-reconcile,offline-online,access-cursors,epoch-resume}.json`；初始 fixture 终态另见 `fixture-initial-report.json`。这些记录确认 Codex config 未变，原生线程和操作保留供复审。延续环境的最终总计和清理结论另行归档。
+早期对账来自 `status-before-upload-unknown.json`、`status-after-{upload-loss,upload-reconcile,turn-loss,turn-restart,turn-reconcile,offline-online,access-cursors,epoch-resume}.json`；初始 fixture 终态另见 `fixture-initial-report.json`。这些记录确认 Codex config 未变，原生线程和操作保留供复审。延续环境最后保存总计为上一表 13 个 Turn；无 graceful-stop 报告，不能外推为本次重新查询。定向清理及保全结果见 `finalization-cleanup.json` 和最终交付索引。
 
 初期失败与修复记录如下。后台完整旅程已在最小列表预算修正后通过；当前原生环境的 fileChange 正向旅程仍因证据缺失失败，已验证原请求安全取消。早期失败日志保留，不从报告中删除。
 
@@ -137,34 +138,33 @@ Android 正式 applicationId 保持 `dev.oraculum.poc`；本阶段仅 `dev.oracu
 | 通知点击定位在原生读取超时时清空会话 | build 11 运行遇到 `NATIVE_TIMEOUT`，原先先切换再读取使选中线程变为 null；现先完成目标预读及版本校验，成功后提交选择，失败保留旧会话与草稿 | build 11/12 失败日志保留，build 12 冷 Activity 超时时原线程未清空；最终预算修正后完整热/冷 Activity 定位通过，不能将此前局部成功替代最终日志 |
 | build 13/14 后台旅程首次发送前原生读取超时 | build 13 在发送前失败（130.290s）；普通探针仅 4.3–4.7 秒，因此先增加阶段诊断。build 14 明确记录 `ACTIVE_THREADS` 8014 ms 超时（整体 132.672s），仍未调用发送 | 两次失败日志保留；仅调整 thread/list 默认预算为 20 秒后，28 项 adapter、854 项全仓测试及 `native-background-notification-continuation.txt`（80.726s）均通过；新列表耗时 8.4–9.8 秒解释原限制 |
 | 静态审阅：fileChange 可批准却缺少绑定的修改内容 | 先禁用无证据 accept，最终增加当前实时快照的完整原生 Item 证据：16KiB/20 文件/256 行，scope、Turn/Item、interaction ID、generation 和显示摘要绑定；无 grantRoot，点击后刷新及派发前再次验证，失效立即撤销，负向决策仅保留原生允许项 | 最终 Context/forms/panel/VM 已独立只读复核，build 13 的 127 项 JVM 通过。真实正向旅程因缺少完整 Item 而失败且 accept 禁用；随后 `native-file-change-safe-cancel.txt` 10.614s 通过，原请求取消、目标文件不存在、无新增 Turn。条件式正向路径仍不宣称真实联调通过 |
-| 静态审阅：Diff 聚合/逐行组合缺少总预算 | 已增加 `boundedContentPreview`：聚合前限制 64Ki 字符/256 行；Markdown 另限制 128 内容块、表格 8 列/合计 128 单元格，截断显式提示。模型分页受限及 unknown 影响范围文案也已修正 | 已核对预算源码；包含该修正的 build 11 成功，归档 106/106 JVM、14 suites 通过；最终交付构建仍待归档 |
+| 静态审阅：Diff 聚合/逐行组合缺少总预算 | 已增加 `boundedContentPreview`：聚合前限制 64Ki 字符/256 行；Markdown 另限制 128 内容块、表格 8 列/合计 128 单元格，截断显式提示。模型分页受限及 unknown 影响范围文案也已修正 | 已核对预算源码；包含该修正的 build 11 成功，归档 106/106 JVM、14 suites 通过；最终交付构建已归档为 Clean Build 15 |
 
 未覆盖或仅有合成证据：TalkBack 未实际启用实听；分享已验证真实跨 UID 的测试接收器、系统明确选择与完整 runner，常用第三方 App、PDF/Office 的实际外部接收器未验收。审批竞争/其他设备已处理主要由 Gateway 协议与单元测试覆盖，没有真实双设备竞争旅程；fileChange 条件式正向逻辑只有单元/静态证据，当前真实待审批快照缺少完整 Item，正向旅程失败，已验证的是阻止批准和安全取消；input/elicitation、Plan/子代理所有变体没有逐一由真实模型触发。后台验证包含同进程冷 Activity/新 VM，不包含进程死亡；物理机、蜂窝、Doze、强杀后通知与厂商省电均未覆盖。
 
-## 6. 真实截图与 Debug 交付物（最终填写）
+## 6. 真实截图与 Debug 交付物
 
-截图须来自 `uiAutomation.takeScreenshot()` 或 ADB 原始截图，检查脱敏后选择少量关键画面；不使用 Stitch PNG 替代、不拼接或生成图片。截图文件不进入 Git，Notion 使用最终选图。
+完整交付位置、所有 APK/日志/测试报告摘要与 SHA-256 见 [DELIVERY_INDEX.md](DELIVERY_INDEX.md)，逐张原图的状态、大小、像素、历史旅程、Stitch 对应与 SHA-256 见 [VISUAL_REVIEW.md](VISUAL_REVIEW.md)。
 
-早期 `screenshots-build4/` 当前包含 8 张真实 PNG，仅作开发回看，**不作为最终视觉验收**。该目录 05 当时未显示键盘、06 被测试包崩溃弹窗覆盖，部分 `P3_NATIVE_OK` 误识别为斜体。后续 `screenshots/` 已有修正后的真实旅程图：新 05 确实显示系统键盘，输入区和发送按钮在键盘上方；新 06 无崩溃弹窗，Inspector 关闭入口和大字体标签可见；14 显示 131B 授权 Markdown 文件的“摘要已验证”及原文预览。build 13 主题/IME/横屏字号复测后的最新图已收集；07e 缺证据阻止批准和 14c 跨 UID 实际接收图已上传 Notion。最终产物关联与 SHA-256 仍待归档，不等同最终 Debug APK 或独立视觉验收。
+[Google Drive 私有视觉验收目录](https://drive.google.com/drive/folders/1Goib8sSQzkKOb_z-lSC7MdaZcIJ0pIGY) 已回读确认 **21 文件：20 张 PNG + VISUAL_REVIEW.md**，共 3,405,888 字节；每个文件名称、大小、父目录和 owner-only 权限均已核对。没有改变分享权限。[Drive 视觉索引](https://drive.google.com/file/d/1BqHxDsAqmPUj_Tf7VF2tx-MRaN5oyW_F/view?usp=drivesdk) 为 10,260 字节，SHA-256 `f9f937c0230f245a9d2a8a7b828370d402d395a052799892433a4ce8ff8308ec`。
 
-| 画面 | 真实文件 / SHA-256 | 检查重点 |
-| --- | --- | --- |
-| 主对话与导航 | `screenshots/01b-native-workspace-settled.png`、`03-navigation.png`；最终 SHA `PENDING` | 已采集；左对齐卡、当前项目/会话、真实回复、已加载筛选、草稿 |
-| Inspector 与实际审批/文件 | `07-real-native-approval-cancel.png`、`07a-real-diff.png`、`07b-real-usage.png`、`07e-filechange-evidence-unavailable.png`、`07f-filechange-safely-cancelled.png`、`14-verified-host-preview.png`、`14b-system-sharesheet-no-recipient.png`、`14c-verified-share-receiver.png`；最终 SHA `PENDING` | 07e/07f 为缺证据禁用正向批准与原请求安全取消；14 为摘要验证与正文，14c 为实际接收。07e/14c 已上传 Notion；历史无接收器图单独保留 |
-| Light / Dark / OLED | `screenshots/02-theme-{light,dark,oled}.png`；最终 SHA `PENDING` | build 13 最新三主题旅程通过并已收集图；对应交付 APK 的 manifest 待归档 |
-| 横屏 / IME / 200% 字号 | `screenshots/05-native-ime.png`、`06-landscape-large-font.png`；最终 SHA `PENDING` | build 13 最新 IME 与横屏字号旅程通过并已收集图；此前已观察键盘、输入/发送区和可用 Inspector，无测试包崩溃弹窗 |
-| unknown / 恢复 / 通知 | `09-unknown-details.png`、`10-unknown-restored.png`、`16-upload-unknown.png`、`22`–`23` epoch 图、`17`–`19` 权限图及最新 08/08b 通知定位图已采集；最终 SHA `PENDING` | unknown、显式恢复及完整后台热/冷 Activity 定位旅程通过；08b 最新 Inspector 已由主实施者目视检查，不代表进程死亡送达 |
+现有 `screenshots/` 的 **36 张原始 PNG 全部保留**，20 张精选共 3,395,628 字节，直接上传原字节，没有裁切、拼接、修图或生成。三主题、导航/Inspector、真实 IME、横屏 200% 字体、原生命令审批、缺证据文件审批、Diff/用量、SAF/成果/系统分享、通知定位、unknown/离线/显式恢复均有代表图。模型/effort/权限菜单、完整设置页及全部扩展变体没有单独完整截图，不写成已视觉验证。
+
+**截图来自此前 build12/13/14 等真实旅程，未在 Build 15 重拍；历史图没有逐张嵌入 Git 身份，部分捕获时有未提交修正，不能冒称捕获于最终 clean SHA。** 视觉索引区分历史捕获来源与交付源码 `ab90769`。04 截图仍在只读校正；08b 是同进程新 Activity/VM 通知定位，不证明进程死亡后送达；20 是受控 TLS 拒绝后的离线缓存。早期 `screenshots-build4/` 与无接收器 Sharesheet 图仍留作历史证据，不在本次精选中冒充最终成功图。
 
 | 产物字段 | 最终值 |
 | --- | --- |
-| Debug 主 APK 交付位置 | `PENDING` |
-| 主 APK 字节数 / SHA-256 | `PENDING` |
-| 测试 APK 交付位置 / 字节数 / SHA-256 | `PENDING` |
-| APK 内 applicationId / versionName / versionCode | `PENDING`（目标 applicationId：`dev.oraculum.poc.debug`） |
-| 内嵌 sourceGit / sourceDirty | `PENDING`；最终交付应来自已提交源码，原始 Stitch 按既有规则不计入 sourceDirty |
-| Debug 签名验证 / 公开证书指纹 | `PENDING`；不使用正式签名材料 |
-| Debug TLS 测试 CA | `PENDING`：说明最终 APK 是否包含本次一次性 fixture 公共 CA；不含私钥，不放宽主机名校验 |
-| 产物 manifest / 接受摘要路径 | `PENDING` |
+| 构建源码 SHA | `ab90769430616c6e9290b3acb52ca2942ac6b8df`；已正常推送原有提交，无重复 commit |
+| Debug 主 APK | `.local/artifacts/oraculum-v2-phase3/build15/oraculum-phase3-build15-debug.apk`；**13,900,999 B** |
+| 主 APK SHA-256 | `26d4532e2df897f1bc4dfea2633a9f09d2e656e4d461abec58c14b3ce60cf187` |
+| 测试 APK | `.local/artifacts/oraculum-v2-phase3/build15/oraculum-phase3-build15-androidTest.apk`；**1,161,792 B** |
+| 测试 APK SHA-256 | `550b57206ab4cb998953a4e1ff5d3086427cb0b8202f651cef00f22d006c6266` |
+| applicationId / versionName / versionCode | 主包 `dev.oraculum.poc.debug` / `0.1.2-debug` / `4`；测试包 `dev.oraculum.poc.debug.test` |
+| 主包内嵌身份 | `sourceGit=ab90769430616c6e9290b3acb52ca2942ac6b8df`，`sourceDirty=false`；测试包无独立内嵌身份，由同次 clean 构建与 manifest 绑定 |
+| Debug 签名 | 两包 `apksigner verify` 通过；公开证书 SHA-256 `e4bb888b2c73da57e9484e5a9e2a792e733902cdf102c847228c044d93b1b1fb`，未使用正式签名材料 |
+| TLS / 构建输入 | 默认系统证书信任，无一次性 fixture CA；Origin 空、Base Path `/`，主机名校验有效 |
+| 构建日志 / manifest / 摘要 | `.local/evidence/oraculum-v2-phase3/android-clean-build-15.txt`；产物目录 `manifest.json`、`SHA256SUMS` |
+| 最终同步证据 | `.local/evidence/oraculum-v2-phase3/finalization-verification.json`；文档提交完整 SHA 同步至 Notion，产品源码与构建 SHA 无差异 |
 
 ## 7. 复现方法与数据范围
 
@@ -179,7 +179,7 @@ pnpm verify:gateway:protocol
 bash scripts/android-build.sh :app:assembleDebugAndroidTest :app:testDebugUnitTest
 ```
 
-`android-build.sh` 本身已执行 `assembleDebug` 与 `lintDebug`，使用既有隔离 JDK/SDK/Gradle 工具目录；不需要改生产服务。本轮环境为 pnpm 10.34.7、Temurin JDK 21.0.12.1、Gradle 8.13、AGP 8.13.2，compile/target SDK 35、min SDK 26；完整构建输出见 `android-integration-build-13.txt`，最终交付构建另附源码与产物 manifest。
+`android-build.sh` 本身已执行 `assembleDebug` 与 `lintDebug`，使用既有隔离 JDK/SDK/Gradle 工具目录；不需要改生产服务。本轮环境为 pnpm 10.34.7、Temurin JDK 21.0.12.1、Gradle 8.13、AGP 8.13.2，compile/target SDK 35、min SDK 26；历史测试构建输出见 `android-integration-build-14.txt`；最终干净构建见 `android-clean-build-15.txt` 与产物 `manifest.json`。本次未重新运行以上常规测试命令。
 
 真实联调由独立终端保持隔离 fixture：
 
@@ -219,7 +219,7 @@ python3 scripts/android-phase3-emulator.py --serial emulator-5554 remove-test-in
 
 ## 8. Git、Notion 与下一步
 
-开发基线为 `abbf8bd2120ba651daf4ad9ee1deec35537344a7`。Android、审批/通知安全修复、真实旅程测试及后续阶段诊断均已直接提交 `main`；最新 Gateway 列表读取预算修复 `46db61bc65ec1a61a0f4df09db11dce7b740764b` 已正常推送，主实施者核对远端一致。最终报告/产物提交后仍须核对最终同步。
+开发基线为 `abbf8bd2120ba651daf4ad9ee1deec35537344a7`。Android、审批/通知安全修复、真实旅程测试及后续阶段诊断均已直接提交 `main`；最新 Gateway 列表读取预算修复 `46db61bc65ec1a61a0f4df09db11dce7b740764b` 已正常推送，主实施者核对远端一致。原有报告提交 `ab90769430616c6e9290b3acb52ca2942ac6b8df` 已在本次 Finalization 正常推送并核对三处 SHA 一致。随后只提交本文件与两个交付索引；文档提交身份单独记录，APK 身份固定为 ab90769，无需因文档变化重复构建。
 
 | 步骤 | Git SHA | 最终推送核对 |
 | --- | --- | --- |
@@ -232,7 +232,8 @@ python3 scripts/android-phase3-emulator.py --serial emulator-5554 remove-test-in
 | Emulator 旅程与系统边界测试 | `a29d666a413154db151b80f85a1b3cb0a899a311` | 已正常推送；主实施者核对远端一致 |
 | 原生读取阶段与耗时诊断 | `56269ccd12b11f53a53b626feeb921418599930a` | 已正常推送；主实施者核对远端一致 |
 | Gateway 会话列表独立读取预算 | `46db61bc65ec1a61a0f4df09db11dce7b740764b` | 已正常推送；主实施者核对远端一致 |
-| 最终报告归档 | `PENDING` | `PENDING` |
-| 最终 HEAD / origin/main / 实时 refs/heads/main | `PENDING` | 必须全部一致，无强推/分叉/历史重写 |
+| 原有工程报告提交 | `ab90769430616c6e9290b3acb52ca2942ac6b8df` | 正常 push 后 HEAD/origin/main/实时 main 一致；本次 Build 15 来源 |
+| Finalization 文档归档 | 包含本文件、DELIVERY_INDEX.md 和 VISUAL_REVIEW.md 的文档提交；完整 SHA 见 Notion 与最终核验回执 | 正常 push；与构建 SHA 相比仅文档差异 |
+| 最终 HEAD / origin/main / 实时 refs/heads/main | 以 Notion 与 `finalization-verification.json` 中提交后的实际读回值为准 | 三处一致，无强推/分叉/历史重写；构建 SHA 与文档 SHA 分开记录 |
 
-Notion 已持续回写实现进度、已验证测试、已推送提交和真实能力限制；07e 文件审批缺证据提示、14c 跨 UID 分享接收截图已上传。最新后台成功证据、Debug APK/最终 SHA、截图索引与清理保全结果待最终归档。正式任务保持 **In progress**，只能由用户或明确授权的独立审阅者接受；本报告不自行标记 Done，不把仍待验证的项目列为已验收，也不进入 Phase 4、正式 Gateway 部署或 Android 签名/发行。
+Notion 已持续回写实现进度、已验证测试、已推送提交和真实能力限制；07e 文件审批缺证据提示、14c 跨 UID 分享接收截图已上传。后台成功证据、Build 15 APK/SHA、Drive 原图和索引、定向清理保全结果已归档于上述交付索引，最终文档提交与同步回执写回本 Task。正式任务保持 **In progress**，只能由用户或明确授权的独立审阅者接受；本报告不自行标记 Done，不把仍待验证的项目列为已验收，也不进入 Phase 4、正式 Gateway 部署或 Android 签名/发行。
