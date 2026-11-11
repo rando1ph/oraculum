@@ -1,0 +1,14 @@
+{
+  "name": "@oraculum/gateway-protocol",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./types": "./generated/types.ts",
+    "./schema": "./schema/v2.json"
+  },
+  "dependencies": {
+    "ajv": "8.20.0"
+  }
+}

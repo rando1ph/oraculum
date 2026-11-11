@@ -1,0 +1,12 @@
+{
+  "name": "@oraculum/gateway",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@fastify/websocket": "11.3.4",
+    "@oraculum/gateway-protocol": "workspace:*",
+    "fastify": "5.12.7",
+    "ws": "8.22.0"
+  }
+}

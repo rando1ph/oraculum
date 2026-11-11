@@ -1,0 +1,953 @@
+[
+  {
+    "name": "ProtocolVersion",
+    "contract": "ProtocolVersion",
+    "value": {
+      "major": 2,
+      "minor": 1,
+      "minClientMinor": 1
+    }
+  },
+  {
+    "name": "HealthResponse",
+    "contract": "HealthResponse",
+    "value": {
+      "status": "ok",
+      "protocolMajor": 2,
+      "installationId": "12345678-1234-4123-8123-123456789abc"
+    }
+  },
+  {
+    "name": "GatewayError",
+    "contract": "GatewayError",
+    "value": {
+      "code": "CAPABILITY_UNAVAILABLE",
+      "message": "此原生能力当前不可用"
+    }
+  },
+  {
+    "name": "ErrorResponse",
+    "contract": "ErrorResponse",
+    "value": {
+      "requestId": "request-test-01",
+      "installationId": "12345678-1234-4123-8123-123456789abc",
+      "epoch": "12345678-1234-4123-8123-123456789abc",
+      "error": {
+        "code": "CAPABILITY_UNAVAILABLE",
+        "message": "此原生能力当前不可用"
+      }
+    }
+  },
+  {
+    "name": "OperationReceipt",
+    "contract": "OperationReceipt",
+    "value": {
+      "operationId": "12345678-1234-4123-8123-123456789abc",
+      "status": "accepted"
+    }
+  },
+  {
+    "name": "OperationResponse",
+    "contract": "OperationResponse",
+    "value": {
+      "requestId": "request-test-01",
+      "installationId": "12345678-1234-4123-8123-123456789abc",
+      "epoch": "12345678-1234-4123-8123-123456789abc",
+      "operation": {
+        "operationId": "12345678-1234-4123-8123-123456789abc",
+        "status": "accepted"
+      }
+    }
+  },
+  {
+    "name": "ResourceResponse",
+    "contract": "ResourceResponse",
+    "value": {
+      "requestId": "request-test-01",
+      "installationId": "12345678-1234-4123-8123-123456789abc",
+      "epoch": "12345678-1234-4123-8123-123456789abc",
+      "data": null
+    }
+  },
+  {
+    "name": "Capability",
+    "contract": "Capability",
+    "value": {
+      "name": "hello 世界.txt",
+      "supported": true,
+      "availability": "unverified",
+      "maturity": "gateway",
+      "verified": true,
+      "reasonCode": null,
+      "observedVersion": null,
+      "epoch": "12345678-1234-4123-8123-123456789abc"
+    }
+  },
+  {
+    "name": "Capabilities",
+    "contract": "Capabilities",
+    "value": {
+      "protocol": {
+        "major": 2,
+        "minor": 1,
+        "minClientMinor": 1
+      },
+      "gatewayVersion": "2.0.0-dev",
+      "installationId": "12345678-1234-4123-8123-123456789abc",
+      "epoch": "12345678-1234-4123-8123-123456789abc",
+      "codex": {
+        "version": null,
+        "connectionState": "connected"
+      },
+      "capabilities": [
+        {
+          "name": "hello 世界.txt",
+          "supported": true,
+          "availability": "unverified",
+          "maturity": "gateway",
+          "verified": true,
+          "reasonCode": null,
+          "observedVersion": null,
+          "epoch": "12345678-1234-4123-8123-123456789abc"
+        }
+      ],
+      "limits": {
+        "requestBytes": 1,
+        "historyPageItems": 1,
+        "attachmentFileBytes": 1,
+        "attachmentBatchBytes": 1,
+        "attachmentBatchCount": 1,
+        "eventReplayCount": 1
+      }
+    }
+  },
+  {
+    "name": "PairRequest",
+    "contract": "PairRequest",
+    "value": {
+      "installationId": "12345678-1234-4123-8123-123456789abc",
+      "deviceId": "12345678-1234-4123-8123-123456789abc",
+      "deviceCredential": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "code": "TEST-ONLY-PAIRING-CODE-NOT-A-CREDENTIAL",
+      "label": "专用测试设备"
+    }
+  },
+  {
+    "name": "TokenRequest",
+    "contract": "TokenRequest",
+    "value": {
+      "installationId": "12345678-1234-4123-8123-123456789abc",
+      "deviceId": "12345678-1234-4123-8123-123456789abc",
+      "deviceCredential": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    }
+  },
+  {
+    "name": "AuthResponse",
+    "contract": "AuthResponse",
+    "value": {
+      "installationId": "12345678-1234-4123-8123-123456789abc",
+      "deviceId": "12345678-1234-4123-8123-123456789abc",
+      "accessToken": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+      "expiresAt": 1
+    }
+  },
+  {
+    "name": "SessionResponse",
+    "contract": "SessionResponse",
+    "value": {
+      "installationId": "12345678-1234-4123-8123-123456789abc",
+      "deviceId": "12345678-1234-4123-8123-123456789abc",
+      "label": "专用测试设备",
+      "createdAt": 1,
+      "expiresAt": 1
+    }
+  },
+  {
+    "name": "LogoutRequest",
+    "contract": "LogoutRequest",
+    "value": {
+      "operationId": "12345678-1234-4123-8123-123456789abc"
+    }
+  },
+  {
+    "name": "Root",
+    "contract": "Root",
+    "value": {
+      "id": "native-thread-opaque",
+      "label": "专用测试设备"
+    }
+  },
+  {
+    "name": "Project",
+    "contract": "Project",
+    "value": {
+      "id": "12345678-1234-4123-8123-123456789abc",
+      "rootId": "workspace",
+      "canonicalPath": "/tmp/oraculum-disposable/project",
+      "name": "hello 世界.txt",
+      "available": true
+    }
+  },
+  {
+    "name": "Projects",
+    "contract": "Projects",
+    "value": {
+      "projects": [
+        {
+          "id": "12345678-1234-4123-8123-123456789abc",
+          "rootId": "workspace",
+          "canonicalPath": "/tmp/oraculum-disposable/project",
+          "name": "hello 世界.txt",
+          "available": true
+        }
+      ],
+      "roots": [
+        {
+          "id": "native-thread-opaque",
+          "label": "专用测试设备"
+        }
+      ]
+    }
+  },
+  {
+    "name": "DirectoryQuery",
+    "contract": "DirectoryQuery",
+    "value": {
+      "rootId": "workspace"
+    }
+  },
+  {
+    "name": "DirectoryEntry",
+    "contract": "DirectoryEntry",
+    "value": {
+      "name": "hello 世界.txt",
+      "path": "src/readme.md"
+    }
+  },
+  {
+    "name": "DirectoryPage",
+    "contract": "DirectoryPage",
+    "value": {
+      "rootId": "workspace",
+      "path": "src/readme.md",
+      "entries": [
+        {
+          "name": "hello 世界.txt",
+          "path": "src/readme.md"
+        }
+      ],
+      "nextCursor": null,
+      "limited": true,
+      "canRegister": true
+    }
+  },
+  {
+    "name": "ProjectRegisterRequest",
+    "contract": "ProjectRegisterRequest",
+    "value": {
+      "operationId": "12345678-1234-4123-8123-123456789abc",
+      "rootId": "workspace",
+      "path": "src/readme.md"
+    }
+  },
+  {
+    "name": "ProjectUnregisterRequest",
+    "contract": "ProjectUnregisterRequest",
+    "value": {
+      "operationId": "12345678-1234-4123-8123-123456789abc"
+    }
+  },
+  {
+    "name": "ThreadStartRequest",
+    "contract": "ThreadStartRequest",
+    "value": {
+      "operationId": "12345678-1234-4123-8123-123456789abc",
+      "expectedEpoch": "12345678-1234-4123-8123-123456789abc"
+    }
+  },
+  {
+    "name": "ThreadResumeRequest",
+    "contract": "ThreadResumeRequest",
+    "value": {
+      "operationId": "12345678-1234-4123-8123-123456789abc",
+      "projectId": "12345678-1234-4123-8123-123456789abc",
+      "expectedEpoch": "12345678-1234-4123-8123-123456789abc"
+    }
+  },
+  {
+    "name": "ThreadQuery",
+    "contract": "ThreadQuery",
+    "value": {}
+  },
+  {
+    "name": "Thread",
+    "contract": "Thread",
+    "value": {
+      "id": "native/opaque:thread-id",
+      "projectId": "12345678-1234-4123-8123-123456789abc",
+      "status": "running"
+    }
+  },
+  {
+    "name": "ThreadPage",
+    "contract": "ThreadPage",
+    "value": {
+      "threads": [
+        {
+          "id": "native-thread-opaque",
+          "projectId": "12345678-1234-4123-8123-123456789abc",
+          "status": "running"
+        }
+      ],
+      "nextCursor": null,
+      "source": "native-pagination",
+      "truncated": true
+    }
+  },
+  {
+    "name": "TextInput",
+    "contract": "TextInput",
+    "value": {
+      "type": "text",
+      "text": "你好，Oraculum 🌙\nline two"
+    }
+  },
+  {
+    "name": "TurnStartRequest",
+    "contract": "TurnStartRequest",
+    "value": {
+      "operationId": "12345678-1234-4123-8123-123456789abc",
+      "projectId": "12345678-1234-4123-8123-123456789abc",
+      "expectedEpoch": "12345678-1234-4123-8123-123456789abc",
+      "input": [
+        {
+          "type": "text",
+          "text": "你好，Oraculum 🌙\nline two"
+        }
+      ]
+    }
+  },
+  {
+    "name": "TurnInterruptRequest",
+    "contract": "TurnInterruptRequest",
+    "value": {
+      "operationId": "12345678-1234-4123-8123-123456789abc",
+      "projectId": "12345678-1234-4123-8123-123456789abc",
+      "expectedEpoch": "12345678-1234-4123-8123-123456789abc"
+    }
+  },
+  {
+    "name": "TurnSteerRequest",
+    "contract": "TurnSteerRequest",
+    "value": {
+      "operationId": "12345678-1234-4123-8123-123456789abc",
+      "projectId": "12345678-1234-4123-8123-123456789abc",
+      "expectedEpoch": "12345678-1234-4123-8123-123456789abc",
+      "input": [
+        {
+          "type": "text",
+          "text": "你好，Oraculum 🌙\nline two"
+        }
+      ]
+    }
+  },
+  {
+    "name": "Turn",
+    "contract": "Turn",
+    "value": {
+      "id": "native-thread-opaque",
+      "status": "running"
+    }
+  },
+  {
+    "name": "NativeItem",
+    "contract": "NativeItem",
+    "value": {
+      "id": "native-thread-opaque",
+      "type": "futureNativeItem"
+    }
+  },
+  {
+    "name": "HistoryQuery",
+    "contract": "HistoryQuery",
+    "value": {
+      "projectId": "12345678-1234-4123-8123-123456789abc"
+    }
+  },
+  {
+    "name": "HistoryPage",
+    "contract": "HistoryPage",
+    "value": {
+      "epoch": "12345678-1234-4123-8123-123456789abc",
+      "historyRevision": "revision-7",
+      "source": "native-pagination",
+      "items": [
+        null
+      ],
+      "nextCursor": null,
+      "complete": true,
+      "truncated": true
+    }
+  },
+  {
+    "name": "SnapshotRequest",
+    "contract": "SnapshotRequest",
+    "value": {
+      "projectId": "12345678-1234-4123-8123-123456789abc"
+    }
+  },
+  {
+    "name": "Snapshot",
+    "contract": "Snapshot",
+    "value": {
+      "epoch": "12345678-1234-4123-8123-123456789abc",
+      "thread": {
+        "id": "native-thread-opaque",
+        "projectId": "12345678-1234-4123-8123-123456789abc",
+        "status": "running"
+      },
+      "history": {
+        "epoch": "12345678-1234-4123-8123-123456789abc",
+        "historyRevision": "revision-7",
+        "source": "native-pagination",
+        "items": [
+          null
+        ],
+        "nextCursor": null,
+        "complete": true,
+        "truncated": true
+      },
+      "observedStartSeq": 1,
+      "observedEndSeq": 1,
+      "synchronization": "synchronizing",
+      "interactions": [
+        {
+          "interactionId": "12345678-1234-4123-8123-123456789abc",
+          "projectId": "12345678-1234-4123-8123-123456789abc",
+          "threadId": "native-thread-opaque",
+          "turnId": null,
+          "epoch": "12345678-1234-4123-8123-123456789abc",
+          "generation": 1,
+          "kind": "future/unknown",
+          "status": "pending",
+          "request": {}
+        }
+      ],
+      "operations": [
+        {
+          "operationId": "12345678-1234-4123-8123-123456789abc",
+          "status": "accepted"
+        }
+      ]
+    }
+  },
+  {
+    "name": "ApprovalResponse",
+    "contract": "ApprovalResponse",
+    "value": {
+      "type": "approval",
+      "decision": "accept"
+    }
+  },
+  {
+    "name": "InputResponse",
+    "contract": "InputResponse",
+    "value": {
+      "type": "input",
+      "answers": {}
+    }
+  },
+  {
+    "name": "ElicitationResponse",
+    "contract": "ElicitationResponse",
+    "value": {
+      "type": "elicitation",
+      "action": "accept"
+    }
+  },
+  {
+    "name": "InteractionResponseRequest",
+    "contract": "InteractionResponseRequest",
+    "value": {
+      "operationId": "12345678-1234-4123-8123-123456789abc",
+      "projectId": "12345678-1234-4123-8123-123456789abc",
+      "epoch": "12345678-1234-4123-8123-123456789abc",
+      "generation": 1,
+      "response": {
+        "type": "approval",
+        "decision": "accept"
+      }
+    }
+  },
+  {
+    "name": "Interaction",
+    "contract": "Interaction",
+    "value": {
+      "interactionId": "12345678-1234-4123-8123-123456789abc",
+      "projectId": "12345678-1234-4123-8123-123456789abc",
+      "threadId": "native-thread-opaque",
+      "turnId": null,
+      "epoch": "12345678-1234-4123-8123-123456789abc",
+      "generation": 1,
+      "kind": "future/unknown",
+      "status": "pending",
+      "request": {
+        "questions": [
+          {
+            "id": "q1",
+            "question": "继续？"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "FilesQuery",
+    "contract": "FilesQuery",
+    "value": {}
+  },
+  {
+    "name": "FileEntry",
+    "contract": "FileEntry",
+    "value": {
+      "name": "hello 世界.txt",
+      "path": "src/readme.md",
+      "directory": true,
+      "size": 1,
+      "mime": "text/plain"
+    }
+  },
+  {
+    "name": "FilePage",
+    "contract": "FilePage",
+    "value": {
+      "path": "src/readme.md",
+      "entries": [
+        {
+          "name": "hello 世界.txt",
+          "path": "src/readme.md",
+          "directory": true,
+          "size": 1,
+          "mime": "text/plain"
+        }
+      ],
+      "nextCursor": null,
+      "limited": true
+    }
+  },
+  {
+    "name": "FileSelectRequest",
+    "contract": "FileSelectRequest",
+    "value": {
+      "path": "src/readme.md"
+    }
+  },
+  {
+    "name": "FileGrant",
+    "contract": "FileGrant",
+    "value": {
+      "fileId": "12345678-1234-4123-8123-123456789abc",
+      "projectId": "12345678-1234-4123-8123-123456789abc",
+      "path": "src/readme.md",
+      "name": "hello 世界.txt",
+      "mime": "text/plain",
+      "size": 1,
+      "expiresAt": 1
+    }
+  },
+  {
+    "name": "AttachmentUploadMetadata",
+    "contract": "AttachmentUploadMetadata",
+    "value": {
+      "operationId": "12345678-1234-4123-8123-123456789abc",
+      "projectId": "12345678-1234-4123-8123-123456789abc",
+      "threadId": "native-thread-opaque",
+      "draftId": "12345678-1234-4123-8123-123456789abc",
+      "name": "hello 世界.txt",
+      "mime": "text/plain",
+      "size": 1
+    }
+  },
+  {
+    "name": "Attachment",
+    "contract": "Attachment",
+    "value": {
+      "id": "12345678-1234-4123-8123-123456789abc",
+      "projectId": "12345678-1234-4123-8123-123456789abc",
+      "threadId": "native-thread-opaque",
+      "draftId": "12345678-1234-4123-8123-123456789abc",
+      "name": "hello 世界.txt",
+      "mime": "text/plain",
+      "size": 1,
+      "state": "uploading",
+      "kind": "image",
+      "expiresAt": null
+    }
+  },
+  {
+    "name": "AttachmentDeleteRequest",
+    "contract": "AttachmentDeleteRequest",
+    "value": {
+      "operationId": "12345678-1234-4123-8123-123456789abc",
+      "projectId": "12345678-1234-4123-8123-123456789abc",
+      "threadId": "native-thread-opaque",
+      "draftId": "12345678-1234-4123-8123-123456789abc"
+    }
+  },
+  {
+    "name": "EventScope",
+    "contract": "EventScope",
+    "value": {}
+  },
+  {
+    "name": "EventEnvelope",
+    "contract": "EventEnvelope",
+    "value": {
+      "installationId": "12345678-1234-4123-8123-123456789abc",
+      "epoch": "12345678-1234-4123-8123-123456789abc",
+      "seq": 1,
+      "kind": "future/unknown",
+      "scope": {},
+      "payload": {
+        "newShape": {
+          "unicode": "未知 💡",
+          "nullable": null,
+          "integer": 9007199254740991
+        },
+        "list": [
+          1,
+          false,
+          null
+        ]
+      },
+      "impact": "state"
+    }
+  },
+  {
+    "name": "EventResume",
+    "contract": "EventResume",
+    "value": {
+      "type": "resume",
+      "epoch": "12345678-1234-4123-8123-123456789abc",
+      "afterSeq": 1
+    }
+  },
+  {
+    "name": "EventConnection",
+    "contract": "EventConnection",
+    "value": {
+      "type": "connection",
+      "installationId": "12345678-1234-4123-8123-123456789abc",
+      "epoch": "12345678-1234-4123-8123-123456789abc",
+      "headSeq": 1,
+      "resetRequired": true
+    }
+  },
+  {
+    "name": "EventHeartbeat",
+    "contract": "EventHeartbeat",
+    "value": {
+      "type": "ping"
+    }
+  },
+  {
+    "name": "EventPong",
+    "contract": "EventPong",
+    "value": {
+      "type": "pong",
+      "epoch": "12345678-1234-4123-8123-123456789abc"
+    }
+  },
+  {
+    "name": "ItemDelta",
+    "contract": "ItemDelta",
+    "value": {
+      "delta": "中文 增量"
+    }
+  },
+  {
+    "name": "ItemCompleted",
+    "contract": "ItemCompleted",
+    "value": {
+      "item": {
+        "id": "native-thread-opaque",
+        "type": "futureNativeItem"
+      },
+      "complete": true
+    }
+  },
+  {
+    "name": "HistoryInvalidated",
+    "contract": "HistoryInvalidated",
+    "value": {
+      "reasonCode": "AWAITING_FIRST_USER_OPERATION"
+    }
+  },
+  {
+    "name": "ProjectChanged",
+    "contract": "ProjectChanged",
+    "value": {
+      "project": {
+        "id": "12345678-1234-4123-8123-123456789abc",
+        "rootId": "workspace",
+        "canonicalPath": "/tmp/oraculum-disposable/project",
+        "name": "hello 世界.txt",
+        "available": true
+      }
+    }
+  },
+  {
+    "name": "ConnectionChanged",
+    "contract": "ConnectionChanged",
+    "value": {
+      "state": "connected"
+    }
+  },
+  {
+    "name": "interaction-input",
+    "contract": "InteractionResponseRequest",
+    "value": {
+      "operationId": "12345678-1234-4123-8123-123456789abc",
+      "projectId": "12345678-1234-4123-8123-123456789abc",
+      "epoch": "12345678-1234-4123-8123-123456789abc",
+      "generation": 1,
+      "response": {
+        "type": "input",
+        "answers": {
+          "q1": [
+            "答案一",
+            "🌙"
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "interaction-elicitation",
+    "contract": "InteractionResponseRequest",
+    "value": {
+      "operationId": "12345678-1234-4123-8123-123456789abc",
+      "projectId": "12345678-1234-4123-8123-123456789abc",
+      "epoch": "12345678-1234-4123-8123-123456789abc",
+      "generation": 1,
+      "response": {
+        "type": "elicitation",
+        "action": "accept",
+        "content": {
+          "text": "Unicode 世界",
+          "enabled": false,
+          "nested": null
+        }
+      }
+    }
+  },
+  {
+    "name": "interaction-elicitation-decline",
+    "contract": "InteractionResponseRequest",
+    "value": {
+      "operationId": "12345678-1234-4123-8123-123456789abc",
+      "projectId": "12345678-1234-4123-8123-123456789abc",
+      "epoch": "12345678-1234-4123-8123-123456789abc",
+      "generation": 1,
+      "response": {
+        "type": "elicitation",
+        "action": "decline",
+        "content": null
+      }
+    },
+    "roundtrip": {
+      "operationId": "12345678-1234-4123-8123-123456789abc",
+      "projectId": "12345678-1234-4123-8123-123456789abc",
+      "epoch": "12345678-1234-4123-8123-123456789abc",
+      "generation": 1,
+      "response": {
+        "type": "elicitation",
+        "action": "decline"
+      }
+    }
+  },
+  {
+    "name": "unknown-event-informational",
+    "contract": "EventEnvelope",
+    "value": {
+      "installationId": "12345678-1234-4123-8123-123456789abc",
+      "epoch": "12345678-1234-4123-8123-123456789abc",
+      "seq": 9007199254740991,
+      "kind": "future/unknown",
+      "scope": {},
+      "payload": {
+        "newShape": {
+          "unicode": "未知 💡",
+          "nullable": null,
+          "integer": 9007199254740991
+        },
+        "list": [
+          1,
+          false,
+          null
+        ]
+      },
+      "impact": "informational"
+    }
+  },
+  {
+    "name": "unknown-event-future-critical",
+    "contract": "EventEnvelope",
+    "value": {
+      "installationId": "12345678-1234-4123-8123-123456789abc",
+      "epoch": "12345678-1234-4123-8123-123456789abc",
+      "seq": 9007199254740991,
+      "kind": "future/unknown",
+      "scope": {},
+      "payload": {
+        "newShape": {
+          "unicode": "未知 💡",
+          "nullable": null,
+          "integer": 9007199254740991
+        },
+        "list": [
+          1,
+          false,
+          null
+        ]
+      },
+      "impact": "future-critical"
+    }
+  },
+  {
+    "name": "unknown-event-None",
+    "contract": "EventEnvelope",
+    "value": {
+      "installationId": "12345678-1234-4123-8123-123456789abc",
+      "epoch": "12345678-1234-4123-8123-123456789abc",
+      "seq": 9007199254740991,
+      "kind": "future/unknown",
+      "scope": {},
+      "payload": {
+        "newShape": {
+          "unicode": "未知 💡",
+          "nullable": null,
+          "integer": 9007199254740991
+        },
+        "list": [
+          1,
+          false,
+          null
+        ]
+      }
+    }
+  },
+  {
+    "name": "response-additive-field",
+    "contract": "AuthResponse",
+    "value": {
+      "installationId": "12345678-1234-4123-8123-123456789abc",
+      "deviceId": "12345678-1234-4123-8123-123456789abc",
+      "accessToken": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+      "expiresAt": 1,
+      "futureOptionalField": {
+        "value": 42
+      }
+    },
+    "roundtrip": {
+      "installationId": "12345678-1234-4123-8123-123456789abc",
+      "deviceId": "12345678-1234-4123-8123-123456789abc",
+      "accessToken": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+      "expiresAt": 1
+    }
+  },
+  {
+    "name": "optional-null",
+    "contract": "FilesQuery",
+    "value": {
+      "cursor": null
+    },
+    "roundtrip": {}
+  },
+  {
+    "name": "OperationQueryResult",
+    "contract": "OperationQueryResult",
+    "value": {
+      "operationId": "12345678-1234-4123-8123-123456789abc",
+      "status": "accepted",
+      "attachment": {
+        "id": "12345678-1234-4123-8123-123456789abc",
+        "projectId": "12345678-1234-4123-8123-123456789abc",
+        "threadId": "native-thread-opaque",
+        "draftId": "12345678-1234-4123-8123-123456789abc",
+        "name": "hello 世界.txt",
+        "mime": "text/plain",
+        "size": 1,
+        "state": "uploading",
+        "kind": "image",
+        "expiresAt": null
+      }
+    }
+  },
+  {
+    "name": "NativeStateEvent",
+    "contract": "NativeStateEvent",
+    "value": {
+      "method": "turn/completed",
+      "data": {
+        "threadId": "native-thread",
+        "turn": {
+          "id": "native-turn",
+          "status": "completed"
+        }
+      },
+      "truncated": false
+    }
+  },
+  {
+    "name": "Model",
+    "contract": "Model",
+    "value": {
+      "id": "example-model",
+      "model": "example-model",
+      "displayName": "Example Model",
+      "supportedReasoningEfforts": [
+        {
+          "reasoningEffort": "medium",
+          "description": "适中推理"
+        }
+      ],
+      "isDefault": true
+    }
+  },
+  {
+    "name": "ModelPage",
+    "contract": "ModelPage",
+    "value": {
+      "data": [],
+      "nextCursor": null
+    }
+  },
+  {
+    "name": "ItemDetailsRequest",
+    "contract": "ItemDetailsRequest",
+    "value": {
+      "projectId": "12345678-1234-4123-8123-123456789abc",
+      "turnId": "turn",
+      "itemId": "item"
+    }
+  },
+  {
+    "name": "ItemDetails",
+    "contract": "ItemDetails",
+    "value": {
+      "epoch": "12345678-1234-4123-8123-123456789abc",
+      "historyRevision": "revision",
+      "source": "native-pagination",
+      "itemId": "item",
+      "encoding": "base64",
+      "format": "native-item-json",
+      "chunk": "eyJpZCI6Iml0ZW0iLCJ0eXBlIjoiYWdlbnRNZXNzYWdlIiwidGV4dCI6ImZpeHR1cmUifQ==",
+      "offsetBytes": 0,
+      "totalBytes": 52,
+      "sha256": "6a1f7c0d5217ad232cf0a97dccb0b2123d8c4e6e9840026f6da2396629077495",
+      "nextCursor": null,
+      "complete": true
+    }
+  }
+]

@@ -1,4 +1,5 @@
 packages:
+  - gateway
   - bridge
   - packages/*
   - apps/*

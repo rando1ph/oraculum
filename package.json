@@ -73,7 +73,14 @@
     "build:desktop:deb": "node scripts/build-desktop.mjs",
     "verify:bridge:deb": "node scripts/verify-bridge-deb.mjs",
     "verify:desktop:deb": "node scripts/verify-deb.mjs",
-    "test:stage-b": "node scripts/stage-b-acceptance.mjs"
+    "test:stage-b": "node scripts/stage-b-acceptance.mjs",
+    "gateway": "tsx gateway/src/main.ts",
+    "gateway:cli": "tsx gateway/src/cli.ts",
+    "gateway:protocol": "node scripts/generate-gateway-protocol.mjs",
+    "test:gateway": "vitest run gateway packages/gateway-protocol",
+    "test:gateway:live": "tsx scripts/gateway-live.ts",
+    "verify:gateway:protocol": "node scripts/verify-gateway-protocol.mjs",
+    "test:gateway:faults": "tsx scripts/gateway-faults.ts"
   },
   "devDependencies": {
     "@electron-forge/cli": "8.0.1",
@@ -81,7 +88,9 @@
     "@playwright/test": "1.64.1",
     "@types/node": "24.19.2",
     "@types/ws": "8.18.2",
+    "ajv": "8.20.0",
     "esbuild": "0.28.2",
+    "quicktype-core": "24.0.0",
     "tsx": "4.23.15",
     "typescript": "5.9.3",
     "vitest": "3.2.7",

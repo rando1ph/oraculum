@@ -1,0 +1,289 @@
+[
+  {
+    "name": "pair-extra-fields",
+    "contract": "PairRequest",
+    "value": {
+      "installationId": "12345678-1234-4123-8123-123456789abc",
+      "deviceId": "12345678-1234-4123-8123-123456789abc",
+      "deviceCredential": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "code": "TEST-ONLY-PAIRING-CODE-NOT-A-CREDENTIAL",
+      "label": "专用测试设备",
+      "admin": true
+    }
+  },
+  {
+    "name": "pair-short-credential",
+    "contract": "PairRequest",
+    "value": {
+      "installationId": "12345678-1234-4123-8123-123456789abc",
+      "deviceId": "12345678-1234-4123-8123-123456789abc",
+      "deviceCredential": "password",
+      "code": "TEST-ONLY-PAIRING-CODE-NOT-A-CREDENTIAL",
+      "label": "专用测试设备"
+    }
+  },
+  {
+    "name": "pair-label-too-long",
+    "contract": "PairRequest",
+    "value": {
+      "installationId": "12345678-1234-4123-8123-123456789abc",
+      "deviceId": "12345678-1234-4123-8123-123456789abc",
+      "deviceCredential": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "code": "TEST-ONLY-PAIRING-CODE-NOT-A-CREDENTIAL",
+      "label": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    }
+  },
+  {
+    "name": "unsafe-integer",
+    "contract": "EventEnvelope",
+    "value": {
+      "installationId": "12345678-1234-4123-8123-123456789abc",
+      "epoch": "12345678-1234-4123-8123-123456789abc",
+      "seq": 9007199254740992,
+      "kind": "future/unknown",
+      "scope": {},
+      "payload": {
+        "newShape": {
+          "unicode": "未知 💡",
+          "nullable": null,
+          "integer": 9007199254740991
+        },
+        "list": [
+          1,
+          false,
+          null
+        ]
+      },
+      "impact": "state"
+    }
+  },
+  {
+    "name": "sequence-as-string",
+    "contract": "EventEnvelope",
+    "value": {
+      "installationId": "12345678-1234-4123-8123-123456789abc",
+      "epoch": "12345678-1234-4123-8123-123456789abc",
+      "seq": "1",
+      "kind": "future/unknown",
+      "scope": {},
+      "payload": {
+        "newShape": {
+          "unicode": "未知 💡",
+          "nullable": null,
+          "integer": 9007199254740991
+        },
+        "list": [
+          1,
+          false,
+          null
+        ]
+      },
+      "impact": "state"
+    }
+  },
+  {
+    "name": "sequence-negative",
+    "contract": "EventEnvelope",
+    "value": {
+      "installationId": "12345678-1234-4123-8123-123456789abc",
+      "epoch": "12345678-1234-4123-8123-123456789abc",
+      "seq": -1,
+      "kind": "future/unknown",
+      "scope": {},
+      "payload": {
+        "newShape": {
+          "unicode": "未知 💡",
+          "nullable": null,
+          "integer": 9007199254740991
+        },
+        "list": [
+          1,
+          false,
+          null
+        ]
+      },
+      "impact": "state"
+    }
+  },
+  {
+    "name": "future-protocol-major",
+    "contract": "ProtocolVersion",
+    "value": {
+      "major": 3,
+      "minor": 1,
+      "minClientMinor": 1
+    }
+  },
+  {
+    "name": "arbitrary-rpc",
+    "contract": "TurnStartRequest",
+    "value": {
+      "operationId": "12345678-1234-4123-8123-123456789abc",
+      "projectId": "12345678-1234-4123-8123-123456789abc",
+      "expectedEpoch": "12345678-1234-4123-8123-123456789abc",
+      "input": [
+        {
+          "type": "text",
+          "text": "你好，Oraculum 🌙\nline two"
+        }
+      ],
+      "method": "process/exec"
+    }
+  },
+  {
+    "name": "host-image-input",
+    "contract": "TurnStartRequest",
+    "value": {
+      "operationId": "12345678-1234-4123-8123-123456789abc",
+      "projectId": "12345678-1234-4123-8123-123456789abc",
+      "expectedEpoch": "12345678-1234-4123-8123-123456789abc",
+      "input": [
+        {
+          "type": "localImage",
+          "path": "/etc/passwd"
+        }
+      ]
+    }
+  },
+  {
+    "name": "arbitrary-settings",
+    "contract": "ThreadStartRequest",
+    "value": {
+      "operationId": "12345678-1234-4123-8123-123456789abc",
+      "expectedEpoch": "12345678-1234-4123-8123-123456789abc",
+      "config": {
+        "experimentalApi": true
+      }
+    }
+  },
+  {
+    "name": "thread-start-effort-unavailable",
+    "contract": "ThreadStartRequest",
+    "value": {
+      "operationId": "12345678-1234-4123-8123-123456789abc",
+      "expectedEpoch": "12345678-1234-4123-8123-123456789abc",
+      "effort": "high"
+    }
+  },
+  {
+    "name": "approval-extra-permissions",
+    "contract": "InteractionResponseRequest",
+    "value": {
+      "operationId": "12345678-1234-4123-8123-123456789abc",
+      "projectId": "12345678-1234-4123-8123-123456789abc",
+      "epoch": "12345678-1234-4123-8123-123456789abc",
+      "generation": 1,
+      "response": {
+        "type": "approval",
+        "decision": "accept",
+        "permissions": {
+          "filesystem": {
+            "write": [
+              "/"
+            ]
+          }
+        }
+      }
+    }
+  },
+  {
+    "name": "approval-unknown-decision",
+    "contract": "InteractionResponseRequest",
+    "value": {
+      "operationId": "12345678-1234-4123-8123-123456789abc",
+      "projectId": "12345678-1234-4123-8123-123456789abc",
+      "epoch": "12345678-1234-4123-8123-123456789abc",
+      "generation": 1,
+      "response": {
+        "type": "approval",
+        "decision": "approveEverything"
+      }
+    }
+  },
+  {
+    "name": "approval-missing-decision",
+    "contract": "InteractionResponseRequest",
+    "value": {
+      "operationId": "12345678-1234-4123-8123-123456789abc",
+      "projectId": "12345678-1234-4123-8123-123456789abc",
+      "epoch": "12345678-1234-4123-8123-123456789abc",
+      "generation": 1,
+      "response": {
+        "type": "approval"
+      }
+    }
+  },
+  {
+    "name": "input-wrong-answer",
+    "contract": "InteractionResponseRequest",
+    "value": {
+      "operationId": "12345678-1234-4123-8123-123456789abc",
+      "projectId": "12345678-1234-4123-8123-123456789abc",
+      "epoch": "12345678-1234-4123-8123-123456789abc",
+      "generation": 1,
+      "response": {
+        "type": "input",
+        "answers": {
+          "q1": "yes"
+        }
+      }
+    }
+  },
+  {
+    "name": "upper-case-uuid",
+    "contract": "TokenRequest",
+    "value": {
+      "installationId": "12345678-1234-4123-8123-123456789abc",
+      "deviceId": "12345678-1234-4123-8123-123456789ABC",
+      "deviceCredential": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    }
+  },
+  {
+    "name": "events-business-write",
+    "contract": "EventResume",
+    "value": {
+      "type": "turn.start",
+      "epoch": "12345678-1234-4123-8123-123456789abc",
+      "afterSeq": 1,
+      "input": "execute"
+    }
+  },
+  {
+    "name": "file-too-large",
+    "contract": "AttachmentUploadMetadata",
+    "value": {
+      "operationId": "12345678-1234-4123-8123-123456789abc",
+      "projectId": "12345678-1234-4123-8123-123456789abc",
+      "threadId": "native-thread-opaque",
+      "draftId": "local-draft-01",
+      "name": "hello 世界.txt",
+      "mime": "text/plain",
+      "size": 20971521
+    }
+  },
+  {
+    "name": "upload-zero-bytes",
+    "contract": "AttachmentUploadMetadata",
+    "value": {
+      "operationId": "12345678-1234-4123-8123-123456789abc",
+      "projectId": "12345678-1234-4123-8123-123456789abc",
+      "threadId": "native-thread-opaque",
+      "draftId": "local-draft-01",
+      "name": "hello 世界.txt",
+      "mime": "text/plain",
+      "size": 0
+    }
+  },
+  {
+    "name": "required-payload-absent",
+    "contract": "EventEnvelope",
+    "value": {
+      "installationId": "12345678-1234-4123-8123-123456789abc",
+      "epoch": "12345678-1234-4123-8123-123456789abc",
+      "seq": 1,
+      "kind": "future/unknown",
+      "scope": {},
+      "impact": "state"
+    }
+  }
+]

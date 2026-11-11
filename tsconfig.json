@@ -11,5 +11,5 @@
     "resolveJsonModule": true,
     "jsx": "react-jsx"
   },
-  "include": ["bridge/**/*.ts", "packages/**/*.ts", "scripts/**/*.ts", "apps/web/src", "apps/web/vite.config.ts"]
+  "include": ["gateway/**/*.ts", "bridge/**/*.ts", "packages/**/*.ts", "scripts/**/*.ts", "apps/web/src", "apps/web/vite.config.ts"]
 }
