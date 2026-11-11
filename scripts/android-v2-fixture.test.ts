@@ -81,4 +81,20 @@ describe('Android test-only loopback transport controls', () => {
     proxy.setOnline(true);
     expect(JSON.parse(await get(proxy.origin, proxy.cert))).toEqual({ forwarded: 'https' });
   });
+  it('corrupts only one selected file response without changing its integrity metadata', async () => {
+    proxy.faultNextDownload('digest');
+    expect(JSON.parse(await get(proxy.origin, proxy.cert))).toEqual({ forwarded: 'https' });
+    const path = '/android-phase3/api/v2/files/fixture-grant/content';
+    const original = await get(proxy.origin, proxy.cert, 'GET', path);
+    expect(original[0]).not.toBe('{');
+    expect(proxy.status().faultedDownloads).toBe(1);
+    expect(JSON.parse(await get(proxy.origin, proxy.cert, 'GET', path))).toEqual({ forwarded: 'https' });
+  });
+  it('interrupts one file response while preserving the next download', async () => {
+    proxy.faultNextDownload('truncate');
+    const path = '/android-phase3/api/v2/files/fixture-grant/content';
+    await expect(get(proxy.origin, proxy.cert, 'GET', path)).rejects.toThrow();
+    expect(proxy.status().faultedDownloads).toBe(2);
+    expect(JSON.parse(await get(proxy.origin, proxy.cert, 'GET', path))).toEqual({ forwarded: 'https' });
+  });
 });

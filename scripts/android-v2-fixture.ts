@@ -52,6 +52,7 @@ export async function createAndroidFixtureProxy(root: string, upstreamPort: numb
   const cert = await readFile(certPath), sockets = new Set<Duplex>(), secureSockets = new Set<Duplex>();
   let online = true, dropNextTurnAck = false, droppedTurnAcks = 0;
   let droppedWrites = 0, pendingWriteDrop: string | undefined;
+  let nextDownloadFault: 'digest' | 'truncate' | undefined, faultedDownloads = 0;
   const server = createHttpsServer({ key: await readFile(keyPath), cert }, (req, res) => {
     if (!online) { req.socket.destroy(); return; }
     const writeDrop = req.method === 'POST' && pendingWriteDrop !== undefined && req.url === pendingWriteDrop;
@@ -76,6 +77,23 @@ export async function createAndroidFixtureProxy(root: string, upstreamPort: numb
             for (const socket of sockets) socket.destroy();
           } else { droppedTurnAcks++; res.destroy(); }
         });
+      } else if (nextDownloadFault && req.method === 'GET' && /\/api\/v2\/files\/[^/]+\/content$/.test(req.url ?? '') && reply.statusCode === 200) {
+        const fault = nextDownloadFault;
+        nextDownloadFault = undefined; faultedDownloads++;
+        res.writeHead(reply.statusCode, reply.headers);
+        let changed = false;
+        reply.on('data', (chunk: Buffer) => {
+          if (!changed && chunk.length > 0) {
+            changed = true;
+            if (fault === 'truncate') {
+              res.write(chunk.subarray(0, Math.max(1, Math.floor(chunk.length / 2))));
+              res.destroy(); reply.destroy(); return;
+            }
+            const altered = Buffer.from(chunk); altered[0] = altered[0]! ^ 1;
+            res.write(altered);
+          } else res.write(chunk);
+        });
+        reply.on('end', () => res.end()); reply.on('error', () => res.destroy());
       } else {
         reply.on('error', () => res.destroy()); res.writeHead(reply.statusCode!, reply.headers); reply.pipe(res);
       }
@@ -110,18 +128,25 @@ export async function createAndroidFixtureProxy(root: string, upstreamPort: numb
     cut, setOnline(value: boolean) { online = value; if (!online) cut(); },
     dropNextTurnAck() { dropNextTurnAck = true; },
     dropNextWriteResponse(path: string) { pendingWriteDrop = path; },
-    status: () => ({ online, dropNextTurnAck, droppedTurnAcks, pendingWriteDrop, droppedWrites }),
+    faultNextDownload(fault: 'digest' | 'truncate') { nextDownloadFault = fault; },
+    status: () => ({ online, dropNextTurnAck, droppedTurnAcks, pendingWriteDrop, droppedWrites, nextDownloadFault, faultedDownloads }),
     async close() { cut(); await new Promise<void>(yes => server.close(() => yes())); },
   };
 }
 
-export async function runAndroidFixture() {
+export async function runAndroidFixture(profile: 'phase2' | 'phase3' = 'phase2') {
   if (process.argv.length > 2) throw new Error('This opt-in fixture takes no command-line arguments');
   process.umask(0o077);
   const root = await mkdtemp(join(tmpdir(), 'oraculum-android-v2-'));
   const projectPath = join(root, 'project'), configPath = join(root, 'config', 'config.json');
   await mkdir(projectPath, { mode: 0o700 });
   await writeFile(join(projectPath, 'README.md'), '# Oraculum Android PoC isolated acceptance project\n', { mode: 0o600 });
+  if (profile === 'phase3') {
+    await mkdir(join(projectPath, 'artifacts'), { mode: 0o700 });
+    await writeFile(join(projectPath, 'artifacts', 'phase3-note.md'), '# Phase 3 文件预览\n\n仅用于隔离 Android 验收。\n\n- [x] UTF-8\n- [ ] 未发送的草稿\n\n```kotlin\nval verified = true\n```\n', { mode: 0o600 });
+    await writeFile(join(projectPath, 'artifacts', 'phase3-image.png'), Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a/pkAAAAASUVORK5CYII=', 'base64'), { mode: 0o600 });
+    await writeFile(join(projectPath, 'artifacts', 'phase3-data.json'), JSON.stringify({ purpose: 'isolated Phase 3 acceptance', version: 1 }) + '\n', { mode: 0o600 });
+  }
   const nativeConfigPath = join(process.env.CODEX_HOME ?? join(homedir(), '.codex'), 'config.toml');
   const configHash = async () => {
     try { return createHash('sha256').update(await readFile(nativeConfigPath)).digest('hex'); }
@@ -129,7 +154,7 @@ export async function runAndroidFixture() {
   };
   const beforeConfig = await configHash(), upstreamPort = await freePort();
   const evidence: Record<string, unknown> = {
-    startedAt: new Date().toISOString(), codexConfigBeforeSha256: beforeConfig,
+    profile, startedAt: new Date().toISOString(), codexConfigBeforeSha256: beforeConfig,
     gitHead: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(),
     controls: [], result: 'running',
     limitations: ['Dedicated native threads remain in official Codex history.',
@@ -163,7 +188,7 @@ export async function runAndroidFixture() {
     wrongTls = await createAndroidFixtureProxy(root, upstreamPort, 'untrusted-tls');
     // Exercise the same CLI initialization / pairing implementation as the user.
     cli(['init', '--state-dir', join(root, 'state'), '--root', `acceptance=${root}`, '--port', String(upstreamPort)]);
-    const config = validateGatewayConfig({ ...loadGatewayConfig(configPath), externalOrigin: proxy.origin, basePath: '/android-poc/' });
+    const config = validateGatewayConfig({ ...loadGatewayConfig(configPath), externalOrigin: proxy.origin, basePath: profile === 'phase3' ? '/android-phase3/' : '/android-poc/' });
     await writeFile(configPath, JSON.stringify(config, null, 2) + '\n', { mode: 0o600 });
     const codexVersion = execFileSync(config.codexCommand, ['--version'], { encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] }).trim();
     evidence.codexVersion = codexVersion;
@@ -179,7 +204,7 @@ export async function runAndroidFixture() {
     await boot();
     const paired = JSON.parse(cli(['pair'])) as { pairingFile: string; expiresAt: number };
     const metadata = {
-      root, endpoint: proxy.origin + config.basePath, port: proxy.port, certPath: proxy.certPath,
+      profile, root, endpoint: proxy.origin + config.basePath, port: proxy.port, certPath: proxy.certPath,
       wrongTlsEndpoint: wrongTls.origin + config.basePath, wrongTlsPort: wrongTls.port,
       configPath, projectPath, allowedRoot: root, rootId: 'acceptance', projectRelativePath: 'project', installationId: store!.installationId,
       epoch: service!.epoch, pairingFile: paired.pairingFile, pairingExpiresAt: paired.expiresAt,
@@ -238,8 +263,13 @@ export async function runAndroidFixture() {
         } else if (command === 'cut') { proxy.cut(); result = { interrupted: true }; }
         else if (command === 'expireAccess') { clockOffset += 11 * 60_000; result = { expired: true, method: 'injected GatewayAuth clock' }; }
         else if (command === 'dropNextTurnAck') { proxy.dropNextTurnAck(); result = proxy.status(); }
+        else if (command === 'corruptNextDownload' || command === 'truncateNextDownload') {
+          proxy.faultNextDownload(command === 'corruptNextDownload' ? 'digest' : 'truncate'); result = proxy.status();
+        }
         else if (command === 'dropNextWriteResponse') {
-          if (typeof value.path !== 'string' || !/^\/android-poc\/api\/v2\/(threads\/[A-Za-z0-9-]+\/turns|projects\/[A-Za-z0-9-]+\/threads)$/.test(value.path)) throw new Error('Unsupported write path');
+          const prefix = config.basePath + 'api/v2/';
+          if (typeof value.path !== 'string' || !value.path.startsWith(prefix) ||
+            !/^(threads\/[A-Za-z0-9-]+\/(turns|attachments)|projects\/[A-Za-z0-9-]+\/threads|interactions\/[A-Za-z0-9-]+\/response)$/.test(value.path.slice(prefix.length))) throw new Error('Unsupported write path');
           proxy.dropNextWriteResponse(value.path); result = proxy.status();
         }
         else if (command === 'stop') { stopping = true; emit({ event: 'control', command, result: { stopping: true } }); break; }
