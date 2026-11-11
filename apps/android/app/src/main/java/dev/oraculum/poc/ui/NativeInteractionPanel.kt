@@ -40,13 +40,33 @@ fun NativeInteractionPanel(interaction: InteractionUi, enabled: Boolean,
                 } else onRespond(response)
             }
         }
-        Card(
+        OraculumCard(
+            role = if (interaction.status == "pending") CardRole.Attention else CardRole.Process,
             modifier = Modifier.fillMaxWidth().testTag("interaction_${interaction.id}"),
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
         ) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(interaction.title, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Surface(shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+                        Box(Modifier.size(40.dp), contentAlignment = Alignment.Center) {
+                            OraculumIcon(when (interaction.kind) {
+                                "command" -> OraculumSymbol.Terminal
+                                "fileChange" -> OraculumSymbol.Difference
+                                "permissions" -> OraculumSymbol.Shield
+                                else -> OraculumSymbol.Chat
+                            }, tint = MaterialTheme.colorScheme.primary, size = 24.dp)
+                        }
+                    }
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(interaction.title, style = MaterialTheme.typography.titleMedium)
+                        Text(when (interaction.status) {
+                            "pending" -> "等待你的处理"
+                            "unknown" -> "结果待确认"
+                            "submitted" -> "等待原生确认"
+                            "resolved" -> "已处理"
+                            else -> interaction.status
+                        }, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
                 if (interaction.description.isNotBlank()) SelectionContainer { Text(interaction.description, style = MaterialTheme.typography.bodyMedium) }
                 when {
                     !interaction.supported -> Text("此原生请求含当前客户端无法安全处理的约束，请在宿主机检查。", color = MaterialTheme.colorScheme.error)
@@ -66,7 +86,11 @@ fun NativeInteractionPanel(interaction: InteractionUi, enabled: Boolean,
                                     enabled = actionable && NativeInteractionForms.validate(interaction, response) &&
                                         (interaction.kind != "fileChange" || decision != "accept" || onApproveFileChange != null),
                                     modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("interaction_${interaction.id}_$decision"),
-                                ) { Text(decisionLabel(decision, interaction.kind)) }
+                                ) {
+                                    OraculumIcon(if (decision == "accept") OraculumSymbol.Check else OraculumSymbol.Close)
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(decisionLabel(decision, interaction.kind))
+                                }
                             }
                         }
                         "input" -> NativeInputQuestions(interaction, actionable, send)
@@ -130,7 +154,12 @@ private fun NativeRequestDetails(interaction: InteractionUi) {
     for ((label, key) in listOf("命令" to "command", "工作目录" to "cwd", "运行环境" to "environmentId", "授权范围" to "grantRoot")) {
         val value = (request[key] as? JsonPrimitive)?.takeIf { it.isString }?.content
         if (!value.isNullOrBlank()) {
-            Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            SectionLabel(label, when (key) {
+                "command" -> OraculumSymbol.Terminal
+                "cwd" -> OraculumSymbol.Folder
+                "grantRoot" -> OraculumSymbol.Shield
+                else -> OraculumSymbol.Info
+            })
             SelectionContainer {
                 Text(value, Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceContainerLowest, RoundedCornerShape(8.dp))
                     .horizontalScroll(rememberScrollState()).padding(12.dp), fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
@@ -196,7 +225,9 @@ private fun NativeInputQuestions(interaction: InteractionUi, enabled: Boolean, o
     val valid = NativeInteractionForms.validate(interaction, payload)
     if (enabled && !valid) Text("回答超出原生限制：每题至多 20 项、每项至多 16,000 个字符，总量至多 128 KiB。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
     Button(onClick = { onRespond(payload) }, enabled = enabled && valid,
-        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("interaction_${interaction.id}_submit")) { Text("提交回答") }
+        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("interaction_${interaction.id}_submit")) {
+        OraculumIcon(OraculumSymbol.Send); Spacer(Modifier.width(8.dp)); Text("提交回答")
+    }
 }
 
 @Composable
@@ -219,7 +250,9 @@ private fun NativeElicitation(interaction: InteractionUi, enabled: Boolean, onRe
     if (interaction.url != null) {
         SelectionContainer { Text(interaction.url, style = MaterialTheme.typography.bodySmall) }
         OutlinedButton(onClick = { openError = runCatching { uriHandler.openUri(interaction.url) }.isFailure }, enabled = enabled,
-            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("在浏览器打开请求链接") }
+            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+            OraculumIcon(OraculumSymbol.OpenInNew); Spacer(Modifier.width(8.dp)); Text("在浏览器打开请求链接")
+        }
         if (openError) Text("没有可用浏览器，请在宿主机处理此请求。", color = MaterialTheme.colorScheme.error)
         Text("在外部完成请求后，再提交确认。", style = MaterialTheme.typography.bodySmall)
     } else {
@@ -239,11 +272,13 @@ private fun NativeElicitation(interaction: InteractionUi, enabled: Boolean, onRe
     val fieldsValid = interaction.fields.filter { it.required || included[it.id] == true }
         .all { field -> values[field.id]?.let { NativeInteractionForms.validFieldValue(field, it) } == true }
     Button(onClick = { onRespond(accept) }, enabled = enabled && fieldsValid && NativeInteractionForms.validate(interaction, accept),
-        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("interaction_${interaction.id}_accept")) { Text("确认并提交") }
+        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("interaction_${interaction.id}_accept")) {
+        OraculumIcon(OraculumSymbol.Check); Spacer(Modifier.width(8.dp)); Text("确认并提交")
+    }
     for (action in listOf("decline", "cancel")) {
         OutlinedButton(onClick = { onRespond(buildJsonObject { put("type", "elicitation"); put("action", action); put("content", JsonNull) }) },
             enabled = enabled, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("interaction_${interaction.id}_$action")) {
-            Text(decisionLabel(action, interaction.kind))
+            OraculumIcon(OraculumSymbol.Close); Spacer(Modifier.width(8.dp)); Text(decisionLabel(action, interaction.kind))
         }
     }
 }

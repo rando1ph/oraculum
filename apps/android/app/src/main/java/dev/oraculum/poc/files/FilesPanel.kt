@@ -15,12 +15,19 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import dev.oraculum.poc.ui.CardRole
+import dev.oraculum.poc.ui.OraculumCard
+import dev.oraculum.poc.ui.OraculumIcon
+import dev.oraculum.poc.ui.OraculumSymbol
+import dev.oraculum.poc.ui.SectionLabel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -31,49 +38,79 @@ import java.nio.charset.CodingErrorAction
 fun FilesPanel(state: FilesUiState, actions: FilesActions) {
     val saver = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument(state.preview?.mime ?: "application/octet-stream")) { uri -> uri?.let(actions.save) }
     Column(Modifier.fillMaxSize().testTag("files_panel").verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("项目文件与成果", style = MaterialTheme.typography.titleLarge)
-        Text("仅显示 Gateway 授权的项目文件。下载会校验类型、大小、摘要和授权有效期。", style = MaterialTheme.typography.bodySmall)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton({ actions.browse("") }, enabled = state.readable && !state.busy, modifier = Modifier.testTag("files_refresh")) { Text("刷新文件") }
-            if (state.path.isNotEmpty()) TextButton({ actions.browse(state.path.substringBeforeLast('/', "")) }, enabled = state.readable && !state.busy) { Text("上一级") }
+        SectionLabel("项目文件与成果", OraculumSymbol.Folder)
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            OutlinedButton({ actions.browse("") }, enabled = state.readable && !state.busy, modifier = Modifier.heightIn(min = 48.dp).testTag("files_refresh")) {
+                FileActionLabel(OraculumSymbol.Refresh, "刷新文件")
+            }
+            if (state.path.isNotEmpty()) TextButton({ actions.browse(state.path.substringBeforeLast('/', "")) }, enabled = state.readable && !state.busy, modifier = Modifier.heightIn(min = 48.dp)) {
+                FileActionLabel(OraculumSymbol.ArrowBack, "上一级")
+            }
         }
-        Text(if (state.path.isEmpty()) "项目根目录" else state.path, style = MaterialTheme.typography.labelMedium)
+        Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh, shape = MaterialTheme.shapes.small) {
+            Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OraculumIcon(OraculumSymbol.Folder, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                SelectionContainer { Text(if (state.path.isEmpty()) "项目根目录" else state.path, style = MaterialTheme.typography.labelMedium) }
+            }
+        }
         if (!state.readable) Text("连接并选择可用项目后可浏览文件。", color = MaterialTheme.colorScheme.onSurfaceVariant)
         if (state.entries.isEmpty() && state.readable && !state.busy) Text("点击刷新读取文件。空目录或不支持的文件类型不会显示。", style = MaterialTheme.typography.bodySmall)
-        state.entries.forEach { row ->
-            Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.medium,
-                modifier = Modifier.fillMaxWidth().testTag("file_${row.name}").clickable(enabled = state.readable && !state.busy) { actions.select(row) }) {
-                Column(Modifier.padding(14.dp)) {
-                    Text((if (row.directory) "▸  " else "▤  ") + row.name, style = MaterialTheme.typography.titleSmall)
-                    Text(if (row.directory) "文件夹" else "${formatSize(row.size)} · ${row.mime}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (state.entries.isNotEmpty()) Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.large) {
+            Column {
+                state.entries.forEachIndexed { index, row ->
+                    Row(Modifier.fillMaxWidth().heightIn(min = 64.dp).testTag("file_${row.name}")
+                        .clickable(enabled = state.readable && !state.busy) { actions.select(row) }.padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        OraculumIcon(if (row.directory) OraculumSymbol.Folder else OraculumSymbol.Description,
+                            tint = if (row.directory) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(row.name, style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            Text(if (row.directory) "文件夹" else "${formatSize(row.size)} · ${row.mime}", style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        }
+                        OraculumIcon(OraculumSymbol.ChevronRight, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    if (index < state.entries.lastIndex) HorizontalDivider(Modifier.padding(start = 44.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .5f))
                 }
             }
         }
-        if (state.nextCursor != null) TextButton(actions.loadMore, enabled = !state.busy && state.readable) { Text("加载更多文件") }
+        if (state.nextCursor != null) TextButton(actions.loadMore, enabled = !state.busy && state.readable, modifier = Modifier.heightIn(min = 48.dp)) { FileActionLabel(OraculumSymbol.ExpandMore, "加载更多文件") }
         if (state.limited) Text("此目录条目过多；列表已按 Gateway 扫描上限截断。", style = MaterialTheme.typography.bodySmall)
-        HorizontalDivider()
-        AttachmentChips(state, actions)
         state.preview?.let { preview ->
-            HorizontalDivider()
-            Column(Modifier.testTag("files_preview"), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(preview.name, style = MaterialTheme.typography.titleMedium)
-                Text("${formatSize(preview.size)} · 摘要已验证", style = MaterialTheme.typography.labelMedium)
+            OraculumCard(role = CardRole.Inset, modifier = Modifier.testTag("files_preview"), contentPadding = PaddingValues(12.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(preview.name, style = MaterialTheme.typography.titleSmall)
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            OraculumIcon(OraculumSymbol.Check, size = 16.dp, tint = MaterialTheme.colorScheme.primary)
+                            Text("${formatSize(preview.size)} · 摘要已验证", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                    IconButton(actions.closePreview, modifier = Modifier.size(48.dp)) { OraculumIcon(OraculumSymbol.Close, "关闭预览") }
+                }
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                 FilePreviewContent(preview)
-                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(actions.open, modifier = Modifier.testTag("files_open")) { Text("系统打开") }
-                    OutlinedButton(actions.share, modifier = Modifier.testTag("files_share")) { Text("分享") }
-                    OutlinedButton({ actions.beginSave(); saver.launch(preview.name) }, enabled = !state.busy, modifier = Modifier.testTag("files_save")) { Text("保存") }
-                    TextButton(actions.closePreview) { Text("关闭预览") }
+                Button({ actions.beginSave(); saver.launch(preview.name) }, enabled = !state.busy,
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("files_save")) { FileActionLabel(OraculumSymbol.Download, "保存到设备") }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(actions.open, modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("files_open")) { FileActionLabel(OraculumSymbol.OpenInNew, "系统打开") }
+                    OutlinedButton(actions.share, modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("files_share")) { FileActionLabel(OraculumSymbol.Share, "分享") }
                 }
             }
         }
+        SectionLabel("本机附件", OraculumSymbol.AttachFile)
+        AttachmentChips(state, actions)
         state.progress?.let { progress ->
             Text(progress.label, style = MaterialTheme.typography.labelLarge)
             LinearProgressIndicator(progress = { if (progress.total > 0) (progress.completed.toFloat() / progress.total).coerceIn(0f, 1f) else 0f }, modifier = Modifier.fillMaxWidth())
             Text("${formatSize(progress.completed)} / ${formatSize(progress.total)}", style = MaterialTheme.typography.bodySmall)
         }
-        if (state.busy) TextButton(actions.cancel, modifier = Modifier.testTag("files_cancel")) { Text("取消当前传输") }
+        if (state.busy) TextButton(actions.cancel, modifier = Modifier.heightIn(min = 48.dp).testTag("files_cancel")) { FileActionLabel(OraculumSymbol.Close, "取消当前传输") }
         state.message?.let { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium) }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OraculumIcon(OraculumSymbol.Shield, tint = MaterialTheme.colorScheme.onSurfaceVariant, size = 18.dp)
+            Text("仅显示 Gateway 授权的项目文件。下载会校验类型、大小、摘要和授权有效期。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
     }
 }
 
@@ -83,20 +120,23 @@ fun AttachmentChips(state: FilesUiState, actions: FilesActions, compact: Boolean
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         if (!compact) Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton({ actions.beginPick(); picker.launch(FileTransferPolicy.types.values.distinct().toTypedArray()) },
-                enabled = state.writable && !state.busy && !state.hasUnknown, modifier = Modifier.testTag("files_pick")) { Text("添加附件") }
+                enabled = state.writable && !state.busy && !state.hasUnknown, modifier = Modifier.heightIn(min = 48.dp).testTag("files_pick")) { FileActionLabel(OraculumSymbol.AttachFile, "添加附件") }
             if (state.attachments.isNotEmpty()) TextButton(actions.reconcile, enabled = state.readable && !state.busy,
-                modifier = Modifier.testTag("files_reconcile")) { Text("核对附件") }
+                modifier = Modifier.heightIn(min = 48.dp).testTag("files_reconcile")) { FileActionLabel(OraculumSymbol.Refresh, "核对附件") }
         }
         if (state.attachments.isNotEmpty()) {
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 state.attachments.forEach { attachment ->
-                    Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = MaterialTheme.shapes.medium,
+                    Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh, shape = MaterialTheme.shapes.medium,
                         modifier = Modifier.widthIn(min = 120.dp, max = 220.dp).testTag("attachment_${attachment.name}")) {
                         Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             if (!compact) attachment.previewFile?.let { file -> Thumbnail(file, attachment.name) }
-                            Text(attachment.name, style = MaterialTheme.typography.labelLarge)
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                OraculumIcon(OraculumSymbol.AttachFile, tint = MaterialTheme.colorScheme.primary, size = 18.dp)
+                                Text(attachment.name, style = MaterialTheme.typography.labelLarge, maxLines = if (compact) 2 else Int.MAX_VALUE, overflow = TextOverflow.Ellipsis)
+                            }
                             Text("${formatSize(attachment.size)} · ${attachmentStatus(attachment.status)}", style = MaterialTheme.typography.bodySmall)
-                            if (attachment.removable && !compact) TextButton({ actions.remove(attachment.id) }, enabled = state.writable && !state.busy) { Text("移除") }
+                            if (attachment.removable && !compact) TextButton({ actions.remove(attachment.id) }, enabled = state.writable && !state.busy, modifier = Modifier.heightIn(min = 48.dp)) { FileActionLabel(OraculumSymbol.Delete, "移除") }
                         }
                     }
                 }
@@ -113,8 +153,15 @@ fun AttachmentPickerButton(state: FilesUiState, actions: FilesActions, modifier:
     IconButton({ actions.beginPick(); picker.launch(FileTransferPolicy.types.values.distinct().toTypedArray()) },
         enabled = state.writable && !state.busy && !state.hasUnknown,
         modifier = modifier.size(48.dp).testTag("files_pick").semantics { contentDescription = "添加图片或文档附件" }) {
-        Text("+", style = MaterialTheme.typography.headlineMedium)
+        OraculumIcon(OraculumSymbol.AttachFile, size = 24.dp)
     }
+}
+
+@Composable
+private fun RowScope.FileActionLabel(symbol: OraculumSymbol, text: String) {
+    OraculumIcon(symbol)
+    Spacer(Modifier.width(6.dp))
+    Text(text)
 }
 
 @Composable

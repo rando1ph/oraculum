@@ -8,6 +8,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
@@ -20,6 +22,7 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -122,8 +125,8 @@ fun MarkdownContent(text: String, modifier: Modifier = Modifier) {
                         "4" -> MaterialTheme.typography.titleMedium
                         else -> MaterialTheme.typography.titleSmall
                     }.copy(fontWeight = FontWeight.SemiBold))
-                    "quote" -> Row(Modifier.background(MaterialTheme.colorScheme.surfaceContainerHigh, RoundedCornerShape(8.dp)).padding(12.dp)) {
-                        Text("│", color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(end = 8.dp))
+                    "quote" -> Row(Modifier.height(IntrinsicSize.Min).background(MaterialTheme.colorScheme.surfaceContainerHigh, RoundedCornerShape(8.dp)).padding(12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Box(Modifier.width(3.dp).fillMaxHeight().background(MaterialTheme.colorScheme.primary, RoundedCornerShape(2.dp)))
                         InlineMarkdown(block.lines.first(), Modifier.weight(1f))
                     }
                     "list", "task" -> Row(Modifier.padding(start = (block.depth.coerceAtMost(4) * 12).dp).semantics {
@@ -167,20 +170,46 @@ private fun MarkdownTable(lines: List<String>, alignments: List<String>) {
 internal fun CodeBlock(text: String, language: String = "", modifier: Modifier = Modifier) {
     val clipboard = LocalClipboardManager.current
     val preview = remember(text) { boundedContentPreview(sequenceOf(text)) }
+    val lines = remember(preview.text) { preview.text.lines() }
+    var expanded by rememberSaveable(text) { mutableStateOf(false) }
+    val canExpand = lines.size > 12
+    val displayedText = if (canExpand && !expanded) lines.take(12).joinToString("\n") else preview.text
     var copied by remember(text) { mutableStateOf(false) }
     ReadingContent {
-        Surface(modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.surfaceContainerHigh,
-            shape = RoundedCornerShape(16.dp), border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
+        Surface(modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.surfaceContainerLowest,
+            shape = MaterialTheme.shapes.large, border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
             Column {
-                Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text(language.ifBlank { "代码" }, Modifier.padding(vertical = 16.dp).weight(1f), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
-                    TextButton(onClick = { clipboard.setText(AnnotatedString(preview.text)); copied = true }, modifier = Modifier.heightIn(min = 48.dp)) { Text(if (copied) "已复制" else if (preview.truncated) "复制预览" else "复制") }
+                Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceContainerHigh).padding(start = 12.dp, end = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OraculumIcon(OraculumSymbol.Code, tint = MaterialTheme.colorScheme.primary)
+                    Column(Modifier.weight(1f).padding(vertical = 8.dp)) {
+                        Text(language.ifBlank { "代码" }, style = MaterialTheme.typography.labelLarge, maxLines = 1,
+                            overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurface)
+                        if (canExpand) Text("${lines.size} 行${if (preview.truncated) "预览" else ""}", style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    IconButton(onClick = { clipboard.setText(AnnotatedString(preview.text)); copied = true }, modifier = Modifier.size(48.dp)) {
+                        OraculumIcon(if (copied) OraculumSymbol.Check else OraculumSymbol.Copy,
+                            contentDescription = if (copied) "代码已复制" else if (preview.truncated) "复制代码预览" else "复制代码",
+                            tint = if (copied) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    if (canExpand) IconButton(onClick = { expanded = !expanded }, modifier = Modifier.size(48.dp).semantics {
+                        stateDescription = if (expanded) "代码已展开" else "代码已折叠"
+                    }) {
+                        OraculumIcon(if (expanded) OraculumSymbol.ExpandLess else OraculumSymbol.ExpandMore,
+                            contentDescription = if (expanded) "收起代码" else "展开代码预览")
+                    }
                 }
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                 if (preview.truncated) Text(CONTENT_PREVIEW_NOTICE, Modifier.padding(12.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 SelectionContainer {
-                    Text(preview.text, Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(16.dp).semantics { contentDescription = "代码，可横向滚动" },
+                    Text(displayedText, Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(16.dp).semantics { contentDescription = "代码，可横向滚动" },
                         style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace, lineHeight = MaterialTheme.typography.bodySmall.lineHeight * 1.125f), softWrap = false)
+                }
+                if (canExpand && !expanded) TextButton(onClick = { expanded = true }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+                    OraculumIcon(OraculumSymbol.ExpandMore)
+                    Spacer(Modifier.width(8.dp))
+                    Text("展开其余 ${lines.size - 12} 行${if (preview.truncated) "预览" else ""}")
                 }
             }
         }
