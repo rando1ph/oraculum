@@ -21,7 +21,7 @@ const report = { date: new Date().toISOString(), artifact: basename(artifact), c
 const run = (command, args, options = {}) => execFileSync(command, args, { encoding: 'utf8', timeout: 120_000, maxBuffer: 32 * 1024 * 1024, ...options });
 const pass = name => { report.checks.push(name); console.log('PASS ' + name); };
 const sandbox = (command, args, options = {}) => run('bwrap', ['--die-with-parent', '--unshare-user', '--uid', String(options.uid ?? 0), '--gid', String(options.gid ?? 0),
-  '--unshare-pid', '--unshare-net', '--unshare-ipc', '--unshare-uts', '--ro-bind', '/', '/', '--bind', scratch, scratch,
+  '--unshare-pid', '--unshare-net', '--unshare-ipc', '--unshare-uts', '--ro-bind', '/', '/', '--perms', '0755', '--tmpfs', '/tmp', '--bind', scratch, scratch,
   '--proc', '/proc', '--dev', '/dev', '--', command, ...args], options.env ? { env: options.env } : {});
 const dpkg = (directory, args) => sandbox('/usr/bin/dpkg', [`--root=${directory}`, `--log=${join(scratch, 'dpkg.log')}`, '--force-script-chrootless', '--no-triggers', ...args]);
 const query = (directory, args) => run('dpkg-query', [`--admindir=${join(directory, 'var/lib/dpkg')}`, ...args]);
