@@ -49,7 +49,7 @@ class FilesController(
     private var storageSafe = true
     private var pickerGeneration: Long? = null
     private var saveSelection: FilePreview? = null
-    private val previews = File(context.cacheDir, "artifact-shares").apply { mkdirs() }
+    private val previews = PreviewCache(File(context.cacheDir, "artifact-shares"))
     fun actions() = FilesActions(::browse, ::loadMore, ::select, ::pick, ::remove, ::reconcile, ::cancel, ::closePreview, ::open, ::share, ::save,
         { pickerGeneration = generation }, { saveSelection = state.value.preview })
 
@@ -74,6 +74,10 @@ class FilesController(
             writable = online && threadId != null && storageSafe && supported("attachments"), fileLimit = limit("attachmentFileBytes", FileTransferPolicy.MAX_UPLOAD),
             batchLimit = limit("attachmentBatchBytes", 50L * 1024 * 1024), countLimit = limit("attachmentBatchCount", 6).toInt()) }
         publishDraft()
+        if (changed) {
+            val protected = protectedPreviews()
+            withContext(Dispatchers.IO) { previews.clean(protected) }
+        }
     }
 
     fun browse(path: String = "") = runAction {
@@ -116,10 +120,12 @@ class FilesController(
                 data.nullable("threadId"), data.getValue("path").jsonPrimitive.content, data.getValue("name").jsonPrimitive.content,
                 data.getValue("mime").jsonPrimitive.content, data.getValue("size").jsonPrimitive.long, data.getValue("expiresAt").jsonPrimitive.long)
             require(grant.projectId == pid && grant.threadId == tid && grant.path == row.path && grant.mime == row.mime && grant.size == row.size)
-            val target = File(previews, UUID.randomUUID().toString() + ".download")
+            val protected = protectedPreviews()
+            val target = withContext(Dispatchers.IO) { previews.reserve(grant.size, protected) }
             try {
                 gateway.downloadFile(grant, target) { done, total -> progress("下载 ${row.name}", done, total, expected) }
                 checkGeneration(expected)
+                withContext(Dispatchers.IO) { previews.retain(target) }
                 _state.update { it.copy(preview = FilePreview(grant.name, grant.mime, grant.size, target)) }
             } catch (error: Throwable) { target.delete(); throw error }
         }
@@ -228,7 +234,7 @@ class FilesController(
         }
         var row = requireNotNull(draft).rows.firstOrNull { it.localId == initial.localId } ?: return
         if (initial.deleteOperation != null) {
-            if (status == "accepted") { row = row.copy(status = "expired"); withContext(Dispatchers.IO) { store.payload(row.localId).delete() } }
+            if (status == "accepted") row = row.copy(status = "expired")
             else if (status == "rejected" && data.nullable("delivery") == "notSent") row = row.copy(status = "ready", deleteOperation = null)
         } else if (status == "accepted") {
             val remote = data["attachment"] as? JsonObject ?: error("上传已确认但附件元数据不可用；已保留安全屏障。")
@@ -279,8 +285,8 @@ class FilesController(
             else -> row
         } })
         withContext(NonCancellable) {
-            withContext(Dispatchers.IO) { store.write(next) }
-            if (matching(draft)) { draft = next; publishDraft() }
+            val committed = withContext(Dispatchers.IO) { store.write(next) }
+            if (matching(draft)) { draft = committed; publishDraft() }
         }
     }
     private suspend fun replaceRow(row: AttachmentLocal) = updateDraft { it.copy(rows = it.rows.map { prior ->
@@ -289,10 +295,10 @@ class FilesController(
         val previous = requireNotNull(draft); val expected = generation; val next = transform(previous)
         checkGeneration(expected)
         withContext(NonCancellable) {
-            withContext(Dispatchers.IO) { store.write(next) }
+            val committed = withContext(Dispatchers.IO) { store.write(next) }
             // Commit memory with the atomic file even if cancellation arrives during disk sync.
             // No callback or network request occurs under this lock.
-            draft = next; publishDraft(); onCommitted()
+            draft = committed; publishDraft(); onCommitted()
         }
     }
     private fun publishDraft() {
@@ -302,13 +308,20 @@ class FilesController(
             hasUnknown = rows.any { it.status in setOf("unknown", "held", "deleting") }) }
     }
     fun cancel() { currentJob?.cancel(); _state.update { it.copy(message = "传输已取消；已经发出的写入保留原操作标识，请查询回执。") } }
-    fun closePreview() { _state.update { it.copy(preview = null) } }
+    private fun protectedPreviews(): Set<File> = listOfNotNull(state.value.preview?.file, saveSelection?.file).toSet()
+    fun closePreview() {
+        saveSelection = null
+        _state.update { it.copy(preview = null) }
+        val protected = protectedPreviews()
+        coroutineScope.launch(Dispatchers.IO) { previews.clean(protected) }
+    }
     fun open() = external(false)
     fun share() = external(true)
     private fun external(share: Boolean) {
         val selected = state.value.preview ?: return
         try {
             require(selected.file.isFile && selected.file.length() == selected.size)
+            previews.retain(selected.file)
             val uri = FileProvider.getUriForFile(context, context.packageName + ".artifacts", selected.file)
             val intent = Intent(if (share) Intent.ACTION_SEND else Intent.ACTION_VIEW).apply {
                 if (share) { type = selected.mime; putExtra(Intent.EXTRA_STREAM, uri); putExtra(Intent.EXTRA_TITLE, selected.name) }
@@ -341,6 +354,7 @@ class FilesController(
             catch (_: CancellationException) { /* Preserve durable unknowns. */ }
             catch (error: Exception) { if (expected == generation) _state.update { it.copy(message = when (error) {
                 is GatewayException -> error.userMessage
+                is PreviewCacheFullException -> error.message!!
                 is SecurityException -> "文件授权已撤销，请重新使用系统选择器选择。"
                 else -> "文件操作未完成，请检查文件类型、大小、授权和连接；未知写入已保留，请核对回执。"
             }) } }
