@@ -38,5 +38,7 @@ createInterface({ input: process.stdin }).on('line', line => {
     case 'thread/turns/list': case 'thread/items/list': result = { data: [], nextCursor: null }; break;
     default: result = {};
   }
-  send({ id: message.id, result });
+  if (mode === 'delayed-reads' && ['thread/list', 'thread/read'].includes(message.method)) {
+    setTimeout(() => send({ id: message.id, result }), 200);
+  } else send({ id: message.id, result });
 }).on('close', () => process.exit(0));

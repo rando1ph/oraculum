@@ -130,4 +130,31 @@ describe('official Codex stdio boundary', () => {
     await expect(adapter.listModels()).rejects.toMatchObject({ code: 'NATIVE_BUSY' });
     expect((await messages()).filter(message => message.method === 'model/list')).toHaveLength(1);
   });
+
+  it('gives slow project listing bounded headroom while ordinary reads retain their deadline without retry', async () => {
+    const { adapter, cwd, messages } = await setup('delayed-reads');
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      let rejected = false;
+      const listing = adapter.listThreads({ cwd }).catch(error => { rejected = true; throw error; });
+      // Only this process's deadline clock advances; the real stdio peer replies after 200ms.
+      await vi.advanceTimersByTimeAsync(8_001);
+      expect(rejected).toBe(false);
+      await expect(listing).resolves.toMatchObject({ data: [{ id: 'thread-1' }] });
+      const reading = adapter.readThread('thread-1');
+      const rejection = expect(reading).rejects.toMatchObject({ code: 'NATIVE_TIMEOUT', outcome: 'rejected' });
+      await vi.advanceTimersByTimeAsync(8_000);
+      await rejection;
+      const transcript = await messages();
+      expect(transcript.filter(message => message.method === 'thread/list')).toHaveLength(1);
+      expect(transcript.filter(message => message.method === 'thread/read')).toHaveLength(1);
+    } finally { vi.useRealTimers(); }
+  });
+
+  it('keeps an explicit read timeout authoritative for project listing and retains its tombstone', async () => {
+    const { adapter, cwd, messages } = await setup('delayed-reads', { readTimeoutMs: 30, maxPending: 1 });
+    await expect(adapter.listThreads({ cwd })).rejects.toMatchObject({ code: 'NATIVE_TIMEOUT', outcome: 'rejected' });
+    await expect(adapter.listThreads({ cwd })).rejects.toMatchObject({ code: 'NATIVE_BUSY' });
+    expect((await messages()).filter(message => message.method === 'thread/list')).toHaveLength(1);
+  });
 });

@@ -256,8 +256,11 @@ export class CodexAdapter extends EventEmitter {
   }
   listThreads(options: { cwd: string; cursor?: string | null; limit?: number; searchTerm?: string; archived?: boolean }) {
     if (options.searchTerm !== undefined && (typeof options.searchTerm !== 'string' || options.searchTerm.length > 512)) throw invalid();
+    // Native project-filtered listing may scan the host's session catalog. Real Android
+    // acceptance observed 4–5s baseline and 8s timeouts; allow bounded headroom only here.
     return this.rpc('thread/list', { cwd: id(options.cwd), cursor: cursor(options.cursor), limit: limit(options.limit, 20),
-      searchTerm: options.searchTerm, archived: options.archived ?? false, modelProviders: [], sortDirection: 'desc' }) as Promise<NativePage<NativeThread>>;
+      searchTerm: options.searchTerm, archived: options.archived ?? false, modelProviders: [], sortDirection: 'desc' },
+      this.options.readTimeoutMs ?? 20_000) as Promise<NativePage<NativeThread>>;
   }
   readThread(threadId: string, includeTurns = false, timeoutMs?: number) {
     return this.rpc('thread/read', { threadId: id(threadId), includeTurns }, timeoutMs) as Promise<NativeThreadResult>;
