@@ -1,0 +1,20 @@
+#!/bin/sh
+set -eu
+case "${1:-}" in install|upgrade) ;; *) exit 0 ;; esac
+
+# DPKG_ROOT is empty for an ordinary installation. Respect a disposable dpkg
+# root during package verification; never query the host database for that root.
+package_root=${DPKG_ROOT:-}
+package_admin=${DPKG_ADMINDIR:-${package_root}/var/lib/dpkg}
+owners=$(dpkg-query --admindir="$package_admin" --search /usr/bin/oraculum 2>/dev/null || true)
+if [ -n "$owners" ]; then
+  # Architecture-qualified package names are possible with Multi-Arch dpkg.
+  if printf '%s\n' "$owners" | grep -vE '^oraculum-gateway(:[a-z0-9-]+)?: /usr/bin/oraculum$' >/dev/null; then
+    printf '%s\n' 'Cannot install oraculum-gateway: /usr/bin/oraculum is owned by another package (including the legacy Desktop). Resolve its ownership in an explicitly authorized installation plan; this package never overwrites or removes that package.' >&2
+    exit 1
+  fi
+elif [ -e "${package_root}/usr/bin/oraculum" ] || [ -L "${package_root}/usr/bin/oraculum" ]; then
+  printf '%s\n' 'Cannot install oraculum-gateway: an unmanaged /usr/bin/oraculum already exists. Preserve it and resolve the conflict before installation.' >&2
+  exit 1
+fi
+exit 0

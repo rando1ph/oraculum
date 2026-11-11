@@ -80,7 +80,11 @@
     "test:gateway": "vitest run gateway packages/gateway-protocol",
     "test:gateway:live": "tsx scripts/gateway-live.ts",
     "verify:gateway:protocol": "node scripts/verify-gateway-protocol.mjs",
-    "test:gateway:faults": "tsx scripts/gateway-faults.ts"
+    "test:gateway:faults": "tsx scripts/gateway-faults.ts",
+    "build:gateway:runtime": "node scripts/build-gateway-runtime.mjs",
+    "build:gateway:deb": "pnpm build:gateway:runtime && node scripts/build-gateway-deb.mjs",
+    "verify:gateway:deb": "node scripts/verify-gateway-deb.mjs",
+    "test:gateway:packaging": "vitest run scripts/build-gateway.test.mjs"
   },
   "devDependencies": {
     "@electron-forge/cli": "8.0.1",

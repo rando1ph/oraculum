@@ -1,0 +1,20 @@
+[Unit]
+Description=Oraculum Gateway (official Codex App Server)
+StartLimitIntervalSec=60
+StartLimitBurst=3
+
+[Service]
+Type=simple
+ExecStart=/usr/lib/oraculum-gateway/bin/oraculum-gateway
+WorkingDirectory=%h
+UMask=0077
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=15
+KillMode=control-group
+# Configuration and state are initialized separately by `oraculum init`.
+# Installing this package does not enable, start or restart the service.
+# Native tool execution remains subject to official Codex permissions.
+
+[Install]
+WantedBy=default.target

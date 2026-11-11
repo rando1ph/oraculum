@@ -1,0 +1,6 @@
+#!/bin/sh
+set -eu
+entry=$(readlink -f -- "$0")
+runtime=$(CDPATH= cd -- "$(dirname -- "$entry")/.." && pwd -P)
+export WS_NO_BUFFER_UTIL=1 WS_NO_UTF_8_VALIDATE=1
+exec "$runtime/node/bin/node" "$runtime/gateway/main.mjs" "$@"
