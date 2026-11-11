@@ -1,0 +1,15 @@
+Material Symbols Outlined
+Copyright Google LLC. Licensed under the Apache License, Version 2.0.
+Upstream: https://github.com/google/material-design-icons
+Revision: 10ecc14790612ca8fd164e3f4ffe9c16fc50d5b7
+
+Oraculum bundles 40 selected official Android Vector Drawable XML files from
+symbols/android/<name>/materialsymbolsoutlined/<name>_24px.xml.
+The android:tint theme attribute is removed so Compose Icon can apply the
+current semantic content colour. Vector paths and viewport data are unchanged.
+See material-symbols.json for each source URL and source/distributed SHA-256.
+The upstream licence is included as LICENSE-Material-Symbols.txt.
+
+oracle_eye_line.xml is an original Oraculum drawing, authored for this project.
+It is not a Google icon and does not replace or modify the approved launcher PNG.
+It uses the repository's licence. No icon font, web font or remote asset is used.

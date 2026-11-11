@@ -1,0 +1,17 @@
+<!-- Original Oraculum Oracle Eye line mark. Not a Material Symbols asset. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="32"
+    android:viewportHeight="32">
+    <path
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="@android:color/white"
+        android:strokeWidth="1.8"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M3,16 Q8.5,8.5 16,8.5 Q23.5,8.5 29,16 Q23.5,23.5 16,23.5 Q8.5,23.5 3,16 Z M16,11.5 A4.5,4.5 0,1 1,16,20.5 A4.5,4.5 0,1 1,16,11.5 M16,3 L16,5.5 M16,26.5 L16,29" />
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M16,13.6 Q16.45,15.55 18.4,16 Q16.45,16.45 16,18.4 Q15.55,16.45 13.6,16 Q15.55,15.55 16,13.6 Z" />
+</vector>

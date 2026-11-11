@@ -1,0 +1,293 @@
+{
+  "format": 1,
+  "family": "Material Symbols Outlined",
+  "variant": "24px, FILL 0, weight 400, grade 0",
+  "upstream": "https://github.com/google/material-design-icons",
+  "revision": "10ecc14790612ca8fd164e3f4ffe9c16fc50d5b7",
+  "license": "Apache-2.0",
+  "licenseSource": "https://raw.githubusercontent.com/google/material-design-icons/10ecc14790612ca8fd164e3f4ffe9c16fc50d5b7/LICENSE",
+  "licenseSha256": "58d1e17ffe5109a7ae296caafcadfdbe6a7d176f0bc4ab01e12a689b0499d8bd",
+  "modification": "Remove android:tint theme attribute; Compose Icon applies semantic tint. All vector path data is unchanged.",
+  "icons": [
+    {
+      "symbol": "Add",
+      "resource": "ms_add.xml",
+      "source": "https://raw.githubusercontent.com/google/material-design-icons/10ecc14790612ca8fd164e3f4ffe9c16fc50d5b7/symbols/android/add/materialsymbolsoutlined/add_24px.xml",
+      "sourceSha256": "784176dc9c204f9d2724d41e1b6fc10020780424364d246de2237875467c6980",
+      "sha256": "49b42bf26b44e5604292aff29dbc58448b0ac481853cdf4ce0503767fbb7e2ba"
+    },
+    {
+      "symbol": "Search",
+      "resource": "ms_search.xml",
+      "source": "https://raw.githubusercontent.com/google/material-design-icons/10ecc14790612ca8fd164e3f4ffe9c16fc50d5b7/symbols/android/search/materialsymbolsoutlined/search_24px.xml",
+      "sourceSha256": "e99d075e9867ec5347fc850eb629a6bbef1819cf393c39eaa06b43251f96ecd3",
+      "sha256": "fb3d7c40cb9980c5f97767f31d2442d2686acd1a37ea9400dd6c29b564c59aa3"
+    },
+    {
+      "symbol": "Folder",
+      "resource": "ms_folder.xml",
+      "source": "https://raw.githubusercontent.com/google/material-design-icons/10ecc14790612ca8fd164e3f4ffe9c16fc50d5b7/symbols/android/folder/materialsymbolsoutlined/folder_24px.xml",
+      "sourceSha256": "527c6a7dd741753f91cd8f33894aa2cfac375138c852b1ebfc2b43195ebaa313",
+      "sha256": "423ba2836763085961f63b556c595b5b1df2b86703e92985e3c562d1d4cbda77"
+    },
+    {
+      "symbol": "Chat",
+      "resource": "ms_chat_bubble.xml",
+      "source": "https://raw.githubusercontent.com/google/material-design-icons/10ecc14790612ca8fd164e3f4ffe9c16fc50d5b7/symbols/android/chat_bubble/materialsymbolsoutlined/chat_bubble_24px.xml",
+      "sourceSha256": "384d1622babb502280ae1627ccaea1f9978b5f64426e6db49ea1394259f21cb7",
+      "sha256": "071b735f38e39b295e21d02eb0140715cbe7debb883d83796c86b976d084bcab"
+    },
+    {
+      "symbol": "Settings",
+      "resource": "ms_settings.xml",
+      "source": "https://raw.githubusercontent.com/google/material-design-icons/10ecc14790612ca8fd164e3f4ffe9c16fc50d5b7/symbols/android/settings/materialsymbolsoutlined/settings_24px.xml",
+      "sourceSha256": "7f350bff4766520d4011185658a0c05e517aa2729e7b8113b8b28d2a8a5d45fb",
+      "sha256": "1bca7a18657b25024b49b432073844d3ccfa52cfe3a9658a1df5423b2678ab9a"
+    },
+    {
+      "symbol": "Close",
+      "resource": "ms_close.xml",
+      "source": "https://raw.githubusercontent.com/google/material-design-icons/10ecc14790612ca8fd164e3f4ffe9c16fc50d5b7/symbols/android/close/materialsymbolsoutlined/close_24px.xml",
+      "sourceSha256": "31644025d94b5a5637d75660ebdcb93c398f2620bfc12f7a7a9362965e271288",
+      "sha256": "e08ce4bddcaf33f14a2a19fd28aea779cb85cf8b0a7df1b6b51abc981f083efb"
+    },
+    {
+      "symbol": "ChevronRight",
+      "resource": "ms_chevron_right.xml",
+      "source": "https://raw.githubusercontent.com/google/material-design-icons/10ecc14790612ca8fd164e3f4ffe9c16fc50d5b7/symbols/android/chevron_right/materialsymbolsoutlined/chevron_right_24px.xml",
+      "sourceSha256": "d3f53b271fdb2150775b4252bf46139c3ab5ca872802372a1089e6e1dd6f2a35",
+      "sha256": "b9fa263469fe2713236ac9411c82e1b3217879125567533038cd5979b39b0ea2"
+    },
+    {
+      "symbol": "ExpandMore",
+      "resource": "ms_expand_more.xml",
+      "source": "https://raw.githubusercontent.com/google/material-design-icons/10ecc14790612ca8fd164e3f4ffe9c16fc50d5b7/symbols/android/expand_more/materialsymbolsoutlined/expand_more_24px.xml",
+      "sourceSha256": "756fa48d1ff7011591cf68956fecbf0fd172be284441fc90db04a8646a7fa741",
+      "sha256": "cad08f22532208663b8fcbf9a7f653df235e593598948dec84f74e1d8d769c29"
+    },
+    {
+      "symbol": "ExpandLess",
+      "resource": "ms_expand_less.xml",
+      "source": "https://raw.githubusercontent.com/google/material-design-icons/10ecc14790612ca8fd164e3f4ffe9c16fc50d5b7/symbols/android/expand_less/materialsymbolsoutlined/expand_less_24px.xml",
+      "sourceSha256": "fcce18453a03cdf6d91619667e84eaea3b86447431f95a1b8f23a7ebee790633",
+      "sha256": "7646e87305ce05472dfe6b31a72b6f7fe3634116edc37eed443bef3279948032"
+    },
+    {
+      "symbol": "ArrowBack",
+      "resource": "ms_arrow_back.xml",
+      "source": "https://raw.githubusercontent.com/google/material-design-icons/10ecc14790612ca8fd164e3f4ffe9c16fc50d5b7/symbols/android/arrow_back/materialsymbolsoutlined/arrow_back_24px.xml",
+      "sourceSha256": "cd1f5a1109c07c79ac3e52a9a1ae8ab14be7a3bff7f7bc3559f7088d60eca3aa",
+      "sha256": "26124ffe2ce4420fd87c821c4cd4d24d0d929f395f38df0aca6af2653ee72b84"
+    },
+    {
+      "symbol": "Send",
+      "resource": "ms_arrow_upward.xml",
+      "source": "https://raw.githubusercontent.com/google/material-design-icons/10ecc14790612ca8fd164e3f4ffe9c16fc50d5b7/symbols/android/arrow_upward/materialsymbolsoutlined/arrow_upward_24px.xml",
+      "sourceSha256": "b398faf24ea12a63b2c4f708d8be24c8ae3714d277ea82da8f405cd066873d0a",
+      "sha256": "4e5b1fa707a41927b853eeb4637de23ff6c8a360bd337e0047057929cf9e0ada"
+    },
+    {
+      "symbol": "Stop",
+      "resource": "ms_stop_circle.xml",
+      "source": "https://raw.githubusercontent.com/google/material-design-icons/10ecc14790612ca8fd164e3f4ffe9c16fc50d5b7/symbols/android/stop_circle/materialsymbolsoutlined/stop_circle_24px.xml",
+      "sourceSha256": "da773c29fe4a84ad08015f52c8302d4059f75f949efbcb94fa310fe312804b5d",
+      "sha256": "e124bf77999ed0db401ecfad96ef1a26b0f183a399d13f8a4e0728e4cc8c5934"
+    },
+    {
+      "symbol": "AttachFile",
+      "resource": "ms_attach_file.xml",
+      "source": "https://raw.githubusercontent.com/google/material-design-icons/10ecc14790612ca8fd164e3f4ffe9c16fc50d5b7/symbols/android/attach_file/materialsymbolsoutlined/attach_file_24px.xml",
+      "sourceSha256": "79f0ff96b1d8e7cd2a1ae40ca23881e44df8d959f9e6cd06b48b91ca7566c821",
+      "sha256": "ea973c0184a9bf019f4accd8ce6c7ecee4ba75a2576dadd557d623afe5524b6d"
+    },
+    {
+      "symbol": "Shield",
+      "resource": "ms_shield.xml",
+      "source": "https://raw.githubusercontent.com/google/material-design-icons/10ecc14790612ca8fd164e3f4ffe9c16fc50d5b7/symbols/android/shield/materialsymbolsoutlined/shield_24px.xml",
+      "sourceSha256": "2cc7a7bd203321ff547581554c64efacaa1208a818232393c291cbf6ccbbb5ff",
+      "sha256": "1901afd34ca518d1fa7983cb196763b8eef8fc40e6090bdfb3a977b90c7b3aa5"
+    },
+    {
+      "symbol": "Model",
+      "resource": "ms_smart_toy.xml",
+      "source": "https://raw.githubusercontent.com/google/material-design-icons/10ecc14790612ca8fd164e3f4ffe9c16fc50d5b7/symbols/android/smart_toy/materialsymbolsoutlined/smart_toy_24px.xml",
+      "sourceSha256": "9efcc30e1d1a1cdc6643f26cf9c4d505ede8e31cb9235e78d3e252119190773c",
+      "sha256": "7c9690782b5670941a4e56c08ed707a16846840b4ec8e6d003cf8a887d70631c"
+    },
+    {
+      "symbol": "Tune",
+      "resource": "ms_tune.xml",
+      "source": "https://raw.githubusercontent.com/google/material-design-icons/10ecc14790612ca8fd164e3f4ffe9c16fc50d5b7/symbols/android/tune/materialsymbolsoutlined/tune_24px.xml",
+      "sourceSha256": "7620ffcecd323ed28d0479a615129efd1202701bc66e58d28e55395b58614014",
+      "sha256": "d112cced83a247f51e823e995c95f362592fdc6e96aef82c7c3c844e27657d46"
+    },
+    {
+      "symbol": "Code",
+      "resource": "ms_code.xml",
+      "source": "https://raw.githubusercontent.com/google/material-design-icons/10ecc14790612ca8fd164e3f4ffe9c16fc50d5b7/symbols/android/code/materialsymbolsoutlined/code_24px.xml",
+      "sourceSha256": "fcfc955faa74c73a35e210fe5b6d7e0e074e391eb019fd6fb1d3a72428b9eee3",
+      "sha256": "fb8756acbd3d4d47394c9d4b9debaa7b716e6ec5c33f5732d80fbef75766cb79"
+    },
+    {
+      "symbol": "Terminal",
+      "resource": "ms_terminal.xml",
+      "source": "https://raw.githubusercontent.com/google/material-design-icons/10ecc14790612ca8fd164e3f4ffe9c16fc50d5b7/symbols/android/terminal/materialsymbolsoutlined/terminal_24px.xml",
+      "sourceSha256": "2c21f8f0cd32717564e90dba94ffddbc8c1d04851aa9ac3a41822f2ea735b749",
+      "sha256": "53f881f2110b93bae81aae57abff79060f9c5f0c76a4d4ab4be05579f216b73e"
+    },
+    {
+      "symbol": "Difference",
+      "resource": "ms_difference.xml",
+      "source": "https://raw.githubusercontent.com/google/material-design-icons/10ecc14790612ca8fd164e3f4ffe9c16fc50d5b7/symbols/android/difference/materialsymbolsoutlined/difference_24px.xml",
+      "sourceSha256": "e13db1b4429b02e52475400c7e0d578d6bc04dcf56a5b761c84f4126410da37b",
+      "sha256": "75969ca87da118310b6636c45cb13b421684115182f798fcc960457083c6320b"
+    },
+    {
+      "symbol": "DataUsage",
+      "resource": "ms_data_usage.xml",
+      "source": "https://raw.githubusercontent.com/google/material-design-icons/10ecc14790612ca8fd164e3f4ffe9c16fc50d5b7/symbols/android/data_usage/materialsymbolsoutlined/data_usage_24px.xml",
+      "sourceSha256": "881ce5292b1ec9349bba40bc35ec3dcbefb38caa0dd1837340f0cffc473fae07",
+      "sha256": "a9a222a591c3b33cf591177271a87024f3053b2befee4fcdebd5210d6705c63e"
+    },
+    {
+      "symbol": "Extension",
+      "resource": "ms_extension.xml",
+      "source": "https://raw.githubusercontent.com/google/material-design-icons/10ecc14790612ca8fd164e3f4ffe9c16fc50d5b7/symbols/android/extension/materialsymbolsoutlined/extension_24px.xml",
+      "sourceSha256": "bc0fec4d13b0f4e71c3ac6209c5f323932f8f6011d8eb181980b7cc0511670bb",
+      "sha256": "be44162fec3515237c511ab13a725a5601adcfc5e1478267674d0770f41c611a"
+    },
+    {
+      "symbol": "Copy",
+      "resource": "ms_content_copy.xml",
+      "source": "https://raw.githubusercontent.com/google/material-design-icons/10ecc14790612ca8fd164e3f4ffe9c16fc50d5b7/symbols/android/content_copy/materialsymbolsoutlined/content_copy_24px.xml",
+      "sourceSha256": "f83b9c4f3f51b5a64365e6222498934cbccaead05fd720d4cabcb175eb50d2d4",
+      "sha256": "23d730f016d3ad5c8445b2648ea8f28fd8eb4391e747924cceb91054ab5e19b7"
+    },
+    {
+      "symbol": "Share",
+      "resource": "ms_share.xml",
+      "source": "https://raw.githubusercontent.com/google/material-design-icons/10ecc14790612ca8fd164e3f4ffe9c16fc50d5b7/symbols/android/share/materialsymbolsoutlined/share_24px.xml",
+      "sourceSha256": "e68cc51976886c8395e3317d8bea0b8324e98d365ed8a15fc8c67767c2241931",
+      "sha256": "f548b43838f54ff94a6817de728ad755a9d5d497c0526db51d59833b08a871c7"
+    },
+    {
+      "symbol": "Download",
+      "resource": "ms_download.xml",
+      "source": "https://raw.githubusercontent.com/google/material-design-icons/10ecc14790612ca8fd164e3f4ffe9c16fc50d5b7/symbols/android/download/materialsymbolsoutlined/download_24px.xml",
+      "sourceSha256": "75f8b4dae0ef464f527f3adadde29a0d57e9875985d49f44df3585f60fe9fbf4",
+      "sha256": "50c7b59b6c00b841ee24e668184a4c4524548e72067406858e2ca0e76084f035"
+    },
+    {
+      "symbol": "OpenInNew",
+      "resource": "ms_open_in_new.xml",
+      "source": "https://raw.githubusercontent.com/google/material-design-icons/10ecc14790612ca8fd164e3f4ffe9c16fc50d5b7/symbols/android/open_in_new/materialsymbolsoutlined/open_in_new_24px.xml",
+      "sourceSha256": "12b1dfc1be3b858a2d22781dcae341ec180834266198022b2f63494f7aab9c04",
+      "sha256": "ea7215361749cd60d1a4c8b1849f52ed3005d7614ed0a305f7f926d12e07452d"
+    },
+    {
+      "symbol": "Refresh",
+      "resource": "ms_refresh.xml",
+      "source": "https://raw.githubusercontent.com/google/material-design-icons/10ecc14790612ca8fd164e3f4ffe9c16fc50d5b7/symbols/android/refresh/materialsymbolsoutlined/refresh_24px.xml",
+      "sourceSha256": "983a75fe91322a8bd3cae0050c293242d651d43c67ae9ab12691d9b069625b7f",
+      "sha256": "6796dfb3a31c78434d237b0b40812589de5fe178472aeded2a42d2c14937777a"
+    },
+    {
+      "symbol": "Check",
+      "resource": "ms_check_circle.xml",
+      "source": "https://raw.githubusercontent.com/google/material-design-icons/10ecc14790612ca8fd164e3f4ffe9c16fc50d5b7/symbols/android/check_circle/materialsymbolsoutlined/check_circle_24px.xml",
+      "sourceSha256": "f2869c24d1b995d4f8ff47415ffaa6a8808c232cb34039097125c4d1307be8b6",
+      "sha256": "6f694ea580db334460be6fd1f2ee80933f3616ff18137d0fb5e2a10381f1f7eb"
+    },
+    {
+      "symbol": "Warning",
+      "resource": "ms_warning.xml",
+      "source": "https://raw.githubusercontent.com/google/material-design-icons/10ecc14790612ca8fd164e3f4ffe9c16fc50d5b7/symbols/android/warning/materialsymbolsoutlined/warning_24px.xml",
+      "sourceSha256": "eec68dd9db555e0c89b06d3b32215d5e5fc56d7a447db197b5057c93e899ae60",
+      "sha256": "91c7a6ba716a00ed5225897778f5c844054cf1fb3b6fb8a3ed7db93de229fd40"
+    },
+    {
+      "symbol": "Error",
+      "resource": "ms_error.xml",
+      "source": "https://raw.githubusercontent.com/google/material-design-icons/10ecc14790612ca8fd164e3f4ffe9c16fc50d5b7/symbols/android/error/materialsymbolsoutlined/error_24px.xml",
+      "sourceSha256": "ece185429a383d2408d4c20897d6fd05a6c141182feb0c5738b231ded792adfd",
+      "sha256": "60b5203a136c945cf4493f0a2e3267fc89e8957fc5d9a501948a2126d0a76470"
+    },
+    {
+      "symbol": "Info",
+      "resource": "ms_info.xml",
+      "source": "https://raw.githubusercontent.com/google/material-design-icons/10ecc14790612ca8fd164e3f4ffe9c16fc50d5b7/symbols/android/info/materialsymbolsoutlined/info_24px.xml",
+      "sourceSha256": "b105df7f824e7eafbd0a73ebc55085134409161d606894c97685ba1cd38cbcc2",
+      "sha256": "1a2783a0859a51622b4a61cc61aadb65f1f33cfa1445b4081aa4c1d3e4e145a0"
+    },
+    {
+      "symbol": "Notifications",
+      "resource": "ms_notifications.xml",
+      "source": "https://raw.githubusercontent.com/google/material-design-icons/10ecc14790612ca8fd164e3f4ffe9c16fc50d5b7/symbols/android/notifications/materialsymbolsoutlined/notifications_24px.xml",
+      "sourceSha256": "9915e9e282df7d59758c70c32bde9dc9cfee8401abfcf3311b508ac63ca5e8de",
+      "sha256": "fe2dde3be5e9f19886743e09e2fcd23892ca46819dc7e6be961022521daa5241"
+    },
+    {
+      "symbol": "Palette",
+      "resource": "ms_palette.xml",
+      "source": "https://raw.githubusercontent.com/google/material-design-icons/10ecc14790612ca8fd164e3f4ffe9c16fc50d5b7/symbols/android/palette/materialsymbolsoutlined/palette_24px.xml",
+      "sourceSha256": "77da392d239862f1c1a4f736d698debcffe9477eacb49947b41210360af23b92",
+      "sha256": "6f46c83feb50df3189148c99491094148ee2d72eea96c9d665b445ce3c72e6f4"
+    },
+    {
+      "symbol": "TextSize",
+      "resource": "ms_format_size.xml",
+      "source": "https://raw.githubusercontent.com/google/material-design-icons/10ecc14790612ca8fd164e3f4ffe9c16fc50d5b7/symbols/android/format_size/materialsymbolsoutlined/format_size_24px.xml",
+      "sourceSha256": "345d741128b9c36bc2324170ca7251b088d4c5a078e43f7a6371748af5cbba6c",
+      "sha256": "60e5059cf5b380c67e1c461265e7c24119e675e72ff047fdc026913090605a68"
+    },
+    {
+      "symbol": "Person",
+      "resource": "ms_person.xml",
+      "source": "https://raw.githubusercontent.com/google/material-design-icons/10ecc14790612ca8fd164e3f4ffe9c16fc50d5b7/symbols/android/person/materialsymbolsoutlined/person_24px.xml",
+      "sourceSha256": "ab409acf8825d92c92928e06d2d84c003f9e227033594443d0ba5700fe2fe072",
+      "sha256": "0f8a889a1e03016cccca5b6743909b057f1feaa174f8d5867938cde9e3bea52b"
+    },
+    {
+      "symbol": "History",
+      "resource": "ms_history.xml",
+      "source": "https://raw.githubusercontent.com/google/material-design-icons/10ecc14790612ca8fd164e3f4ffe9c16fc50d5b7/symbols/android/history/materialsymbolsoutlined/history_24px.xml",
+      "sourceSha256": "810cd1d657367d5f33c56bde96d6b3cb0e714528b8d60fb548a96cd4a63d257e",
+      "sha256": "8d107b78bbd9869cb1a694818b63ec4f1fe2a2150ed57f5d5701c0e1c9efa45f"
+    },
+    {
+      "symbol": "Description",
+      "resource": "ms_description.xml",
+      "source": "https://raw.githubusercontent.com/google/material-design-icons/10ecc14790612ca8fd164e3f4ffe9c16fc50d5b7/symbols/android/description/materialsymbolsoutlined/description_24px.xml",
+      "sourceSha256": "5b98cf8276cf644fa1e5c8a1e06ee5e1dc1e421454c66f7f6f77de416498bdc4",
+      "sha256": "97849c4b1842c7d7a43705f6c59b459086e0465466fb8a47d8be3755be0859da"
+    },
+    {
+      "symbol": "Wifi",
+      "resource": "ms_wifi.xml",
+      "source": "https://raw.githubusercontent.com/google/material-design-icons/10ecc14790612ca8fd164e3f4ffe9c16fc50d5b7/symbols/android/wifi/materialsymbolsoutlined/wifi_24px.xml",
+      "sourceSha256": "04d8de7a2d17e1a0def31119c7dc05796dfea3a58f506165319a54783df8efe3",
+      "sha256": "5f3caafcdc21b66b97f8f8640d28e33978dc2ddbdd3c1fd0c63a8916c75debc0"
+    },
+    {
+      "symbol": "WifiOff",
+      "resource": "ms_wifi_off.xml",
+      "source": "https://raw.githubusercontent.com/google/material-design-icons/10ecc14790612ca8fd164e3f4ffe9c16fc50d5b7/symbols/android/wifi_off/materialsymbolsoutlined/wifi_off_24px.xml",
+      "sourceSha256": "3104cfdffb561e6e8fd252afaa661e5dc3ee01ef109bdf6c3d7399dcc6797cf9",
+      "sha256": "d20a67d5f1f8d2bb7347f21fb03f22aab4cc838317300000c6ddf3fdc6695f17"
+    },
+    {
+      "symbol": "ViewSidebar",
+      "resource": "ms_view_sidebar.xml",
+      "source": "https://raw.githubusercontent.com/google/material-design-icons/10ecc14790612ca8fd164e3f4ffe9c16fc50d5b7/symbols/android/view_sidebar/materialsymbolsoutlined/view_sidebar_24px.xml",
+      "sourceSha256": "6072a994e015a7c95264ded23022c247e6387e56b2686bf7d873a6b5877bd316",
+      "sha256": "159d5ba4c1feb2dd729019636eff0bf9260409594a49d7b676dec4b7ffe5f4dd"
+    },
+    {
+      "symbol": "Delete",
+      "resource": "ms_delete.xml",
+      "source": "https://raw.githubusercontent.com/google/material-design-icons/10ecc14790612ca8fd164e3f4ffe9c16fc50d5b7/symbols/android/delete/materialsymbolsoutlined/delete_24px.xml",
+      "sourceSha256": "8589dfd0ab9c15182ba5698bd38c4502ad8f476dbd983e840a709a24281211fa",
+      "sha256": "d23df95a8087afbff54001ca37a2c63a1c9e5416e2bed774848901c85e73959c"
+    }
+  ]
+}

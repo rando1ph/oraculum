@@ -1,6 +1,7 @@
 package dev.oraculum.poc.ui
 
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Shapes
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
@@ -10,6 +11,8 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 /** Matcha Terminal DESIGN.md front-matter is the canonical dark token set. */
@@ -19,12 +22,15 @@ private val MatchaDark = darkColorScheme(
     secondary = Color(0xFFC2C9B4), onSecondary = Color(0xFF2C3323),
     secondaryContainer = Color(0xFF454B3B), onSecondaryContainer = Color(0xFFDEE5CF),
     tertiary = Color(0xFF71DC8D), onTertiary = Color(0xFF003918),
+    tertiaryContainer = Color(0xFF39A75E), onTertiaryContainer = Color(0xFF003416),
     background = Color(0xFF11140F), onBackground = Color(0xFFE0E4DA),
     surface = Color(0xFF11140F), onSurface = Color(0xFFE0E4DA),
     surfaceDim = Color(0xFF11140F), surfaceBright = Color(0xFF363A33),
     surfaceContainerLowest = Color(0xFF0B0F0A), surfaceContainerLow = Color(0xFF191D17),
     surfaceContainer = Color(0xFF1D211B), surfaceContainerHigh = Color(0xFF272B25),
     surfaceContainerHighest = Color(0xFF32362F), onSurfaceVariant = Color(0xFFC3C9B4),
+    surfaceVariant = Color(0xFF32362F), surfaceTint = Color(0xFFA5D65D),
+    inverseSurface = Color(0xFFE0E4DA), inverseOnSurface = Color(0xFF2D322B), inversePrimary = Color(0xFF446900),
     outline = Color(0xFF8D9380), outlineVariant = Color(0xFF434939),
     error = Color(0xFFFFB4AB), onError = Color(0xFF690005),
     errorContainer = Color(0xFF93000A), onErrorContainer = Color(0xFFFFDAD6),
@@ -36,12 +42,15 @@ private val MatchaLight = lightColorScheme(
     secondary = Color(0xFF58614A), onSecondary = Color.White,
     secondaryContainer = Color(0xFFDEE5CF), onSecondaryContainer = Color(0xFF171D10),
     tertiary = Color(0xFF006D33), onTertiary = Color.White,
+    tertiaryContainer = Color(0xFF8DF9A7), onTertiaryContainer = Color(0xFF00210B),
     background = Color(0xFFF8FAF1), onBackground = Color(0xFF191D17),
     surface = Color(0xFFF8FAF1), onSurface = Color(0xFF191D17),
     surfaceDim = Color(0xFFD8DDD1), surfaceBright = Color(0xFFF8FAF1),
     surfaceContainerLowest = Color.White, surfaceContainerLow = Color(0xFFF1F4E9),
     surfaceContainer = Color(0xFFEBEEE3), surfaceContainerHigh = Color(0xFFE5E8DD),
     surfaceContainerHighest = Color(0xFFDEE2D6), onSurfaceVariant = Color(0xFF434939),
+    surfaceVariant = Color(0xFFDEE2D6), surfaceTint = Color(0xFF446900),
+    inverseSurface = Color(0xFF2D322B), inverseOnSurface = Color(0xFFF1F4E9), inversePrimary = Color(0xFFA5D65D),
     outline = Color(0xFF737B67), outlineVariant = Color(0xFFC3C9B4),
     error = Color(0xFFBA1A1A), onError = Color.White,
     errorContainer = Color(0xFFFFDAD6), onErrorContainer = Color(0xFF410002),
@@ -52,6 +61,7 @@ private val MatchaOled = MatchaDark.copy(
     surfaceContainerLowest = Color.Black, surfaceContainerLow = Color(0xFF0C100B),
     surfaceContainer = Color(0xFF141912), surfaceContainerHigh = Color(0xFF20261D),
     surfaceContainerHighest = Color(0xFF2D3428), surfaceBright = Color(0xFF363E30),
+    surfaceVariant = Color(0xFF2D3428),
     onBackground = Color(0xFFE9EDDF), onSurface = Color(0xFFE9EDDF),
     onSurfaceVariant = Color(0xFFCCD3BE), outlineVariant = Color(0xFF4C5541),
 )
@@ -60,13 +70,25 @@ private val MatchaTypography = Typography().let { base ->
     base.copy(
         headlineLarge = base.headlineLarge.copy(fontFamily = FontFamily.SansSerif, fontSize = 28.sp, lineHeight = 36.sp, fontWeight = FontWeight.SemiBold),
         headlineSmall = base.headlineSmall.copy(fontFamily = FontFamily.SansSerif, fontSize = 20.sp, lineHeight = 28.sp, fontWeight = FontWeight.SemiBold),
+        titleLarge = base.titleLarge.copy(fontSize = 18.sp, lineHeight = 24.sp, fontWeight = FontWeight.SemiBold),
         titleMedium = base.titleMedium.copy(fontSize = 16.sp, lineHeight = 24.sp, fontWeight = FontWeight.Medium),
+        titleSmall = base.titleSmall.copy(fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.Medium),
         bodyLarge = base.bodyLarge.copy(fontSize = 16.sp, lineHeight = 24.sp),
         bodyMedium = base.bodyMedium.copy(fontSize = 14.sp, lineHeight = 20.sp),
         bodySmall = base.bodySmall.copy(fontSize = 12.sp, lineHeight = 16.sp),
+        labelLarge = base.labelLarge.copy(fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.Medium),
+        labelMedium = base.labelMedium.copy(fontSize = 12.sp, lineHeight = 16.sp, fontWeight = FontWeight.Medium),
         labelSmall = base.labelSmall.copy(fontFamily = FontFamily.Monospace, fontSize = 11.sp, lineHeight = 16.sp),
     )
 }
+
+private val MatchaShapes = Shapes(
+    extraSmall = RoundedCornerShape(8.dp),
+    small = OraculumTokens.InsetShape,
+    medium = OraculumTokens.ProcessShape,
+    large = OraculumTokens.ContentShape,
+    extraLarge = OraculumTokens.PanelShape,
+)
 
 private val LocalReadingScale = staticCompositionLocalOf { 1f }
 
@@ -76,6 +98,7 @@ fun OraculumTheme(mode: String = "dark", readingScale: Float = 1f, content: @Com
         MaterialTheme(
             colorScheme = when (mode) { "light" -> MatchaLight; "oled" -> MatchaOled; else -> MatchaDark },
             typography = MatchaTypography,
+            shapes = MatchaShapes,
             content = content,
         )
     }
