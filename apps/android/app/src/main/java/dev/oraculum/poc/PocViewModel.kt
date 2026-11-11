@@ -354,14 +354,6 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
                 })) },
                 readSnapshot = { readSnapshot(route.projectId, route.threadId) })
         } catch (error: NotificationTargetUnavailable) { throw ClientStateException(error.message.orEmpty()) }
-        catch (error: NotificationTargetReadFailed) {
-            val detail = "通知定位：${error.stage.label}失败（${error.elapsedMillis} ms）；当前会话已保留。"
-            val cause = error.cause
-            // Preserve authentication/connection classification; diagnostics never include native
-            // params, response contents, cursor tokens, file paths or credentials.
-            if (cause is GatewayException) throw GatewayException(cause.code, "$detail ${cause.userMessage}", cause.httpStatus)
-            throw ClientStateException(detail)
-        }
         if (route.scopeKey != scopeKey || readEpoch != epoch || target.snapshot.string("epoch") != epoch || eventVersion != receivedEventVersion ||
             !snapshotStillCurrent(generation, connectionGeneration, version, invalidationVersion) || position?.epoch != epoch ||
             (position?.sequence ?: Long.MAX_VALUE) > (target.snapshot.number("observedEndSeq") ?: -1))
@@ -710,10 +702,10 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
             saved.threadId?.let { loadLocalThread(it) }
         }
         reconcileUnknown()
-        refreshProjects()
-        refreshModels()
-        state.value.selectedProjectId?.let { refreshThreads(it) }
-        state.value.selectedThreadId?.let { syncThread(it) }
+        observeNativeRead(NativeReadStage.PROJECTS, "连接校正") { refreshProjects() }
+        observeNativeRead(NativeReadStage.MODELS, "连接校正") { refreshModels() }
+        state.value.selectedProjectId?.let { project -> observeNativeRead(NativeReadStage.ACTIVE_THREADS, "连接校正") { refreshThreads(project) } }
+        state.value.selectedThreadId?.let { thread -> observeNativeRead(NativeReadStage.SNAPSHOT, "连接校正") { syncThread(thread) } }
         heartbeatJob = viewModelScope.launch { while (isActive) { delay(15_000); events?.ping() } }
         updateControls()
     }
@@ -1293,6 +1285,12 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
     private fun handleFailure(error: Exception) {
         if (error is CancellationException && error !is TimeoutCancellationException) throw error
         when (error) {
+            is NativeReadFailed -> {
+                // Classify the original cause first, including auth revocation and local database
+                // corruption. Adding a stage must never weaken the existing recovery barriers.
+                handleFailure(error.cause as Exception)
+                mutableState.value = state.value.copy(error = "${error.context}：${error.stage.label}失败（${error.elapsedMillis} ms）。${state.value.error.orEmpty()}")
+            }
             is SQLiteDatabaseCorruptException -> {
                 durableStateAvailable = false
                 snapshotCurrent = false

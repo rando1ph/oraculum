@@ -20,8 +20,8 @@ class NotificationNavigationTest {
             selection = "target"
             draft = "target draft"
             fail("Read failure must not produce a target that can be committed")
-        } catch (error: NotificationTargetReadFailed) {
-            assertEquals(NotificationReadStage.SNAPSHOT, error.stage)
+        } catch (error: NativeReadFailed) {
+            assertEquals(NativeReadStage.SNAPSHOT, error.stage)
             assertTrue(error.cause is IOException)
             assertTrue(error.elapsedMillis >= 0)
         }
@@ -81,15 +81,15 @@ class NotificationNavigationTest {
     }
 
     @Test fun failuresIdentifyTheirExactReadStageWithoutChangingTheCause() = runBlocking {
-        for (stage in NotificationReadStage.entries) {
+        for (stage in listOf(NativeReadStage.PROJECTS, NativeReadStage.ACTIVE_THREADS, NativeReadStage.SNAPSHOT)) {
             val failure = IOException("private response details")
             try {
                 readNotificationTarget("project", "target",
-                    { if (stage == NotificationReadStage.PROJECTS) throw failure else projects },
-                    { if (stage == NotificationReadStage.ACTIVE_THREADS) throw failure else listed },
-                    { if (stage == NotificationReadStage.SNAPSHOT) throw failure else snapshot })
+                    { if (stage == NativeReadStage.PROJECTS) throw failure else projects },
+                    { if (stage == NativeReadStage.ACTIVE_THREADS) throw failure else listed },
+                    { if (stage == NativeReadStage.SNAPSHOT) throw failure else snapshot })
                 fail("The selected native read failed")
-            } catch (error: NotificationTargetReadFailed) {
+            } catch (error: NativeReadFailed) {
                 assertEquals(stage, error.stage)
                 assertSame(failure, error.cause)
             }
