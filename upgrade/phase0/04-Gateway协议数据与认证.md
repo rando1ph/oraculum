@@ -1,6 +1,8 @@
 # 04｜Gateway 协议、状态库、认证与主机文件
 
-本文是 2026-11-11 Phase 0 的**待审技术推荐**，不是已经实现的 API，也不授权启动 Phase 1。产品约束来自 [2.0 子项目](https://app.notion.com/p/4135421e690b815eb404c3024c860134) 与 [Phase 0 Task](https://app.notion.com/p/4155421e690b81829fe6ce746cff195d)。源码研究只读取文件与表定义，不读取真实数据库业务行、设备秘密或 Codex 凭据。
+> 2026-11-11 结项同步：[Phase 0](https://app.notion.com/p/4155421e690b81829fe6ce746cff195d) 已获用户接受并结项，[Phase 1](https://app.notion.com/p/4155421e690b818b8d19e6ab806641bd) 已获授权。本文保留 Phase 0 的研究证据；最新裁定见[升级子项目](https://app.notion.com/p/4135421e690b815eb404c3024c860134)。Android 后续按同一 Stitch 设计和 Compose ColorScheme 实现 Light / Dark / OLED Dark，仅做必要 token、对比度与可访问性验证，不另做设计稿或反复视觉审阅。旧 CSS 主题、Theme API v1 和历史偏好不要求迁移；Desktop 高级可导入主题为可选范围。Phase 1 不开发客户端 UI、不改 Stitch 原件，也不授权正式部署。
+
+本文是 2026-11-11 Phase 0 的**已接受技术规格**；原研究本身未实现 API，Phase 1 的独立实施授权与验收范围见文首链接。产品约束来自 [2.0 子项目](https://app.notion.com/p/4135421e690b815eb404c3024c860134) 与 [Phase 0 Task](https://app.notion.com/p/4155421e690b81829fe6ce746cff195d)。源码研究只读取文件与表定义，不读取真实数据库业务行、设备秘密或 Codex 凭据。
 
 ## 1. 推荐与边界
 
@@ -297,4 +299,4 @@ unknown operation 记录属于本设备的通信安全状态，应与可清理�
 | 本地安全存储不可用/损坏 | Android Keystore 失效和 Desktop keyring/basic_text 情况有明确恢复路径；不明文落盘，不丢草稿，不自动发 unknown |
 | 新库与 CLI 并发 | schema 不匹配拒绝打开；配对只消费一次；撤销实时可见；SQLite busy 不导致跳过回执/授权 |
 
-本章尚未完成的内容均是 Phase 1/2 工程验证：候选代码生成器编译实验、当前 Codex 权限 preset 持久行为、真实代理 WSS 空闲/长文件行为、Keystore/Secret Service 故障恢复，以及持续流下的快照合并。它们不是要求用户重新选择已批准框架、旧数据迁移或个人 VPS 参数。本章不把这些未测事项写成“已通过”；Phase 0 审阅接受后，仍须另行授权 Phase 1。
+本章尚未完成的内容均是 Phase 1/2 工程验证：候选代码生成器编译实验、当前 Codex 权限 preset 持久行为、真实代理 WSS 空闲/长文件行为、Keystore/Secret Service 故障恢复，以及持续流下的快照合并。它们不是要求用户重新选择已批准框架、旧数据迁移或个人 VPS 参数。本章不把这些未测事项写成“已通过”；Phase 0 已接受、Phase 1 已独立授权，后续按正式 Task 补充实现及测试证据。

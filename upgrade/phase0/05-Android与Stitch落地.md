@@ -1,6 +1,8 @@
 # Android 与 Stitch 落地规格
 
-> Phase 0 研究交付，2026-11-11。本文推荐供审阅，不代表已实现、已完成真机验收或获准进入 Phase 3。以 [2.0 子项目](https://app.notion.com/p/4135421e690b815eb404c3024c860134) 与 [Phase 0 Task](https://app.notion.com/p/4155421e690b81829fe6ce746cff195d) 已批准决定为边界。
+> 2026-11-11 结项同步：[Phase 0](https://app.notion.com/p/4155421e690b81829fe6ce746cff195d) 已获用户接受并结项，[Phase 1](https://app.notion.com/p/4155421e690b818b8d19e6ab806641bd) 已获授权。本文保留 Phase 0 的研究证据；最新裁定见[升级子项目](https://app.notion.com/p/4135421e690b815eb404c3024c860134)。Android 后续按同一 Stitch 设计和 Compose ColorScheme 实现 Light / Dark / OLED Dark，仅做必要 token、对比度与可访问性验证，不另做设计稿或反复视觉审阅。旧 CSS 主题、Theme API v1 和历史偏好不要求迁移；Desktop 高级可导入主题为可选范围。Phase 1 不开发客户端 UI、不改 Stitch 原件，也不授权正式部署。
+
+> Phase 0 研究交付，2026-11-11。本文技术路线和设计冲突矩阵已获接受，主题范围按最新裁定同步；不代表已实现、已完成真机验收或获准进入 Phase 3。以 [2.0 子项目](https://app.notion.com/p/4135421e690b815eb404c3024c860134) 与 [Phase 0 Task](https://app.notion.com/p/4155421e690b81829fe6ce746cff195d) 已批准决定为边界。
 
 ## 1. 结论与输入保全
 
@@ -25,7 +27,7 @@
 | `oraculum_2.0_right_inspector_3` | HTML + PNG | 右抽屉「Diff」；文件标签、逐行 Diff、完整代码、输出/用量空态 | `InspectorDiff`、`InspectorOutput`、`InspectorUsage`；参考 `diff.tsx`、`diff-lines.ts`、`usage.tsx`；只读展示原生或授权文件数据 |
 | `matcha_terminal/DESIGN.md` | Markdown | 色彩、字体、形状、间距、动效与响应式说明 | `OraculumTheme` 的输入；其中与屏幕、Notion 冲突的泛化描述见第 4 节 |
 
-没有独立设计文件的必要状态：配对、凭据失效、首次项目选择、无会话、恢复失败、断网只读、历史加载/损坏、附件上传与取消、权限请求输入/MCP elicitation、会话管理与删除确认、Plan/Review/Compact、通知设置解释、Light。这些由既有能力和 2.0 正典确定，以相同设计系统补齐状态稿；不重新探索整体视觉，也不把缺稿作为删减功能的依据。
+没有独立设计文件的必要状态：配对、凭据失效、首次项目选择、无会话、恢复失败、断网只读、历史加载/损坏、附件上传与取消、权限请求输入/MCP elicitation、会话管理与删除确认、Plan/Review/Compact、通知设置解释。这些由既有能力和 2.0 正典确定，在相同设计系统内补齐实现状态，不重新探索整体视觉，也不把缺稿作为删减功能的依据。Light/OLED 直接由同一 Compose ColorScheme token 适配，无需额外生成设计稿。
 
 ### 1.2 原文件 SHA-256
 
@@ -58,7 +60,7 @@
 
 ### 3.1 深色事实与推荐归一规则
 
-HTML 的实际色值比设计说明中的抽象文字更接近成稿，但不同屏幕并不完全一致。推荐以主对话/设置 HTML 和 DESIGN.md front matter 一致的语义值建立基础 token，以 Inspector 特有色作为组件 token；Phase 3 做同状态截图审阅后再合并，不在 Phase 0 修改定稿。
+HTML 的实际色值比设计说明中的抽象文字更接近成稿，但不同屏幕并不完全一致。推荐以主对话/设置 HTML 和 DESIGN.md front matter 一致的语义值建立基础 token，以 Inspector 特有色作为组件 token；Phase 3 通过实现截图与对比度验证收敛 token，不新增独立视觉稿审阅，不修改定稿。
 
 | 角色 | 已提取色值 | Compose 推荐映射 |
 | --- | --- | --- |
@@ -75,7 +77,7 @@ HTML 的实际色值比设计说明中的抽象文字更接近成稿，但不同
 | Diff（右 Inspector HTML） | 新增背景 `rgba(116,161,46,.18)`、字 `#B8E986`；删除背景 `rgba(239,68,68,.18)`、字 `#FCA5A5` | `DiffColors`，始终保留 `+/-`、行号及文本选择 |
 | Inspector 差异 | 文件面板 `#191D17`，Diff 面板 `#181C16`；文本 `#E4E7DF` / `#E3E9DC` | 初期保留组件局部值，截图对照后决定是否收敛 |
 
-**Light/Dark 已批准，但只有 Dark 输入完整。** 设置页出现「跟随系统 / 浅色 / 深色 / OLED 纯黑」，不表示已经交付 Light/OLED 成稿；OLED 只是待用户接受的可选视觉范围，不属于新增强制验收。建议 Phase 3 为同一 token 体系补齐 Light，默认主题模式跟随系统、强调色默认 Matcha；Dynamic Color 作为可选开关，仅 Android 12+ 生效，低版本回退 Matcha。Light 衍生稿及用户同意纳入时的 OLED 衍生稿要由用户视觉审阅；这不是再次挑选总体风格。Android 官方说明 Material 3 的 `ColorScheme`/Typography/Shapes 可独立定制，Dynamic Color 从 Android 12 起可用，部分 M3 API 仍需实验性 opt-in；不能把“Expressive”当作引入全部 alpha 依赖的理由。[官方 Material 3 文档](https://developer.android.com/develop/ui/compose/designsystems/material3)
+**Light / Dark / OLED Dark 已明确批准。** 三套配色基于同一份已定稿 Stitch 视觉与 Compose ColorScheme；OLED 使用纯黑背景，同时调整文字、容器和系统栏对比度。后续仅做颜色 token 适配、基础可读性与无障碍验证，不新增 Light/OLED 设计稿或反复独立视觉审阅。默认主题模式与 Matcha 强调色沿用定稿；Dynamic Color 不属于首版强制范围。Android 官方说明 Material 3 的 `ColorScheme`/Typography/Shapes 可独立定制，Dynamic Color 从 Android 12 起可用，部分 M3 API 仍需实验性 opt-in；不能把“Expressive”当作引入全部 alpha 依赖的理由。[官方 Material 3 文档](https://developer.android.com/develop/ui/compose/designsystems/material3)
 
 ### 3.2 字体、间距与形状
 
@@ -117,8 +119,8 @@ Markdown/GFM、代码、Diff 使用原生渲染。Phase 3 先验证成熟 Markdo
 | DESIGN.md 的 bottom navigation rails | 与 Notion 明确禁止底部 Navigation Bar 冲突；具体 7 屏没有该栏 | 以已批准三面板为准；底部 Composer 和 Android 系统手势条可保留 |
 | 48dp 规范与 HTML 小按钮 | CSS 的 28/32/44px 命中区不满足自身规范 | 扩大原生命中区；长标题/徽标换行而不遮挡关闭/审批/保存 |
 | 假状态栏、5G、电量、固定 844px 手机外框 | 设计画布装饰 | 生产使用系统状态栏/insets，不绘制假电量网络或固定设备外框 |
-| Light/OLED/Dynamic Color | 设置入口存在，缺完整衍生稿 | 保持现有定稿不变，Phase 3 提交 Light 同屏衍生效果审阅；OLED 仅在用户接受范围后补齐；Dynamic Color 默认关闭以保留 Matcha 品牌 |
-| Trusted CSS Themes | 父项目 Theme API v1 面向 Web DOM/CSS；Compose 不执行该格式 | Desktop 继续可信 CSS；Android 原生主题范围必须由用户接受（第 9 节），不得暗中取消可定制能力或塞回 WebView |
+| Light/OLED/Dynamic Color | Light/Dark/OLED Dark 已由用户批准；无需额外衍生稿 | 保持原件，Phase 3 按同一 ColorScheme token 实现并验证对比度与可读性；Dynamic Color 非首版强制 |
+| Trusted CSS Themes | Theme API v1 面向 Web DOM/CSS，最新裁定取消强制迁移；Compose 不执行该格式 | Android 使用原生三套配色；Desktop 基本外观可恢复，高级可导入主题可选，不引入 WebView 或 CSS 转换器 |
 
 ## 5. 三面板、返回栈与启动恢复
 
@@ -213,7 +215,7 @@ WorkManager 用于可延后的缓存清理或显式传输后处理，不能承�
 | B. 对话最小闭环 | 复验 Phase 2 已完成的最小发送/事件/重连闭环，再补项目/会话入口、默认恢复、Room/DataStore、停止/未知对账、左右抽屉 | 未知写保持查询状态；不自动重发来伪造成功 |
 | C. 核心能力齐全 | GFM/代码、过程/Plan、审批与输入、模型/effort/权限、会话操作、Diff、用量、扩展/子代理 | 按能力表明确禁用/提示受限接口，修复必要适配；不伪造 UI 数据 |
 | D. 文件与设备体验 | SAF、上传、成果保存/分享/预览、通知、IME、Back、旋转、缓存修正、长历史性能 | 按断网/过期/空间不足清理临时资源，保留草稿与原生历史 |
-| E. 视觉与正式候选验证 | 深色逐屏对照与 Light 衍生稿审阅；OLED 仅用户同意纳入时验收，动态色可选，真实手机与远程链路，签名身份静态检查 | 不宣称模拟器/静态截图替代真机；签名/安装/正式发布按独立授权执行 |
+| E. 视觉与正式候选验证 | 定稿实现对照与 Light/Dark/OLED Dark token、对比度和无障碍验证；不另做设计稿，动态色非强制，真实手机与远程链路，签名身份静态检查 | 不宣称模拟器/静态截图替代真机；签名/安装/正式发布按独立授权执行 |
 
 ### 8.1 可测验收清单
 
@@ -228,11 +230,11 @@ WorkManager 用于可延后的缓存清理或显式传输后处理，不能承�
 9. **性能与缓存**：先定义代表性夹具（例如 1,000 条已完成 item、长工具输出与分页、连续流式增量），测冷启动缓存首屏、切会话、滚动、内存与数据库增长；发布前确定测量基线和允许退化范围。未经测量不承诺某个毫秒值。
 10. **发行边界**：`dev.oraculum.poc`、原长期证书、明确 versionCode 与 sourceGit；不把本阶段研究当成构建/签名/安装授权；真实 Codex 项目、会话和配置的保全要有证据。
 
-## 9. 真正需要用户审阅的剩余问题
+## 9. 已接受的主题范围与后续技术验证
 
-**Android 原生可定制主题的产品范围**需要一次明确接受：推荐 2.0 Android 先提供已定稿 Matcha、Light/Dark、可选 Dynamic Color、阅读字号与双方本机身份；原始可信 CSS 主题继续在 Desktop 支持。Android 不承诺直接运行 Theme API v1 CSS，也不偷偷删掉“可定制”要求。若用户仍要求可导入任意主题包，应另行定义不含脚本的原生 token/资源格式及范围，再估算是否纳入 2.0；不要做通用 CSS→Compose 转换器。依据是父项目 [docs/THEMING.md](../../docs/THEMING.md) 的 DOM/CSS 合约与本子项目原生 Compose 决策之间存在格式边界。
+**Android 原生主题范围已明确接受**：按唯一 Stitch 定稿与 Compose ColorScheme 实现 Light / Dark / OLED Dark，保留本机阅读字号与身份偏好；Dynamic Color 非首版强制。旧 CSS 主题、Theme API v1、四套主题和历史偏好不要求迁移。Desktop 高级可导入主题可选；Android 若以后需要额外可导入 token/资源包，再另行确定范围，不做通用 CSS→Compose 转换器。历史 [docs/THEMING.md](../../docs/THEMING.md) 可供选做可信 CSS 时参考，不构成 2.0 必需迁移合同。
 
-其余事项不重复要求用户决策：Kotlin/Compose、无底栏、恢复上次会话、包名/证书、全新配对、无旧状态迁移均已批准。Light 具体视觉效果属于 Phase 3 衍生稿验收，OLED 只有用户接受纳入范围后才成为验收项；横屏是否三栏、库版本、字体许可、后台服务类型、缓存阈值属于实施者应完成的技术验证。只有用户希望提升为“应用被强停/深度休眠仍必须即时提醒”时，才需要另行讨论额外推送基础设施与权限，本文不擅自增加该范围。
+其余事项不重复要求用户决策：Kotlin/Compose、无底栏、恢复上次会话、包名/证书、全新配对、无旧状态迁移均已批准。Light/Dark/OLED 只在 Phase 3 做必要 token、对比度和可读性验证，不重复设计稿审阅；横屏是否三栏、库版本、字体许可、后台服务类型、缓存阈值属于实施者应完成的技术验证。只有用户希望提升为“应用被强停/深度休眠仍必须即时提醒”时，才需要另行讨论额外推送基础设施与权限，本文不擅自增加该范围。
 
 ## 10. 证据限制
 
