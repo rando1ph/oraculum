@@ -1,9 +1,12 @@
 // Candidate inspection plus real dpkg in a disposable root protected by a
 // read-only host mount. No host package/service/configuration is installed.
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { chmod, lstat, mkdir, mkdtemp, readFile, readdir, readlink, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
+import { createServer as createPortProbe } from 'node:net';
+import { randomBytes, randomUUID } from 'node:crypto';
+import { once } from 'node:events';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { hash, inventoryRuntime, root, untrackedDesignInput } from './build-gateway-runtime.mjs';
 
@@ -189,6 +192,28 @@ try {
   assert.ok(!privateFiles.some(name => name.endsWith('/trust.sqlite')));
   report.privateFiles = privateFiles;
   pass('Packaged CLI initializes fresh private Gateway config/SQLite and reports status using only its bundled Node and JavaScript');
+
+  // Exercise the bundled daemon itself with a finite stdio fixture, in a
+  // temporary config/port. This does not install/start a systemd service or run a model.
+  const portProbe=createPortProbe();portProbe.listen(0,'127.0.0.1');await once(portProbe,'listening');
+  const testPort=portProbe.address().port;await new Promise(resolve=>portProbe.close(resolve));
+  const peer=join(scratch,'native-fixture.mjs');
+  await writeFile(peer,`#!${join(runtime,'node/bin/node')}\nimport {createInterface} from 'node:readline';\nif(process.argv.includes('--version')){console.log('codex-fixture 0.0.0');process.exit(0); }\ncreateInterface({input:process.stdin}).on('line',line=>{const m=JSON.parse(line);if(m.id===undefined)return;let result=m.method==='initialize'?{userAgent:'codex-package-fixture'}:m.method==='model/list'?{data:[{id:'fixture',model:'fixture',displayName:'Fixture',supportedReasoningEfforts:[]}],nextCursor:null}:{};process.stdout.write(JSON.stringify({id:m.id,result})+'\\n');}).on('close',()=>process.exit(0));\n`,{mode:0o700});
+  const configFile=join(home,'.config/oraculum-gateway/config.json');const daemonConfig=JSON.parse(await readFile(configFile,'utf8'));
+  daemonConfig.port=testPort;daemonConfig.codexCommand=peer;await writeFile(configFile,JSON.stringify(daemonConfig)+'\n',{mode:0o600});
+  const daemon=spawn(join(runtime,'bin/oraculum-gateway'),['--config',configFile],{cwd:scratch,env:{...cliEnv,ORACULUM_GATEWAY_CONFIG:configFile},stdio:['ignore','pipe','pipe']});
+  const daemonExit=once(daemon,'exit');let stdout='',stderr='';daemon.stdout.on('data',part=>{stdout=(stdout+part.toString()).slice(-8192);});daemon.stderr.on('data',part=>{stderr=(stderr+part.toString()).slice(-8192);});
+  try{
+    await new Promise((resolve,reject)=>{const deadline=Date.now()+15000;const timer=setInterval(()=>{if(stdout.includes('Gateway is listening')){clearInterval(timer);resolve();}else if(daemon.exitCode!==null||Date.now()>deadline){clearInterval(timer);reject(new Error('Bundled Gateway did not become ready: '+stderr));}},25);});
+    const request=async(path,body,token)=>{const res=await fetch(`http://127.0.0.1:${testPort}${path}`,{method:body?'POST':'GET',headers:{'x-oraculum-protocol':'2',...(body?{'content-type':'application/json'}:{}),...(token?{authorization:'Bearer '+token}:{})},body:body?JSON.stringify(body):undefined});assert.equal(res.status,200);return res.json();};
+    const health=await request('/health');assert.equal(health.installationId,report.cliInit.installationId);
+    const device={deviceId:randomUUID(),deviceCredential:randomBytes(32).toString('base64url'),installationId:health.installationId};
+    const code=(await readFile(pairing.pairingFile,'utf8')).trim();const access=await request('/api/v2/auth/pair',{...device,code,label:'Isolated bundled Gateway fixture'});
+    const catalog=await request('/api/v2/models',undefined,access.accessToken);assert.equal(catalog.data.data[0].model,'fixture');
+    const capabilities=await request('/api/v2/capabilities',undefined,access.accessToken);assert.equal(capabilities.data.protocol.major,2);
+    report.isolation.temporaryGatewayProcess=true;
+    pass('Bundled Gateway main starts from unrelated cwd, pairs a fresh device and serves authenticated HTTP with a simulated native peer');
+  }finally{daemon.kill('SIGTERM');const kill=setTimeout(()=>daemon.kill('SIGKILL'),15000);kill.unref();const [code,signal]=await daemonExit;clearTimeout(kill);assert.equal(code,0);assert.equal(signal,null);}
 
   dpkg(fresh, ['--remove', 'oraculum-gateway']);
   assert.deepEqual(await Promise.all(sentinels.map(async file => hash(await readFile(file)))), before);

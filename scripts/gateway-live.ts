@@ -15,6 +15,7 @@ import { initGatewayConfig } from '../gateway/src/config';
 import { CodexAdapter, CodexError, record } from '../gateway/src/codex';
 import { GatewayService } from '../gateway/src/service';
 import { createGatewayServer } from '../gateway/src/server';
+import { mergeItem } from '../gateway/src/reconcile';
 
 const sleep = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
 const json = (value: unknown): Record<string, any> => { assert.ok(record(value), 'Expected an object'); return value; };
@@ -164,6 +165,16 @@ try {
   evidence.textTurn = { status: complete.turn.status, snapshotSynchronization: complete.snapshot.synchronization, streamDeltaCount: feed.frames.filter(frame => frame.kind === 'item.delta').length };
   assert.equal(complete.turn.status, 'completed', 'Text turn did not complete');
   const nativeMessage=items.find(item=>item.type==='agentMessage')!;
+  const completedFrame=await until(()=>feed.frames.find(frame=>frame.kind==='item.completed'&&frame.scope?.itemId===nativeMessage.id),'Native completed Item did not reach WSS',15000);
+  assert.equal(completedFrame.payload.item.data.text,nativeMessage.text,'WSS completed Item differs from native history');
+  // Reapply actual delayed stream frames after a recovered terminal snapshot.
+  let merged=mergeItem(undefined,{kind:'snapshot',id:nativeMessage.id,text:nativeMessage.text,terminal:true,complete:true});
+  const lateDeltas=feed.frames.filter(frame=>frame.kind==='item.delta'&&frame.scope?.itemId===nativeMessage.id);
+  for(const frame of lateDeltas)merged=mergeItem(merged,{kind:'delta',id:nativeMessage.id,text:frame.payload.delta});
+  merged=mergeItem(merged,{kind:'completed',id:nativeMessage.id,text:completedFrame.payload.item.data.text,complete:completedFrame.payload.complete});
+  assert.equal(merged.baseline,nativeMessage.text,'Recovered snapshot/delta merge duplicated native content');assert.equal(merged.stream,'');assert.equal(merged.status,'complete');
+  evidence.realReconciliation={nativeCompletedItemMatchesHistory:true,lateDeltaCount:lateDeltas.length,terminalSnapshotConverged:true};
+
   const detail=resource(await api('POST',`/threads/${threadId}/history/details`,{projectId,turnId:sent.nativeTurnId,itemId:nativeMessage.id}));
   const detailBytes=Buffer.from(detail.chunk,'base64');assert.equal(detail.complete,true,'Short native item details should fit a single chunk');
   assert.equal(createHash('sha256').update(detailBytes).digest('hex'),detail.sha256,'Native item detail digest differs');
