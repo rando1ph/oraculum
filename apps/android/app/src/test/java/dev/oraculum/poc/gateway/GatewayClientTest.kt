@@ -21,8 +21,69 @@ import org.junit.Test
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
+import java.io.File
+import java.security.MessageDigest
+import java.util.Base64
+import dev.oraculum.poc.files.HostFileGrant
 
 class GatewayClientTest {
+    @Test fun binaryUploadHasPinnedScopeLengthAndNeverRetriesLostAcknowledgement() = runBlocking {
+        Fixture().use { f ->
+            f.client.pair(f.endpoint, "C".repeat(32))
+            val file = File.createTempFile("attachment", ".txt")
+            try {
+                file.writeText("test bytes")
+                f.binaryResponse = MockResponse().setSocketPolicy(SocketPolicy.DISCONNECT_AFTER_REQUEST)
+                val metadata = buildJsonObject {
+                    put("operationId", OPERATION); put("projectId", INSTALLATION); put("threadId", "thread")
+                    put("draftId", EPOCH); put("name", "note.txt"); put("mime", "text/plain"); put("size", file.length())
+                }
+                assertEquals("CONNECTION_LOST", failure { f.client.uploadAttachment(metadata, file, {}) }.code)
+                assertEquals(1, f.binaryRequests.get())
+                val request = requireNotNull(f.binaryRequest)
+                assertEquals("application/octet-stream", request.getHeader("Content-Type"))
+                assertEquals(file.length().toString(), request.getHeader("Content-Length"))
+                assertEquals(metadata, parse(String(Base64.getUrlDecoder().decode(request.getHeader("X-Oraculum-Upload")))))
+                assertEquals("test bytes", request.body.readUtf8())
+            } finally { file.delete() }
+        }
+    }
+
+    @Test fun binaryAuthFailureExpiresSessionWithoutReplayingUpload() = runBlocking {
+        Fixture().use { f ->
+            f.client.pair(f.endpoint, "C".repeat(32)); val file = File.createTempFile("attachment", ".txt")
+            try {
+                file.writeText("x")
+                f.binaryResponse = MockResponse().setResponseCode(401).setHeader("Content-Type", "application/json")
+                    .setBody("""{"installationId":"$INSTALLATION","epoch":"$EPOCH","requestId":"r","error":{"code":"UNAUTHENTICATED","message":"expired"}}""")
+                val metadata = buildJsonObject { put("operationId", OPERATION); put("threadId", "thread"); put("size", 1) }
+                assertEquals("ACCESS_EXPIRED", failure { f.client.uploadAttachment(metadata, file, {}) }.code)
+                assertEquals(1, f.binaryRequests.get()); f.client.get("projects")
+                assertEquals(1, f.tokenRequests.get()); assertEquals(1, f.binaryRequests.get())
+            } finally { file.delete() }
+        }
+    }
+
+    @Test fun downloadChecksDigestAndDeletesUntrustedOrPartialFile() = runBlocking {
+        Fixture().use { f ->
+            f.client.pair(f.endpoint, "C".repeat(32)); val target = File.createTempFile("download", ".txt")
+            val bytes = "verified result".toByteArray()
+            val hash = Base64.getEncoder().encodeToString(MessageDigest.getInstance("SHA-256").digest(bytes))
+            val grant = HostFileGrant(OPERATION, INSTALLATION, null, "result.txt", "result.txt", "text/plain", bytes.size.toLong(), 20_000)
+            fun response(body: String) = MockResponse().setHeader("Content-Type", "text/plain").setHeader("Content-Length", bytes.size)
+                .setHeader("Content-Digest", "sha-256=:$hash:").setHeader("Content-Disposition", "attachment; filename*=UTF-8''result.txt").setBody(body)
+            try {
+                f.binaryResponse = response("verified result")
+                f.client.downloadFile(grant, target); assertArrayEquals(bytes, target.readBytes())
+                f.binaryResponse = response("replaced result")
+                try { f.client.downloadFile(grant, target); fail("Digest mismatch must fail") } catch (_: IllegalArgumentException) { }
+                assertFalse(target.exists()); assertEquals(2, f.binaryRequests.get())
+                f.binaryResponse = response("verified result").setSocketPolicy(SocketPolicy.DISCONNECT_DURING_RESPONSE_BODY)
+                try { f.client.downloadFile(grant, target); fail("Interrupted stream must fail") } catch (_: Exception) { }
+                assertFalse(target.exists()); assertEquals(3, f.binaryRequests.get())
+            } finally { target.delete() }
+        }
+    }
     @Test fun endpointRequiresCanonicalHttpsAndPreservesBasePath() {
         assertEquals("https://example.test/service/", GatewayEndpoint.parse(" HTTPS://Example.Test:443/service ").url)
         assertEquals("https://[::1]:8443/", GatewayEndpoint.parse("https://[::1]:8443").url)
@@ -203,6 +264,9 @@ class GatewayClientTest {
         val tokenRequests = AtomicInteger()
         val writeRequests = AtomicInteger()
         val redirectRequests = AtomicInteger()
+        val binaryRequests = AtomicInteger()
+        var binaryResponse = MockResponse().setResponseCode(500)
+        var binaryRequest: RecordedRequest? = null
 
         init {
             val certificate = HeldCertificate.Builder().commonName("localhost").addSubjectAlternativeName("localhost").build()
@@ -213,6 +277,9 @@ class GatewayClientTest {
                 override fun dispatch(request: RecordedRequest): MockResponse {
                     if (request.getHeader("X-Oraculum-Protocol") != "2") return error("PROTOCOL_INCOMPATIBLE", 409)
                     return when (request.path) {
+                        "/base/api/v2/threads/thread/attachments", "/base/api/v2/files/$OPERATION/content" -> {
+                            binaryRequests.incrementAndGet(); binaryRequest = request; binaryResponse
+                        }
                         "/base/health" -> json("""{"status":"ok","protocolMajor":$protocolMajor,"installationId":"$installation"}""")
                         "/base/api/v2/auth/pair" -> {
                             pairRequests.incrementAndGet()

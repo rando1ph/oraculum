@@ -17,7 +17,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.*
 import java.util.UUID
 
-/** Native PoC coordinator. All execution remains in the Gateway and official Codex. */
+/** Native client coordinator. All execution remains in the Gateway and official Codex. */
 class PocViewModel(application: Application) : AndroidViewModel(application) {
     private val client = GatewayClient(application)
     private val local = LocalStore(application)
@@ -28,6 +28,13 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
     private val draftMutex = Mutex()
     private val cacheMutex = Mutex()
     private val projection = HistoryProjection()
+    private val inspectorProjection = InspectorProjection()
+    private val notifications = dev.oraculum.poc.notifications.GatewayNotifications(application)
+    private var foreground = true
+    private var capabilityData: JsonObject? = null
+    private var nextThreadCursor: String? = null
+    private var nextDirectoryCursor: String? = null
+    private var correctionAttempts = 0
     private var scopeKey: String? = null
     private var epoch = ""
     private var position: EventPosition? = null
@@ -57,11 +64,54 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
     // connection's accepted explicit start receipt, never permission inferred from cached history.
     private val freshThreads = mutableSetOf<String>()
     private val firstTurnPermit = FirstTurnPermit()
+    private data class FileDispatch(val scope: String, val id: String, val project: String, val thread: String, val epoch: String, val generation: Int)
+    private var fileDispatch: FileDispatch? = null
+    private val fileDispatchScopes = mutableMapOf<String, FileDispatch>()
+    val files = dev.oraculum.poc.files.FilesController(application, client, viewModelScope,
+        beginWrite = { id, kind, project, thread ->
+            actionMutex.withLock {
+                requireOnline("attachments")
+                if (project != state.value.selectedProjectId || thread != state.value.selectedThreadId) throw ClientStateException("附件会话已改变")
+                checkUnknown(project, thread)
+                val scope = requireScope()
+                fileDispatch = FileDispatch(scope, id, project, thread, epoch, connectionGeneration)
+                fileDispatchScopes[id] = requireNotNull(fileDispatch)
+                local.state.insertOperation(OperationRecord(scope, id, project, thread, kind))
+                pending = local.state.unresolved(scope)
+                updateControls()
+            }
+        },
+        acceptReceipt = { envelope ->
+            if (envelope.string("epoch") != epoch) { connectionFailed(null); throw ClientStateException("附件响应代次已变化，保留原操作等待查询") }
+            val receipt = envelope.obj("operation") ?: throw ClientStateException("附件回执缺失，结果保持未知")
+            val id = receipt.string("operationId") ?: throw ClientStateException("附件回执缺少操作标识")
+            val original = local.state.operation(requireScope(), id) ?: throw ClientStateException("附件回执不属于当前设备操作")
+            applyReceipt(receipt, original.projectId, original.threadId)
+        },
+        beforeDispatch = {
+            val observation = fileDispatch ?: throw DispatchPreventedException()
+            if (!state.value.online || position == null || !durableStateAvailable || scopeKey != observation.scope || epoch != observation.epoch ||
+                connectionGeneration != observation.generation || state.value.selectedProjectId != observation.project || state.value.selectedThreadId != observation.thread ||
+                blocksWrite(pending.filter { it.operationId != observation.id }.map { PendingIntent(it.projectId, it.threadId, it.kind, it.status) }, observation.project, observation.thread))
+                throw DispatchPreventedException()
+        },
+        notDispatched = { id ->
+            val observation = fileDispatchScopes[id]
+            if (observation != null) {
+                local.state.updateOperationReceipt(observation.scope, id, "rejected", "notSent")
+                fileDispatchScopes.remove(id)
+                if (scopeKey == observation.scope) { pending = local.state.unresolved(observation.scope); updateControls() }
+            }
+        })
+
+    private suspend fun syncFiles() {
+        files.bind(scopeKey.orEmpty(), state.value.selectedProjectId, state.value.selectedThreadId, state.value.online && position != null, capabilityData)
+    }
 
     init {
         action {
             val saved = local.preferences.snapshot()
-            mutableState.value = state.value.copy(endpoint = saved.endpoint)
+            mutableState.value = state.value.copy(endpoint = saved.endpoint, themeMode = saved.themeMode, userLabel = saved.userLabel, assistantLabel = saved.assistantLabel, readingScale = saved.readingScale)
             if (saved.endpoint.isNotBlank()) {
                 val endpoint = GatewayEndpoint.parse(saved.endpoint)
                 val identity = client.savedIdentity(endpoint)
@@ -75,8 +125,212 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun themeChange(mode: String) = action {
+        if (mode !in setOf("light", "dark", "oled")) return@action
+        local.preferences.saveTheme(mode)
+        mutableState.value = state.value.copy(themeMode = mode)
+    }
+
+    fun identityLabelsChange(user: String, assistant: String) = action {
+        val userName = user.trim(); val assistantName = assistant.trim()
+        if (userName.length !in 1..40 || assistantName.length !in 1..40 || (userName + assistantName).any { it.isISOControl() }) throw ClientStateException("显示名称应为 1–40 个可见字符")
+        local.preferences.saveIdentityLabels(userName, assistantName)
+        mutableState.value = state.value.copy(userLabel = userName, assistantLabel = assistantName)
+    }
+    fun readingScaleChange(scale: Float) = action {
+        if (!scale.isFinite() || scale !in 0.85f..1.4f) return@action
+        local.preferences.saveReadingScale(scale)
+        mutableState.value = state.value.copy(readingScale = scale)
+    }
+
+    fun selectModel(id: String) {
+        if (state.value.models.none { it.id == id } || state.value.busy) return
+        val model = state.value.models.first { it.id == id }
+        mutableState.value = state.value.copy(selectedModel = id, selectedEffort = model.defaultEffort)
+    }
+
+    fun selectEffort(effort: String) {
+        if (state.value.busy || state.value.models.firstOrNull { it.id == state.value.selectedModel }?.efforts?.contains(effort) != true) return
+        mutableState.value = state.value.copy(selectedEffort = effort)
+    }
+
+    /** full-access is accepted only after the native UI's explicit confirmation. Never persisted. */
+    fun selectPermission(preset: String, confirmed: Boolean) {
+        if (state.value.busy || preset !in setOf("read-only", "auto", "full-access") || (preset == "full-access" && !confirmed)) return
+        mutableState.value = state.value.copy(permissionPreset = preset)
+    }
+
+    private suspend fun refreshModels() {
+        val models = modelOptions(resource(client.get("models")))
+        mutableState.value = state.value.copy(models = models,
+            selectedModel = state.value.selectedModel?.takeIf { selected -> models.any { it.id == selected } },
+            selectedEffort = state.value.selectedEffort?.takeIf { effort -> models.firstOrNull { it.id == state.value.selectedModel }?.efforts?.contains(effort) == true })
+    }
+
+    fun browseDirectory(rootId: String, path: String) = action {
+        requireOnline("projects")
+        if (state.value.roots.none { it.id == rootId } || (path.isNotEmpty() && !validProjectRelativePath(path))) throw ClientStateException("请选择授权根目录下的有效目录")
+        loadDirectory(rootId, path, null)
+    }
+    fun loadMoreDirectories() = action {
+        requireOnline("projects")
+        val cursor = nextDirectoryCursor ?: return@action
+        loadDirectory(state.value.directory.rootId, state.value.directory.path, cursor)
+    }
+    private suspend fun loadDirectory(root: String, path: String, cursor: String?) {
+        val data = resource(client.post("project-directories/query", buildJsonObject {
+            put("rootId", root); put("path", path); put("limit", 50); cursor?.let { put("cursor", it) }
+        }))
+        if (data.string("rootId") != root || data.string("path") != path) throw ClientStateException("目录响应范围不匹配")
+        nextDirectoryCursor = data.string("nextCursor")
+        val entries = data.array("entries").mapNotNull { (it as? JsonObject)?.let { item ->
+            val itemPath = item.string("path") ?: return@let null
+            DirectoryOption(item.string("name") ?: itemPath, itemPath)
+        } }
+        mutableState.value = state.value.copy(directory = DirectoryUiState(root, path,
+            ((if (cursor != null) state.value.directory.entries else emptyList()) + entries).distinctBy { it.path },
+            data.flag("canRegister"), nextDirectoryCursor != null, data.flag("limited")))
+    }
+
+    fun loadMoreThreads() = action {
+        requireOnline("thread.list")
+        val project = state.value.selectedProjectId ?: return@action
+        val cursor = nextThreadCursor ?: return@action
+        val data = resource(client.get("projects/${segment(project)}/threads", mapOf("limit" to "20", "archived" to "false", "cursor" to cursor)))
+        if (state.value.selectedProjectId != project) return@action
+        nextThreadCursor = data.string("nextCursor")
+        val added = data.array("threads").mapNotNull { (it as? JsonObject)?.let(::threadOption) }
+        mutableState.value = state.value.copy(threads = (state.value.threads + added).distinctBy { it.id })
+    }
+
+    fun respondInteraction(id: String, response: JsonObject) = action {
+        requireOnline("interactions")
+        val project = state.value.selectedProjectId ?: return@action
+        val thread = state.value.selectedThreadId ?: return@action
+        val original = state.value.interactions.firstOrNull { it.id == id } ?: throw ClientStateException("此交互已经失效，请刷新原生状态")
+        reconcileUnknown()
+        syncThread(thread)
+        checkUnknown(project, thread)
+        val current = state.value.interactions.firstOrNull { it.id == id }
+        if (current == null || current.projectId != project || current.threadId != thread || current.epoch != epoch || current.generation != original.generation || current.status != "pending")
+            throw ClientStateException("此请求已过期、取消或由其他设备处理；未派发响应")
+        if (!NativeInteractionForms.validate(current, response)) throw ClientStateException("响应不符合当前原生请求允许的选项或表单约束")
+        try {
+            executeWrite("interaction.respond", project, thread, "interactions/${segment(id)}/response", extraGuard = {
+                state.value.interactions.any { it.id == id && it.epoch == current.epoch && it.generation == current.generation && it.status == "pending" }
+            }) { operationId -> buildJsonObject {
+                put("operationId", operationId); put("projectId", project); put("epoch", current.epoch)
+                put("generation", current.generation); put("response", response)
+            } }
+        } finally { scheduleSync() }
+    }
+
+    fun refreshInspector() = action {
+        requireOnline("history")
+        state.value.selectedThreadId?.let { syncThread(it) }
+        val project = state.value.selectedProjectId ?: return@action
+        if ("extensions.read" !in capabilities) {
+            mutableState.value = state.value.copy(inspector = state.value.inspector.copy(extensions = listOf("skills", "mcp", "apps", "plugins").map {
+                ExtensionSectionUi(it, "unavailable", reason = "当前 Gateway 未开放只读扩展目录")
+            }))
+            return@action
+        }
+        val data = resource(client.get("projects/${segment(project)}/extensions"))
+        if (data.string("projectId") != project) throw ClientStateException("扩展响应项目不匹配")
+        val sections = data.array("sections").mapNotNull { (it as? JsonObject)?.let { section ->
+            ExtensionSectionUi(section.string("kind").orEmpty(), section.string("status") ?: "unavailable",
+                section.array("entries").mapNotNull { (it as? JsonObject)?.let { entry -> InspectorEntry(entry.string("id").orEmpty(), entry.string("name").orEmpty(),
+                    entry.filterKeys { it !in setOf("id", "name") }.entries.joinToString("\n") { "${it.key}: ${it.value}" }, entry.string("status").orEmpty()) } }, section.flag("limited"), section.string("reasonCode"))
+        } }
+        mutableState.value = state.value.copy(inspector = state.value.inspector.copy(extensions = sections))
+    }
+
+    fun loadItemDetail(turnId: String, itemId: String) = action {
+        requireOnline("history")
+        val project = state.value.selectedProjectId ?: return@action
+        val thread = state.value.selectedThreadId ?: return@action
+        val generation = connectionGeneration
+        val accumulator = ItemDetailAccumulator(itemId, epoch)
+        var cursor: String? = null
+        var pages = 0
+        mutableState.value = state.value.copy(inspector = state.value.inspector.copy(detailTitle = itemId, detailText = null, detailProgress = "正在读取并校验完整详情…"))
+        try {
+            do {
+                val data = resource(client.post("threads/${segment(thread)}/history/details", buildJsonObject {
+                    put("projectId", project); put("turnId", turnId); put("itemId", itemId); cursor?.let { put("cursor", it) }
+                }))
+                if (connectionGeneration != generation || state.value.selectedThreadId != thread) throw ClientStateException("连接或会话已改变，详情读取已停止")
+                val item = withContext(Dispatchers.Default) { accumulator.append(data) }
+                pages++
+                mutableState.value = state.value.copy(inspector = state.value.inspector.copy(detailProgress = "已读取 ${accumulator.loadedBytes} / ${data.number("totalBytes")} 字节"))
+                if (item != null) {
+                    inspectorProjection.item(item, turnId)
+                    val rendered = withContext(Dispatchers.Default) {
+                        val pretty = Json { prettyPrint = true }.encodeToString(JsonObject.serializer(), item)
+                        pretty.take(64 * 1024) to (pretty.length > 64 * 1024)
+                    }
+                    mutableState.value = state.value.copy(inspector = inspectorProjection.state(state.value.inspector).copy(detailText = rendered.first,
+                        detailProgress = if (rendered.second) "SHA-256 已校验完整原生 Item · 当前仅显示前 64 Ki 字符" else "SHA-256 校验通过 · 完整原生 Item"))
+                }
+                cursor = data.string("nextCursor")
+            } while (cursor != null && pages < 128)
+            if (!accumulator.finished) throw ClientStateException("详情超过读取上限，尚未完整校验")
+        } catch (error: Exception) {
+            mutableState.value = state.value.copy(inspector = state.value.inspector.copy(detailText = null, detailProgress = "详情未通过完整校验；请重新读取"))
+            if (error is IllegalArgumentException || error is IllegalStateException) throw ClientStateException(error.message ?: "详情校验失败")
+            throw error
+        }
+    }
+
+    fun queryOperation(id: String) = action {
+        val scope = requireScope()
+        if (!state.value.online) throw ClientStateException("离线无法查询原回执，未知操作继续保留")
+        val operation = local.state.operation(scope, id) ?: return@action
+        try {
+            val receipt = resource(client.get("operations/${segment(id)}"))
+            applyReceipt(receipt, operation.projectId, operation.threadId)
+            mutableState.value = state.value.copy(operationStatusMessage = "$id：${receipt.string("status")} / ${receipt.string("delivery")}")
+        } catch (error: GatewayException) {
+            if (error.httpStatus != 404) throw error
+            mutableState.value = state.value.copy(operationStatusMessage = "原 operationId 尚无可查询回执。404 不能证明未发送；屏障继续保留，请在主机检查原生执行和 Gateway 记录。")
+        }
+    }
+
+    fun refreshOperationThread(id: String) = action {
+        val operation = local.state.operation(requireScope(), id) ?: return@action
+        val thread = operation.nativeThreadId ?: operation.threadId ?: throw ClientStateException("此操作尚无可确认的原生会话；请查询原回执并在主机检查")
+        requireOnline("thread.read")
+        if (operation.projectId.isBlank()) throw ClientStateException("此操作尚无可确认的项目，未知状态继续保留")
+        // Read-only inspection of the original scope does not resolve or remove the operation barrier.
+        val data = readSnapshot(operation.projectId, thread)
+        val native = data.obj("thread")
+        mutableState.value = state.value.copy(operationStatusMessage = "原生会话 $thread：${native?.string("status") ?: "unknown"}；已读取当前状态，操作结果仍只以原回执为准")
+        if (thread == state.value.selectedThreadId && operation.projectId == state.value.selectedProjectId) syncThread(thread)
+    }
+
+    fun onForegroundChanged(value: Boolean) {
+        val was = foreground
+        foreground = value
+        if (value && !was && state.value.paired && automaticReconnect) refresh()
+    }
+
+    fun openNotification(route: dev.oraculum.poc.notifications.NotificationRoute) = action(queue = true) {
+        if (route.scopeKey != scopeKey) throw ClientStateException("此通知属于另一配对身份；当前会话未改变")
+        if (!state.value.online) connectInternal()
+        refreshProjects()
+        if (state.value.projects.none { it.id == route.projectId }) throw ClientStateException("通知项目已不可访问")
+        resetThread()
+        mutableState.value = state.value.copy(selectedProjectId = route.projectId, threads = emptyList())
+        refreshThreads(route.projectId)
+        // A direct authenticated native read validates the notification's original project scope.
+        resource(client.get("projects/${segment(route.projectId)}/threads/${segment(route.threadId)}"))
+        selectThreadInternal(route.threadId)
+        mutableState.value = state.value.copy(navigationRequest = if (route.inspector != "conversation") "inspector:${UUID.randomUUID()}" else "conversation:${UUID.randomUUID()}")
+    }
+
     fun endpointChange(value: String) {
         if (state.value.online || state.value.busy) return
+        if (pending.isNotEmpty()) { mutableState.value = state.value.copy(error = "请保留当前设备身份并查询未知操作；不能通过换服务器或重新配对绕过屏障"); return }
         if (value != state.value.endpoint) {
             automaticReconnect = false
             reconnectJob?.cancel()
@@ -85,11 +339,12 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
             pendingObserver?.cancel()
             pending = emptyList()
             projection.clear()
-            mutableState.value = PocUiState(endpoint = value)
+            mutableState.value = PocUiState(endpoint = value, themeMode = state.value.themeMode, userLabel = state.value.userLabel, assistantLabel = state.value.assistantLabel, readingScale = state.value.readingScale)
         }
     }
 
     fun pair(code: String) = action {
+        if (pending.isNotEmpty()) throw ClientStateException(UNKNOWN_MESSAGE)
         val generation = connectionGeneration
         val endpoint = GatewayEndpoint.parse(state.value.endpoint)
         automaticReconnect = true
@@ -102,6 +357,7 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
     fun reconnect() = action { automaticReconnect = true; connectInternal() }
 
     fun refresh() = action {
+        correctionAttempts = 0
         if (!state.value.online) connectInternal()
         else {
             reconcileUnknown()
@@ -114,6 +370,7 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
     fun selectProject(projectId: String) = action {
         if (state.value.projects.none { it.id == projectId }) return@action
         resetThread()
+        nextThreadCursor = null
         mutableState.value = state.value.copy(selectedProjectId = projectId, threads = emptyList(), error = null)
         scopeKey?.let { local.preferences.saveSelection(it, projectId, null) }
         if (state.value.online) refreshThreads(projectId) else loadCachedThreads(projectId)
@@ -153,7 +410,7 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
         val startedEpoch = epoch
         val startedGeneration = connectionGeneration
         val result = executeWrite("thread.start", projectId, null, "projects/${segment(projectId)}/threads") { id ->
-            buildJsonObject { put("operationId", id); put("expectedEpoch", epoch); put("permissionPreset", "read-only") }
+            buildJsonObject { put("operationId", id); put("expectedEpoch", epoch); put("permissionPreset", state.value.permissionPreset); state.value.selectedModel?.let { put("model", it) } }
         }
         refreshThreads(projectId)
         if (result.string("status") == "accepted") result.string("nativeThreadId")?.let {
@@ -184,7 +441,7 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
         val thread = state.value.selectedThreadId ?: throw ClientStateException("请先选择会话")
         val text = state.value.draft
         if (text.isBlank()) return@action
-        if (text.toByteArray(Charsets.UTF_8).size > 60 * 1024) throw ClientStateException("PoC 单次消息限 60 KiB，请缩短草稿")
+        if (text.toByteArray(Charsets.UTF_8).size > 60 * 1024) throw ClientStateException("单次消息限 60 KiB，请缩短草稿")
         reconcileUnknown()
         syncThread(thread)
         checkUnknown(project, thread)
@@ -192,11 +449,19 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
             throw ClientStateException(if (threadStatus == "notLoaded") "请先显式恢复此原生会话" else "原生状态尚未就绪，请刷新或等待当前执行结束")
         val scope = requireScope()
         draftMutex.withLock { local.state.putDraft(DraftRecord(scope, project, thread, text)) }
-        val result = executeWrite("turn.start", project, thread, "threads/${segment(thread)}/turns") { id ->
+        syncFiles()
+        if (files.state.value.busy || files.state.value.hasUnknown) throw ClientStateException("请等待文件操作完成并核对未知附件回执")
+        var attachmentClaim = buildJsonObject { }
+        val result = executeWrite("turn.start", project, thread, "threads/${segment(thread)}/turns", prepare = { id ->
+            attachmentClaim = files.claimForSend(id)
+        }) { id ->
             buildJsonObject {
                 put("operationId", id); put("projectId", project); put("expectedEpoch", epoch)
                 put("input", buildJsonArray { add(buildJsonObject { put("type", "text"); put("text", text) }) })
-                put("permissionPreset", "read-only")
+                put("permissionPreset", state.value.permissionPreset)
+                state.value.selectedModel?.let { put("model", it) }
+                state.value.selectedEffort?.let { put("effort", it) }
+                attachmentClaim.forEach { (key, value) -> put(key, value) }
             }
         }
         if (result.string("status") == "accepted") {
@@ -240,7 +505,7 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
         requireOnline("history")
         val project = state.value.selectedProjectId ?: return@action
         val thread = state.value.selectedThreadId ?: return@action
-        if (historyPages >= 20) throw ClientStateException("PoC 已加载 20 页；请重新打开会话以回到最新历史")
+        if (historyPages >= 20) throw ClientStateException("已加载 20 页；请重新打开会话以回到最新历史")
         val itemPage = itemCursors.entries.firstOrNull()?.let { it.key to it.value }
         val cursor = itemPage?.second ?: nextHistoryCursor ?: return@action
         val version = invalidationVersion
@@ -251,6 +516,7 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
         if (version != invalidationVersion || data.string("epoch") != epoch || data.string("historyRevision") != historyRevision)
             throw ClientStateException("历史版本已变化，请刷新后重新加载")
         projection.applyHistory(data, itemPage?.first, older = true)
+        inspectorProjection.history(data, itemPage?.first)
         if (itemPage != null) {
             itemCursors.remove(itemPage.first)
             data.string("nextCursor")?.let { itemCursors[itemPage.first] = it }
@@ -323,11 +589,13 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
         setScope(newScope)
         if (attemptGeneration != connectionGeneration) { client.disconnect(); throw CancellationException("Connection attempt cancelled") }
         epoch = data.string("epoch") ?: throw ClientStateException("Gateway 缺少运行代次")
+        capabilityData = data
         capabilities = data.array("capabilities").mapNotNull { value ->
             val capability = value as? JsonObject ?: return@mapNotNull null
             // "unverified" allows the first explicit user operation on the documented stable surface.
             capability.string("name")?.takeIf { capability.flag("supported") && capability.string("availability") in setOf("available", "unverified") }
         }.toSet()
+        mutableState.value = state.value.copy(capabilityNames = capabilities)
         disconnectTransport()
         val generation = connectionGeneration
         freshThreads.clear()
@@ -383,6 +651,7 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
         }
         reconcileUnknown()
         refreshProjects()
+        refreshModels()
         state.value.selectedProjectId?.let { refreshThreads(it) }
         state.value.selectedThreadId?.let { syncThread(it) }
         heartbeatJob = viewModelScope.launch { while (isActive) { delay(15_000); events?.ping() } }
@@ -393,6 +662,7 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
         scopeKey = value
         pendingObserver?.cancel()
         pending = local.state.unresolved(value)
+        syncFiles()
         pendingObserver = viewModelScope.launch {
             try {
                 local.state.observeUnresolved(value).collect { operations ->
@@ -427,6 +697,7 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
         val data = resource(client.get("projects/${segment(project)}/threads", mapOf("limit" to "20", "archived" to "false")))
         if (state.value.selectedProjectId != project) return
         applyThreads(data)
+        nextThreadCursor = data.string("nextCursor")
         freshThreads.removeAll(state.value.threads.map { it.id }.toSet())
         cache("threads", project, data, project)
         val selected = state.value.selectedThreadId
@@ -464,7 +735,7 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
     private fun applyThreads(data: JsonObject) {
         mutableState.value = state.value.copy(
             threads = data.array("threads").mapNotNull { (it as? JsonObject)?.let(::threadOption) },
-            historyWarning = if (data.string("nextCursor") != null || data.flag("truncated")) "PoC 会话入口显示最近 20 条；上次会话仍可恢复" else state.value.historyWarning,
+            canLoadMoreThreads = data.string("nextCursor") != null,
         )
     }
 
@@ -478,6 +749,7 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
         mutableState.value = state.value.copy(selectedThreadId = thread, error = null)
         local.preferences.saveSelection(requireScope(), project, thread)
         loadLocalThread(thread)
+        syncFiles()
         if (state.value.online) {
             reconcileUnknown()
             syncThread(thread)
@@ -506,6 +778,10 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
         val nativeThread = data.obj("thread") ?: throw ClientStateException("Gateway 会话数据不完整")
         if (nativeThread.flag("archived")) { unavailableThread(); return }
         threadStatus = nativeThread.string("status") ?: "unknown"
+        val readback = permissionReadbackUi(nativeThread)
+        mutableState.value = state.value.copy(actualModel = nativeThread.string("model"), actualEffort = nativeThread.string("reasoningEffort"),
+            interactions = data.array("interactions").mapNotNull { (it as? JsonObject)?.let(NativeInteractionForms::parse) })
+        inspectorProjection.history(history, replace = true)
         firstTurnPermit.invalidate(thread)
         projection.snapshot(history, preserveTerminal = !replaceTerminalOnSnapshot && (historyRevision == null || historyRevision == history.string("historyRevision")))
         replaceTerminalOnSnapshot = false
@@ -516,6 +792,7 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
         data.array("operations").forEach { (it as? JsonObject)?.let { receipt -> applyReceipt(receipt, project, thread) } }
         snapshotCurrent = data.string("synchronization") == "current" && version == invalidationVersion &&
             position?.epoch == epoch && (position?.sequence ?: -1) <= (data.number("observedEndSeq") ?: -2)
+        mutableState.value = state.value.copy(actualPermissionPreset = readback?.preset, permissionReadback = readback)
         // A new first page replaces this thread's prior page/cursor window. Repeated refreshes
         // must not accumulate opaque cursor tokens or old-revision pages indefinitely.
         val currentScope = requireScope()
@@ -524,13 +801,17 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
         saveProjection()
         val interactions = data.array("interactions").isNotEmpty()
         mutableState.value = state.value.copy(historyWarning = when {
-            history.flag("truncated") || projection.limited -> "历史含受限投影；完整详情留待后续阶段"
-            interactions -> "原生执行正在等待交互；PoC 暂不提供完整审批表单，可停止当前执行"
+            history.flag("truncated") || projection.limited -> "历史含受限投影；可在 Inspector 读取并校验完整 Item 详情"
+            interactions -> "原生执行正在等待交互；请查看当前请求并明确响应"
             nextHistoryCursor != null || itemCursors.isNotEmpty() -> "已加载最近历史，可继续加载更早内容"
             else -> null
         })
         showProjectionWithAnchor()
-        if (!snapshotCurrent && state.value.online) scheduleSync(1_500)
+        if (!snapshotCurrent && state.value.online) {
+            correctionAttempts++
+            if (correctionAttempts < if (foreground) 4 else 1) scheduleSync(1_500, resetBudget = false)
+            else mutableState.value = state.value.copy(historyWarning = "原生状态暂未稳定；自动校正已暂停，等待新事件或手动刷新。写入仍受安全屏障保护。")
+        } else correctionAttempts = 0
     }
 
     private suspend fun handleEvent(event: JsonObject) {
@@ -548,10 +829,21 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
         } else continuity
         if (decision == EventDecision.DUPLICATE) return
         if (decision == EventDecision.RESET) { connectionFailed(null); return }
+        // Notifications consume only whitelisted native shapes and never alter execution state.
+        if (continuity in setOf(EventDecision.APPLY, EventDecision.INVALIDATE)) scopeKey?.let { notifications.onVerifiedEvent(it, event) }
         val scope = event.obj("scope")
         val relevant = scope?.string("threadId") == null || scope.string("threadId") == state.value.selectedThreadId
         val eventThread = scope?.string("threadId")
         val eventKind = event.string("kind")
+        if (relevant && decision != EventDecision.SKIP) invalidatePermissionReadback()
+        if (relevant && eventThread == state.value.selectedThreadId) {
+            inspectorProjection.event(event)
+            mutableState.value = state.value.copy(inspector = inspectorProjection.state(state.value.inspector))
+            if (eventKind in setOf("interaction.opened", "interaction.resolved")) event.obj("payload")?.let { raw ->
+                val interaction = NativeInteractionForms.parse(raw)
+                mutableState.value = state.value.copy(interactions = state.value.interactions.filter { it.id != interaction.id } + interaction)
+            }
+        }
         if (decision == EventDecision.INVALIDATE && eventKind != "native.state") firstTurnPermit.invalidate(eventThread)
         if (eventKind == "operation.changed" && (event.obj("payload")?.string("nativeTurnId") != null || event.obj("payload")?.string("status") == "unknown"))
             firstTurnPermit.invalidate(eventThread)
@@ -610,7 +902,7 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private suspend fun executeWrite(kind: String, project: String, thread: String?, path: String, body: (String) -> JsonObject): JsonObject {
+    private suspend fun executeWrite(kind: String, project: String, thread: String?, path: String, extraGuard: () -> Boolean = { true }, prepare: suspend (String) -> Unit = {}, body: (String) -> JsonObject): JsonObject {
         val scope = requireScope()
         val writeEpoch = epoch
         val generation = connectionGeneration
@@ -621,13 +913,15 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
         if (!state.value.online || position == null) throw ClientStateException("当前已离线；未派发操作")
         val id = UUID.randomUUID().toString()
         fun dispatchAllowed(): Boolean {
-            if (!durableStateAvailable || !state.value.online || position == null || scopeKey != scope || epoch != writeEpoch || connectionGeneration != generation) return false
+            if (!extraGuard() || !durableStateAvailable || !state.value.online || position == null || scopeKey != scope || epoch != writeEpoch || connectionGeneration != generation) return false
             if (kind == "turn.interrupt") return observedTurn != null && observedTurn == activeTurnId
             if (blocksWrite(pending.filter { it.operationId != id }.map { PendingIntent(it.projectId, it.threadId, it.kind, it.status) }, project, thread)) return false
             return kind !in setOf("turn.start", "thread.resume") ||
                 ((snapshotCurrent || (firstTurnClaimed && threadStatus == "idle")) && invalidationVersion == version &&
                     activeTurnId == null && state.value.selectedThreadId == thread)
         }
+        if (kind in setOf("turn.start", "thread.resume", "interaction.respond") && thread == state.value.selectedThreadId)
+            invalidatePermissionReadback()
         // Durable commit happens before the request is constructed/dispatched, and this ID is never retried.
         local.state.insertOperation(OperationRecord(scope, id, project, thread, kind))
         if (kind == "turn.start" && thread != null) {
@@ -639,15 +933,26 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
         if (!dispatchAllowed()) {
             // There has been no HTTP dispatch at this local cut point, so notSent is known.
             local.state.updateOperationReceipt(scope, id, "rejected", "notSent")
+            files.settleClaim(id, "rejected", "notSent")
             pending = local.state.unresolved(scope)
             throw ClientStateException("连接已改变，操作尚未派发；请重新校正后显式操作")
         }
+        // This cut point contains only local work. Failure proves the HTTP operation was not sent.
+        val requestBody = prepareWriteRequest({
+            prepare(id)
+            body(id)
+        }, {
+            local.state.updateOperationReceipt(scope, id, "rejected", "notSent")
+            files.settleClaim(id, "rejected", "notSent")
+            pending = local.state.unresolved(scope)
+        })
         val response = try {
-            client.post(path, body(id)) {
+            client.post(path, requestBody) {
                 if (!dispatchAllowed()) throw DispatchPreventedException()
             }
         } catch (_: DispatchPreventedException) {
             local.state.updateOperationReceipt(scope, id, "rejected", "notSent")
+            files.settleClaim(id, "rejected", "notSent")
             pending = local.state.unresolved(scope)
             throw ClientStateException("认证刷新期间连接已改变；业务请求未派发，请校正后显式操作")
         }
@@ -684,6 +989,8 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
         }
         if (!firstTurnPermit.confirmNativeIdle(project, thread, epoch, generation, detail.string("status").orEmpty())) return false
         threadStatus = "idle"
+        val readback = permissionReadbackUi(detail)
+        mutableState.value = state.value.copy(actualPermissionPreset = readback?.preset, permissionReadback = readback, actualModel = detail.string("model"), actualEffort = detail.string("reasoningEffort"))
         activeTurnId = null
         snapshotCurrent = false
         mutableState.value = state.value.copy(error = null, historyWarning = FIRST_TURN_MESSAGE)
@@ -706,6 +1013,11 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
         if (local.state.operation(scope, id) == null && status == "unknown") local.state.insertOperation(OperationRecord(scope, id, project, thread, "recovered.unknown"))
         local.state.updateOperationReceipt(scope, id, status, receipt.string("delivery") ?: "unknown", receipt.string("nativeThreadId"),
             receipt.string("nativeTurnId"), receipt.toString())
+        val effective = local.state.operation(scope, id)
+        if (effective != null) {
+            files.settleClaim(id, effective.status, effective.delivery)
+            if (effective.status != "unknown") fileDispatchScopes.remove(id)
+        }
         val remaining = local.state.unresolved(scope)
         if (scopeKey == scope) { pending = remaining; updateControls() }
     }
@@ -725,8 +1037,9 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
         updateControls()
     }
 
-    private fun scheduleSync(delayMs: Long = 300) {
+    private fun scheduleSync(delayMs: Long = 300, resetBudget: Boolean = true) {
         if (!state.value.online) return
+        if (resetBudget) correctionAttempts = 0
         syncJob?.cancel()
         syncJob = viewModelScope.launch {
             delay(delayMs)
@@ -749,12 +1062,13 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private suspend fun loadCachedThreads(project: String) { cached("threads", project)?.let(::applyThreads) }
+    private suspend fun loadCachedThreads(project: String) { nextThreadCursor = null; cached("threads", project)?.let(::applyThreads) }
 
     private suspend fun loadLocalThread(thread: String) {
         val scope = scopeKey ?: return
         val project = state.value.selectedProjectId ?: return
         cached("projection", thread)?.let { projection.restoreCached(it) }
+        cached("snapshot", thread)?.obj("history")?.let { inspectorProjection.history(it, replace = true) }
         mutableState.value = state.value.copy(draft = local.state.draft(scope, project, thread)?.text.orEmpty())
         showProjectionWithAnchor()
     }
@@ -767,10 +1081,10 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
         val messages = projection.messages()
         val index = messages.indexOfFirst { it.id == anchor?.itemId }
         // First nonempty publication includes the durable reading position in the same UI frame.
-        mutableState.value = state.value.copy(messages = messages,
+        mutableState.value = state.value.copy(inspector = inspectorProjection.state(state.value.inspector), messages = messages,
             readIndex = if (index >= 0) index else state.value.readIndex.coerceIn(0, messages.lastIndex.coerceAtLeast(0)),
             readOffset = if (index >= 0) anchor?.offset ?: 0 else 0,
-            historyWarning = if (projection.limited) "PoC 最多展示 250 个 Item；部分历史或内容受限" else state.value.historyWarning)
+            historyWarning = if (projection.limited) "当前最多展示 250 个 Item；部分历史或内容受限" else state.value.historyWarning)
         updateControls()
     }
 
@@ -816,18 +1130,18 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun showProjection() {
-        mutableState.value = state.value.copy(messages = projection.messages(),
-            historyWarning = if (projection.limited) "PoC 最多展示 250 个 Item；部分历史或内容受限" else state.value.historyWarning)
+        mutableState.value = state.value.copy(inspector = inspectorProjection.state(state.value.inspector), messages = projection.messages(),
+            historyWarning = if (projection.limited) "当前最多展示 250 个 Item；部分历史或内容受限" else state.value.historyWarning)
         updateControls()
     }
 
     private fun resetThread() {
         syncJob?.cancel(); cacheJob?.cancel(); anchorJob?.cancel()
-        snapshotCurrent = false; activeTurnId = null; threadStatus = "unknown"
+        snapshotCurrent = false; activeTurnId = null; threadStatus = "unknown"; correctionAttempts = 0
         nextHistoryCursor = null; itemCursors.clear(); historyRevision = null; historyPages = 0
-        replaceTerminalOnSnapshot = true; projection.clear(); invalidationVersion++
+        replaceTerminalOnSnapshot = true; projection.clear(); inspectorProjection.clear(); invalidationVersion++
         mutableState.value = state.value.copy(selectedThreadId = null, messages = emptyList(), draft = "", readIndex = 0, readOffset = 0,
-            executionLabel = "", historyWarning = null)
+            executionLabel = "", historyWarning = null, inspector = InspectorUiState(), interactions = emptyList(), actualPermissionPreset = null, permissionReadback = null, permissionPreset = "read-only", selectedModel = null, selectedEffort = null, actualModel = null, actualEffort = null)
         updateControls()
     }
 
@@ -850,15 +1164,20 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun updateControls() {
+        viewModelScope.launch { try { syncFiles() } catch (error: Exception) { if (error !is CancellationException) mutableState.value = state.value.copy(error = "附件本机状态无法加载；请保留数据并检查存储") } }
         val current = state.value
         val blocked = current.selectedProjectId?.let { project -> blocksWrite(pending.map { PendingIntent(it.projectId, it.threadId, it.kind, it.status) }, project, current.selectedThreadId) } ?: pending.isNotEmpty()
         val ready = current.online && position != null && !current.busy && current.selectedThreadId != null && durableStateAvailable
         mutableState.value = current.copy(
+            actualPermissionPreset = current.actualPermissionPreset.takeIf { current.online && position != null && !blocked && activeTurnId == null && (snapshotCurrent || firstTurnAllowed()) },
+            permissionReadback = current.permissionReadback.takeIf { current.online && position != null && !blocked && activeTurnId == null && (snapshotCurrent || firstTurnAllowed()) },
             canSend = ready && (snapshotCurrent || firstTurnAllowed()) && !blocked && activeTurnId == null && threadStatus in setOf("idle", "active") && current.draft.isNotBlank() && "turn.start" in capabilities,
             canStop = ready && activeTurnId != null && "turn.interrupt" in capabilities,
             canResume = ready && snapshotCurrent && !blocked && activeTurnId == null && threadStatus == "notLoaded" && "thread.resume" in capabilities,
             canLoadMore = current.online && !current.busy && historyPages < 20 && (nextHistoryCursor != null || itemCursors.isNotEmpty()),
             unknownWarning = if (blocked) UNKNOWN_MESSAGE else null,
+            unresolvedOperations = pending.map { UnknownOperationUi(it.operationId, it.kind, it.projectId, it.threadId, it.createdAt, it.status, it.delivery, it.nativeThreadId, it.nativeTurnId) },
+            canLoadMoreThreads = current.online && !current.busy && nextThreadCursor != null,
             executionLabel = when {
                 !current.online -> "离线 · 仅查看缓存与编辑草稿"
                 activeTurnId != null -> "原生 Turn 正在执行"
@@ -882,8 +1201,8 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
         return envelope.obj("data") ?: throw ClientStateException("Gateway 返回的数据不完整")
     }
 
-    private fun action(block: suspend () -> Unit): Job = viewModelScope.launch {
-        if (state.value.busy) return@launch
+    private fun action(queue: Boolean = false, block: suspend () -> Unit): Job = viewModelScope.launch {
+        if (!queue && state.value.busy) return@launch
         actionMutex.withLock {
             mutableState.value = state.value.copy(busy = true, error = null)
             updateControls()
@@ -928,18 +1247,27 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
         if (automaticReconnect && reconnectJob?.isActive != true) {
             reconnectJob = viewModelScope.launch {
                 var pause = 2_000L
-                while (isActive && automaticReconnect && !state.value.online) {
+                var attempts = 0
+                while (isActive && automaticReconnect && !state.value.online && attempts < (if (foreground) 8 else 2)) {
+                    attempts++
                     delay(pause)
                     actionMutex.withLock {
                         try { connectInternal() } catch (failure: Exception) { handleFailure(failure) }
                     }
                     pause = (pause * 2).coerceAtMost(30_000)
                 }
+                if (!state.value.online) mutableState.value = state.value.copy(connectionLabel = "离线缓存 · 自动重连已暂停，可点重新连接")
             }
         }
     }
 
+    private fun invalidatePermissionReadback() {
+        if (state.value.actualPermissionPreset != null || state.value.permissionReadback != null)
+            mutableState.value = state.value.copy(actualPermissionPreset = null, permissionReadback = null)
+    }
+
     private fun disconnectTransport() {
+        invalidatePermissionReadback()
         connectionGeneration++
         pendingConnectionReady?.cancel()
         pendingConnectionReady = null

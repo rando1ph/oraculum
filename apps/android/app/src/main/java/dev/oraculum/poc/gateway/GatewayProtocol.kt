@@ -67,7 +67,10 @@ object GatewayProtocol {
             path == "projects" -> decode<Projects>(data)
             path == "auth/session" -> decode<SessionResponse>(data)
             path == "models" -> decode<ModelPage>(data)
+            Regex("^projects/[^/]+/extensions$").matches(path) -> decode<ExtensionsSnapshot>(data)
             path == "project-directories/query" -> decode<DirectoryPage>(data)
+            Regex("^projects/[^/]+/files/query$").matches(path) -> decode<FilePage>(data)
+            Regex("^projects/[^/]+/files/select$").matches(path) -> decode<FileGrant>(data)
             Regex("^projects/[^/]+/threads$").matches(path) -> decode<ThreadPage>(data)
             Regex("^projects/[^/]+/threads/[^/]+$").matches(path) -> decode<dev.oraculum.gateway.protocol.Thread>(data)
             Regex("^operations/[^/]+$").matches(path) -> {

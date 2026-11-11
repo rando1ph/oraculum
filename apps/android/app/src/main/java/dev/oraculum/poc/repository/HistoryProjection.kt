@@ -13,13 +13,14 @@ internal fun JsonObject.number(key: String): Long? = (get(key) as? JsonPrimitive
 class HistoryProjection(private val maxItems: Int = 250) {
     private val items = linkedMapOf<String, ItemProjection>()
     private val terminalTurns = mutableMapOf<String, Boolean>()
+    private val turnStatuses = mutableMapOf<String, String>()
     var limited = false
         private set
     var activeTurnId: String? = null
         private set
     fun isTerminal(itemId: String?): Boolean = itemId != null && items[itemId]?.terminal == true
 
-    fun clear() { items.clear(); terminalTurns.clear(); limited = false; activeTurnId = null }
+    fun clear() { items.clear(); terminalTurns.clear(); turnStatuses.clear(); limited = false; activeTurnId = null }
     fun invalidate() {
         items.replaceAll { _, item -> mergeItem(item, item.id, item.turnId, item.type, ItemUpdate.GAP) }
         activeTurnId = null
@@ -51,6 +52,7 @@ class HistoryProjection(private val maxItems: Int = 250) {
                 val turn = value as? JsonObject ?: return@forEach
                 val id = turn.string("id") ?: return@forEach
                 val status = turn.string("status")
+                if (status != null) turnStatuses[id] = status
                 terminalTurns[id] = status in setOf("completed", "interrupted", "failed")
                 if (status == "inProgress") activeTurnId = id
                 turn.array("items").forEach { item -> (item as? JsonObject)?.let {
@@ -100,12 +102,13 @@ class HistoryProjection(private val maxItems: Int = 250) {
 
     fun messages(): List<ChatMessage> = items.values.map { item ->
         ChatMessage(item.id, when (item.type) { "userMessage" -> "user"; "agentMessage" -> "assistant"; else -> item.type },
-            item.visibleText.ifBlank { if (item.detailsRequired) "此内容超出 PoC 展示范围" else "…" },
-            when { item.detailsRequired -> "受限投影"; item.terminal -> ""; item.appendable -> "流式接收中"; else -> "正在校正原生状态" })
+            item.visibleText.ifBlank { if (item.detailsRequired) "此内容需要读取完整详情" else "…" },
+            when { item.detailsRequired -> "受限投影"; item.terminal -> when (turnStatuses[item.turnId]) { "interrupted" -> "本轮已停止"; "failed" -> "本轮失败"; else -> "" }; item.appendable -> "流式接收中"; else -> "正在校正原生状态" }, item.turnId, item.detailsRequired)
     }
 
     fun cached(): JsonObject = buildJsonObject {
         put("limited", limited)
+        put("turnStatuses", buildJsonObject { turnStatuses.forEach { (id, status) -> put(id, status) } })
         put("items", JsonArray(items.values.map { item -> buildJsonObject {
             put("id", item.id); put("turnId", item.turnId); put("type", item.type)
             put("baseline", item.baseline); put("stream", item.stream)
@@ -117,6 +120,7 @@ class HistoryProjection(private val maxItems: Int = 250) {
     fun restoreCached(cache: JsonObject) {
         clear()
         limited = cache.flag("limited")
+        cache.obj("turnStatuses")?.forEach { (id, status) -> (status as? JsonPrimitive)?.contentOrNull?.let { turnStatuses[id] = it } }
         cache.array("items").take(maxItems).forEach { value ->
             val item = value as? JsonObject ?: return@forEach
             val id = item.string("id") ?: return@forEach
@@ -149,7 +153,7 @@ private fun nativeText(item: JsonObject): String {
         "agentMessage" -> item.string("text").orEmpty()
         "reasoning" -> textArray("summary").ifBlank { textArray("content") }.ifBlank { "思考过程" }
         "commandExecution" -> listOfNotNull(item.string("command"), item.string("aggregatedOutput")).joinToString("\n")
-        "fileChange" -> "文件变更（完整详情将在后续阶段提供）"
+        "fileChange" -> item.array("changes").joinToString("\n") { (it as? JsonObject)?.string("path") ?: "文件变更" }
         "plan" -> item.string("text") ?: "原生计划更新"
         else -> item.string("text") ?: "原生事件：${item.string("type") ?: "unknown"}"
     }

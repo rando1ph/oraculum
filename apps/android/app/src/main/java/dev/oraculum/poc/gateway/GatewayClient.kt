@@ -24,6 +24,11 @@ import okhttp3.Response
 import okio.BufferedSink
 import java.io.ByteArrayOutputStream
 import java.io.IOException
+import java.io.File
+import java.io.FileOutputStream
+import java.util.Base64
+import dev.oraculum.poc.files.FileTransferPolicy
+import dev.oraculum.poc.files.HostFileGrant
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import javax.net.ssl.SSLException
@@ -105,11 +110,91 @@ class GatewayClient internal constructor(
         authorized("GET", path, null, query, readOnly = true)
 
     suspend fun post(path: String, body: JsonObject, beforeDispatch: () -> Unit = {}): JsonObject = authorized("POST", path, body,
-        readOnly = path == "project-directories/query" || Regex("^threads/[^/]+/(snapshot|history/query|history/details)$").matches(path),
+        readOnly = path == "project-directories/query" || Regex("^threads/[^/]+/(snapshot|history/query|history/details)$").matches(path) ||
+            Regex("^projects/[^/]+/files/(query|select)$").matches(path),
         beforeDispatch = beforeDispatch)
 
     suspend fun delete(path: String, body: JsonObject, beforeDispatch: () -> Unit = {}): JsonObject =
         authorized("DELETE", path, body, readOnly = false, beforeDispatch = beforeDispatch)
+
+    /** A one-shot binary request: a cancelled or lost ACK is reconciled by operation ID, never replayed. */
+    suspend fun uploadAttachment(metadata: JsonObject, file: File, beforeDispatch: () -> Unit,
+        progress: (Long, Long) -> Unit = { _, _ -> }): JsonObject {
+        val operationId = metadata["operationId"]?.jsonPrimitive?.content?.takeIf(GatewayProtocol::uuid)
+            ?: throw GatewayProtocol.malformed()
+        val threadId = segment(metadata.getValue("threadId").jsonPrimitive.content)
+        val expectedSize = metadata.getValue("size").jsonPrimitive.content.toLongOrNull() ?: throw GatewayProtocol.malformed()
+        if (expectedSize !in 1..FileTransferPolicy.MAX_UPLOAD || !file.isFile || file.length() != expectedSize) throw GatewayProtocol.malformed()
+        val session = ensureSession()
+        beforeDispatch()
+        val body = object : RequestBody() {
+            override fun contentType() = "application/octet-stream".toMediaType()
+            override fun contentLength() = expectedSize
+            override fun isOneShot() = true
+            override fun writeTo(sink: BufferedSink) {
+                file.inputStream().use { input ->
+                    val buffer = ByteArray(64 * 1024); var count = 0L
+                    while (true) {
+                        val read = input.read(buffer)
+                        if (read == -1) break
+                        if (count + read > expectedSize) throw IOException("Upload changed")
+                        sink.write(buffer, 0, read); count += read; progress(count, expectedSize)
+                    }
+                    if (count != expectedSize) throw IOException("Upload changed")
+                }
+            }
+        }
+        val request = Request.Builder().url(session.endpoint.url + "api/v2/threads/$threadId/attachments")
+            .header("X-Oraculum-Protocol", "2").header("Authorization", "Bearer ${session.access.token}")
+            .header("X-Oraculum-Upload", Base64.getUrlEncoder().withoutPadding().encodeToString(metadata.toString().toByteArray()))
+            .post(body).build()
+        val result = binaryAuthorized(session) { execute(request) { decodeResponse(it) } }
+        GatewayProtocol.envelope(result, session.identity.installationId, operationId)
+        return result
+    }
+
+    /** Bytes are bounded and authenticated against the grant and server digest before publication. */
+    suspend fun downloadFile(grant: HostFileGrant, target: File, progress: (Long, Long) -> Unit = { _, _ -> }) {
+        FileTransferPolicy.validateGrant(grant, now())
+        val session = ensureSession()
+        val request = Request.Builder().url(session.endpoint.url + "api/v2/files/${segment(grant.id)}/content")
+            .header("X-Oraculum-Protocol", "2").header("Authorization", "Bearer ${session.access.token}")
+            .header("Accept", grant.mime).get().build()
+        try {
+            binaryAuthorized(session) { execute(request) { response ->
+                if (!response.isSuccessful) { decodeResponse(response); throw GatewayProtocol.malformed() }
+                val body = response.body ?: throw GatewayProtocol.malformed()
+                val digest = FileTransferPolicy.validateHeaders(grant, response.header("Content-Type"),
+                    response.header("Content-Length"), response.header("Content-Digest"), response.header("Content-Disposition"), now())
+                FileOutputStream(target).use { output ->
+                    body.byteStream().use { input -> FileTransferPolicy.copyVerified(input, output, grant.size, digest,
+                        { FileTransferPolicy.validateGrant(grant, now()) }, progress) }
+                    output.fd.sync()
+                }
+            } }
+        } catch (error: Throwable) { target.delete(); throw error }
+    }
+
+    private suspend fun <T> binaryAuthorized(session: Session, work: suspend () -> T): T = try { work() }
+    catch (error: GatewayException) {
+        if ((error.httpStatus == 401 || error.httpStatus == 403) && access === session.access) access = null
+        if (error.httpStatus == 401) throw GatewayException("ACCESS_EXPIRED", "临时访问凭据已失效，请校正连接；文件写入不会自动重发。", 401)
+        throw error
+    }
+
+    private suspend fun <T> execute(request: Request, decode: (Response) -> T): T = suspendCancellableCoroutine { continuation ->
+        val call = http.newCall(request)
+        continuation.invokeOnCancellation { call.cancel() }
+        call.enqueue(object : Callback {
+            override fun onFailure(call: Call, error: IOException) {
+                if (continuation.isActive) continuation.resumeWithException(networkError(error))
+            }
+            override fun onResponse(call: Call, response: Response) {
+                val result = runCatching { response.use(decode) }
+                if (continuation.isActive) result.fold(continuation::resume, continuation::resumeWithException)
+            }
+        })
+    }
 
     suspend fun openEvents(cursor: EventCursor?, listener: GatewayEventListener): EventConnectionHandle {
         val session = ensureSession()
