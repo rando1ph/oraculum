@@ -1,33 +1,42 @@
-
 # Oraculum — Agent Instructions
 
 ## Source of Truth
 
-The canonical project specification is maintained in Notion:
-https://app.notion.com/p/3ff5421e690b81bdae14c0675f0b3acf
+The current Oraculum 2.0 project canon is maintained in Notion:
+[神谕升级｜Oraculum 2.0](https://app.notion.com/p/4135421e690b815eb404c3024c860134).
+
+The [original Oraculum project](https://app.notion.com/p/3ff5421e690b81bdae14c0675f0b3acf) remains the historical/legacy reference.
 
 - Read the Notion Project and relevant Task before starting substantive work.
 - Notion takes precedence over historical conversations and local documentation for project decisions.
-- For theme development, read `docs/THEMING.md` (Theme API v1 authoring and safety contract).
+- For legacy Desktop/Bridge CSS theme work only, read [docs/THEMING.md](docs/THEMING.md) (Theme API v1 authoring and safety contract); it is not the Android Compose visual development path.
 - If Notion is inaccessible, report the limitation. Do not invent requirements or alter established architectural decisions.
 
 ## Core Principles
 
-- Oraculum (神谕) is a private Ubuntu and Android GUI for the official Codex Harness.
-- Never reimplement the agent loop, tool execution, context management, or model orchestration.
+- Oraculum (神谕) 2.0 currently consists of a native Android Kotlin + Jetpack Compose client and an independent TypeScript/Node Oraculum Gateway connected to the official Codex App Server. Ubuntu Desktop GUI work is deferred; the old shared Web UI/Desktop/Bridge is legacy.
+- The official Codex App Server is the sole execution authority. Never reimplement the agent loop, tool execution, context management, or model orchestration.
 - Prioritize usability, visual quality, stability, and maintainability.
-- Preserve UI customization through approved Trusted CSS Themes; React/JS changes use the normal reviewed development workflow, not Live UI hot deployment.
+- Approved Trusted CSS Themes and Theme API v1 apply only to the legacy Desktop/Bridge UI; retain their contracts and documentation while legacy consumers remain. Legacy React/JS changes use the normal reviewed development workflow, not Live UI hot deployment. Live UI hot deployment remains prohibited; Android visual changes use the normal source review workflow.
 - Follow the principle of least complexity. Avoid unnecessary abstractions, dependencies, and infrastructure.
 - Keep product configuration portable: HTTPS Origin and Base Path (default `/`) are deployment/build inputs. Never hardcode this user's VPS, IP, proxy, SSH alias, or `/oraculum/` path into product logic; preserve local root-path operation.
+
+## Android Visual Work
+
+- Use native Kotlin + Jetpack Compose and the existing Material 3 Expressive design system; do not port legacy CSS themes or shared React pages into Android.
+- Follow the user's latest visual feedback and approved Stitch/Oracle Eye assets. Preserve existing functionality and safety semantics; obtain direction before major design or information architecture changes.
+- For user-directed Android Studio visual refinement, read [upgrade/phase3/ANDROID_STUDIO_AGENT_HANDOFF.md](upgrade/phase3/ANDROID_STUDIO_AGENT_HANDOFF.md) and wait for the user's page/item instructions before changing UI.
 
 ## Engineering Workflow
 
 - Inspect the existing code and relevant specifications before modifying anything.
 - Prefer minimal, maintainable changes over broad rewrites.
 - Run relevant tests and checks; distinguish verified results from assumptions.
+- Keep credentials, pairing tokens, sensitive logs and private deployment details out of source, documentation and diagnostic output.
 - Do not alter existing VPS services, network configuration, credentials, or production deployments without explicit authorization.
 - After substantial work, record changes, test results, limitations, and next steps in the appropriate Notion Task.
 - Obtain approval before changing frozen architectural decisions.
+- Preserve published Beta 1 tags, Release assets and checksums; subsequent changes require new source commits and future Beta releases, not overwriting the published baseline.
 
 ## Android Release Signing
 
