@@ -10,6 +10,45 @@ function connect(feeds: EventFeeds, deviceId = 'a', epoch = 'epoch') {
 }
 
 describe('per-device bounded event recovery', () => {
+  it('ignores only proven unrelated scopes without consuming the first socket reset', () => {
+    const feeds = new EventFeeds('install', 'epoch');
+    const afterSeq = feeds.head('a'), scope = { projectId: 'p', threadId: 't' };
+    const cursor = { epoch: 'epoch', afterSeq };
+    expect(feeds.hasChangesSince('a', cursor, scope)).toBe(false);
+    feeds.publish('a', { ...event(), scope: { projectId: 'other-project' } });
+    feeds.publish('a', { ...event(), scope: { projectId: 'p', threadId: 'other-thread' } });
+    expect(feeds.hasChangesSince('a', cursor, scope)).toBe(false);
+    expect(feeds.replay('a', cursor).resetRequired).toBe(true);
+    expect(feeds.replay('a', cursor).events).toHaveLength(2);
+    for (const affected of [{}, { projectId: 'p' }, { threadId: 't' }, scope]) {
+      const from = feeds.head('a');
+      feeds.publish('a', { ...event(), scope: affected });
+      expect(feeds.hasChangesSince('a', { epoch: 'epoch', afterSeq: from }, scope)).toBe(true);
+    }
+  });
+
+  it('treats missing retained scope evidence, invalid cursors and new epochs as changes', () => {
+    let now = 0;
+    const feeds = new EventFeeds('install', 'epoch', { maxEvents: 1, maxDevices: 1, maxAgeMs: 100, now: () => now });
+    const scope = { projectId: 'p', threadId: 't' }, initial = feeds.head('a');
+    const unrelated = { ...event(), scope: { projectId: 'elsewhere', threadId: 'other' } };
+    feeds.publish('a', unrelated);
+    feeds.publish('a', unrelated);
+    expect(feeds.hasChangesSince('a', { epoch: 'epoch', afterSeq: initial }, scope)).toBe(true);
+    for (const afterSeq of [-1, NaN, Infinity, 0.5, feeds.head('a') + 1])
+      expect(feeds.hasChangesSince('a', { epoch: 'epoch', afterSeq }, scope)).toBe(true);
+    const beforeExpiry = feeds.head('a');
+    feeds.publish('a', unrelated);
+    now = 100;
+    expect(feeds.hasChangesSince('a', { epoch: 'epoch', afterSeq: beforeExpiry }, scope)).toBe(true);
+    const beforeEviction = feeds.head('a');
+    feeds.ensure('b');
+    expect(feeds.hasChangesSince('a', { epoch: 'epoch', afterSeq: beforeEviction }, scope)).toBe(true);
+    const beforeReset = feeds.head('a');
+    feeds.reset('next');
+    expect(feeds.hasChangesSince('a', { epoch: 'epoch', afterSeq: beforeReset }, scope)).toBe(true);
+  });
+
   it('requires a snapshot for a new feed then replays contiguous device sequences', () => {
     const feeds = new EventFeeds('install', 'epoch');
     const a = connect(feeds);

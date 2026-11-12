@@ -497,8 +497,11 @@ export class GatewayService {
         const operations = (this.store.db.prepare('SELECT operation_id FROM operations WHERE device_id=? AND project_id=? AND (thread_id=? OR thread_id IS NULL) ORDER BY created_at DESC LIMIT 100').all(auth.deviceId, projectId, threadId) as {
             operation_id: string;
         }[]).map(row => receipt(this.store.getOperation(row.operation_id, auth.deviceId)!));
+        const scopeChanged = this.feeds.hasChangesSince(auth.deviceId, { epoch, afterSeq: observedStartSeq }, { projectId, threadId });
+        // NativeHistory preserves validated Turn IDs/status independently of bounded Item text.
+        // A shortened output preview remains incomplete history, not uncertain execution state.
         return { epoch, thread: this.threadView(thread, projectId), history, observedStartSeq, observedEndSeq: this.feeds.head(auth.deviceId),
-            synchronization: history.truncated ? 'stale' : this.activeTurns.has(threadId) || thread.status.type === 'active' || history.items.some(turn => record(turn) && turn.status === 'inProgress') || observedStartSeq !== this.feeds.head(auth.deviceId) ? 'synchronizing' : 'current', interactions: this.interactions.list(projectId, threadId), operations };
+            synchronization: this.activeTurns.has(threadId) || thread.status.type === 'active' || history.items.some(turn => record(turn) && turn.status === 'inProgress') || scopeChanged ? 'synchronizing' : 'current', interactions: this.interactions.list(projectId, threadId), operations };
     }
     async upload(auth: Authorized, input: AttachmentUploadMetadata, stream: Readable) {
         await this.requireThread(auth, input.projectId, input.threadId);

@@ -363,6 +363,72 @@ describe('HTTP resource budgets and download integrity', () => {
 });
 
 describe('unknown native state recovery',()=>{
+ it('keeps idle execution readiness independent from a bounded long-output preview', async () => {
+  const f = await setup(), device = await f.pair(), projectId = await register(f, device), threadId = await start(f, device, projectId);
+  const native = f.codex.nativeThreads.get(threadId)!;
+  native.turns = [{ id: 'completed-turn', status: 'completed', items: [{ id: 'long-output', type: 'commandExecution', aggregatedOutput: 'x'.repeat(20_000) }] }];
+  for (let read = 0; read < 2; read++) {
+   const snapshot = await f.request(`/threads/${threadId}/snapshot`, { device, body: { projectId } });
+   expect(snapshot.status, snapshot.text).toBe(200);
+   expect(snapshot.json.data.history).toMatchObject({ truncated: true, complete: false });
+   expect(snapshot.json.data.history.items[0]).toMatchObject({ id: 'completed-turn', status: 'completed' });
+   expect(snapshot.json.data.synchronization).toBe('current');
+  }
+  native.turns[0]!.status = 'inProgress';
+  const active = await f.request(`/threads/${threadId}/snapshot`, { device, body: { projectId } });
+  expect(active.status, active.text).toBe(200);
+  expect(active.json.data.history.truncated).toBe(true);
+  expect(active.json.data.synchronization).toBe('synchronizing');
+  expect(f.codex.calls.startTurn).toBe(0);
+ });
+
+ it.each(['thread', 'project', 'global', 'retention', 'epoch'] as const)('does not claim a current snapshot after %s uncertainty', async uncertainty => {
+  const f = await setup(), device = await f.pair(), projectId = await register(f, device), threadId = await start(f, device, projectId);
+  const listTurns = f.codex.listTurns.bind(f.codex);
+  f.codex.listTurns = async input => {
+   if (uncertainty === 'epoch') f.codex.emit('unavailable');
+   else {
+    const scope = uncertainty === 'thread' ? { projectId, threadId } : uncertainty === 'project' ? { projectId } : uncertainty === 'global' ? {} : { projectId: randomUUID(), threadId: 'other' };
+    for (let count = 0; count < (uncertainty === 'retention' ? 1025 : 1); count++)
+     f.service.feeds.publish(device.deviceId, { kind: 'history.invalidated', impact: 'state', scope, payload: { reasonCode: 'TEST_STATE_CHANGE' } });
+   }
+   return listTurns(input);
+  };
+  const snapshot = await f.request(`/threads/${threadId}/snapshot`, { device, body: { projectId } });
+  if (uncertainty === 'epoch') {
+   expect(snapshot.status, snapshot.text).toBe(409);
+   // The history revision guard may detect the reset before the outer epoch guard.
+   expect(['HISTORY_STALE', 'STALE_EPOCH']).toContain(snapshot.json.error.code);
+  } else {
+   expect(snapshot.status, snapshot.text).toBe(200);
+   expect(snapshot.json.data.synchronization).toBe('synchronizing');
+  }
+  expect(f.codex.calls.startTurn).toBe(0);
+ });
+
+ it.each(['thread', 'project'] as const)('keeps an idle snapshot current while another %s emits events', async otherScope => {
+  const f = await setup(), device = await f.pair(), projectId = await register(f, device);
+  const threadId = await start(f, device, projectId);
+  let otherProjectId = projectId;
+  if (otherScope === 'project') {
+   mkdirSync(join(f.root, 'workspaces', 'second-project'));
+   const registered = await f.request('/projects', { device, body: { operationId: randomUUID(), rootId: 'test-root', path: 'second-project' } });
+   expect(registered.status, registered.text).toBe(200);
+   otherProjectId = f.store.listProjects().find(project => project.canonicalPath.endsWith('/second-project'))!.id;
+  }
+  const otherThreadId = await start(f, device, otherProjectId);
+  const listTurns = f.codex.listTurns.bind(f.codex);
+  f.codex.listTurns = async input => {
+   f.codex.emit('notification', { method: 'item/agentMessage/delta', params: { threadId: otherThreadId, turnId: 'other-turn', itemId: 'other-item', delta: 'unrelated output' } });
+   await f.service.settled();
+   return listTurns(input);
+  };
+  const snapshot = await f.request(`/threads/${threadId}/snapshot`, { device, body: { projectId } });
+  expect(snapshot.status, snapshot.text).toBe(200);
+  expect(snapshot.json.data.observedEndSeq).toBeGreaterThan(snapshot.json.data.observedStartSeq);
+  expect(snapshot.json.data.synchronization).toBe('current');
+  expect(f.codex.calls.startTurn).toBe(0);
+ });
  it('invalidates issued cursors and tells clients to resynchronize after new native state',async()=>{
   const f=await setup(),device=await f.pair(),projectId=await register(f,device),threadId=await start(f,device,projectId);
   f.codex.nativeThreads.get(threadId)!.turns=[{id:'older',status:'completed',items:[]},{id:'newer',status:'completed',items:[]}];

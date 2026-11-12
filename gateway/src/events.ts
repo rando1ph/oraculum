@@ -74,6 +74,20 @@ export class EventFeeds {
 
   head(deviceId: string): number { return this.get(deviceId).head; }
 
+  /**
+   * Check a local read window without consuming the socket's replay/reset state.
+   * Missing retained events cannot prove that the selected scope stayed unchanged.
+   * These are Gateway observations, not a native snapshot watermark.
+   */
+  hasChangesSince(deviceId: string, cursor: EventCursor, scope: { projectId: string; threadId: string }): boolean {
+    const feed = this.get(deviceId);
+    if (cursor.epoch !== this.epoch || !Number.isSafeInteger(cursor.afterSeq) ||
+      cursor.afterSeq < feed.floor || cursor.afterSeq > feed.head) return true;
+    return feed.events.some(({ event }) => event.seq > cursor.afterSeq &&
+      (event.scope.projectId === undefined || event.scope.projectId === scope.projectId) &&
+      (event.scope.threadId === undefined || event.scope.threadId === scope.threadId));
+  }
+
   publish(deviceId: string, input: EventInput): EventEnvelope {
     const feed = this.get(deviceId);
     if (feed.head >= Number.MAX_SAFE_INTEGER - 1) throw new RangeError('Event epoch sequence exhausted');
