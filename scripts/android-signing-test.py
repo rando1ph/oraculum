@@ -325,6 +325,27 @@ class SigningTests(unittest.TestCase):
                 signing.release(auto=True)
             run.assert_not_called()
 
+    def test_only_untracked_stitch_originals_are_excluded_from_source_gate(self):
+        repository, source = self.prepare_release()
+        def check_output(command, **kwargs):
+            if command[1:2] == ["ls-files"]:
+                return "upgrade/stitch_oraculum_android_workspace/original.html\0"
+            return ""
+        with patch.object(signing, "ROOT", repository), \
+                patch.object(signing.subprocess, "check_output", side_effect=check_output), \
+                patch.object(signing.subprocess, "run", side_effect=RuntimeError("reached verifier")):
+            with self.assertRaisesRegex(RuntimeError, "reached verifier"):
+                signing.release(source, auto=True)
+        for filename in ["source.kt", "upgrade/stitch_oraculum_android_workspace-other/source.kt"]:
+            def check_output(command, **kwargs):
+                return filename + "\0" if command[1:2] == ["ls-files"] else ""
+            with patch.object(signing, "ROOT", repository), \
+                    patch.object(signing.subprocess, "check_output", side_effect=check_output), \
+                    patch.object(signing.subprocess, "run") as run:
+                with self.assertRaisesRegex(RuntimeError, "Commit all source files"):
+                    signing.release(source, auto=True)
+                run.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()

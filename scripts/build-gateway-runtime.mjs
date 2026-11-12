@@ -14,6 +14,22 @@ export const nodeRuntime = Object.freeze({ version: '24.21.0', sha256: 'fd8e59d5
 export const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 const git = (directory, args) => execFileSync('git', args, { cwd: directory, encoding: 'utf8' });
 
+export function assertGatewayReleaseMetadata(metadata) {
+  assert.equal(metadata.component, 'gateway');
+  assert.equal(metadata.packageName, 'oraculum-gateway');
+  assert.equal(metadata.architecture, 'amd64');
+  assert.match(metadata.version, /^\d+\.\d+\.\d+(?:~beta\.[1-9]\d*)?$/);
+  assert.equal(metadata.version, metadata.version.trim(), 'Gateway version must contain no surrounding whitespace');
+  assert.equal(typeof metadata.candidate, 'boolean');
+  if (metadata.version.includes('~beta.')) {
+    assert.equal(metadata.candidate, false, 'Distributable Beta is not an unpublished development candidate');
+    assert.equal(metadata.releaseChannel, 'beta');
+  } else {
+    assert.equal(metadata.candidate, true, 'Stable Gateway publication requires a separate release contract');
+    assert.equal(metadata.releaseChannel, undefined);
+  }
+}
+
 export async function inventoryRuntime(directory, prefix = '') {
   const files = [];
   for (const entry of (await readdir(join(directory, prefix), { withFileTypes: true })).sort((a, b) => a.name.localeCompare(b.name, 'en'))) {
@@ -96,6 +112,7 @@ export async function buildGatewayRuntime() {
   process.umask(0o022);
   const source = assertCleanGatewaySource();
   const metadata = JSON.parse(await readFile(join(root, 'packaging/gateway/metadata.json'), 'utf8'));
+  assertGatewayReleaseMetadata(metadata);
   const output = join(root, 'dist/gateway-runtime');
   const cache = join(root, '.local/build-cache');
   await mkdir(cache, { recursive: true });

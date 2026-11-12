@@ -8,7 +8,7 @@ import { createServer as createPortProbe } from 'node:net';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { once } from 'node:events';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
-import { hash, inventoryRuntime, root, untrackedDesignInput } from './build-gateway-runtime.mjs';
+import { assertGatewayReleaseMetadata, hash, inventoryRuntime, root, untrackedDesignInput } from './build-gateway-runtime.mjs';
 
 const [input, expectedGit] = process.argv.slice(2);
 assert.ok(input && process.argv.length <= 4, 'Usage: node scripts/verify-gateway-deb.mjs DEB [EXPECTED_GIT]');
@@ -46,8 +46,8 @@ try {
   assert.ok((await lstat(artifact)).isFile(), 'Candidate must be a regular file');
   report.sha256 = hash(await readFile(artifact));
   const manifest = JSON.parse(await readFile(join(dirname(artifact), 'manifest.json'), 'utf8'));
-  assert.equal(manifest.component, 'gateway'); assert.equal(manifest.packageName, 'oraculum-gateway');
-  assert.equal(manifest.candidate, true); assert.equal(manifest.sourceDirty, false);
+  assertGatewayReleaseMetadata(manifest);
+  assert.equal(manifest.sourceDirty, false);
   assert.match(manifest.sourceGit, /^[a-f0-9]{40}$/);
   if (expectedGit) assert.equal(manifest.sourceGit, expectedGit);
   const described = manifest.artifacts.find(entry => entry.name === basename(artifact));
@@ -84,7 +84,7 @@ try {
   run('dpkg-deb', ['--extract', artifact, extracted]); run('dpkg-deb', ['--control', artifact, control]);
   const runtime = join(extracted, 'usr/lib/oraculum-gateway');
   const build = JSON.parse(await readFile(join(runtime, 'build.json'), 'utf8'));
-  for (const key of ['component', 'version', 'packageName', 'architecture', 'sourceGit', 'sourceDirty', 'candidate', 'protocol', 'stateSchema', 'licenseManifestSha256']) assert.deepEqual(build[key], manifest[key], `Embedded identity mismatch: ${key}`);
+  for (const key of ['component', 'version', 'packageName', 'architecture', 'sourceGit', 'sourceDirty', 'candidate', 'releaseChannel', 'protocol', 'stateSchema', 'licenseManifestSha256']) assert.deepEqual(build[key], manifest[key], `Embedded identity mismatch: ${key}`);
   assert.deepEqual(build.excludedUntrackedInputs, [untrackedDesignInput]);
   assert.deepEqual(await inventoryRuntime(runtime), build.files);
   report.sourceGit = build.sourceGit; report.version = build.version; report.nodeVersion = build.nodeVersion;
@@ -102,7 +102,7 @@ try {
     assert.doesNotMatch(text, /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/);
   }
   assert.equal(run(join(runtime, 'node/bin/node'), ['--version']).trim(), 'v' + build.nodeVersion);
-  pass('Clean committed candidate identity, artifact and payload hashes, private Node, safe /usr ownership, CLI and inert user unit');
+  pass('Clean committed package identity, artifact and payload hashes, private Node, safe /usr ownership, CLI and inert user unit');
 
   const noticesBytes = await readFile(join(runtime, 'licenses/manifest.json'));
   assert.equal(hash(noticesBytes), build.licenseManifestSha256);

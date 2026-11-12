@@ -169,7 +169,12 @@ def sign_apk(command, environment, auto):
 
 def release(apk=None, auto=False):
     config = validate_config()
-    require(not subprocess.check_output(["git", "status", "--porcelain"], cwd=ROOT, text=True).strip(), "Commit the reviewed source before producing the release artifact")
+    # Match the Android build identity and Gateway source gate: preserve the
+    # user's untracked Stitch originals while rejecting every source change.
+    require(not subprocess.check_output(["git", "diff", "--name-only", "HEAD"], cwd=ROOT, text=True).strip(), "Commit the reviewed source before producing the release artifact")
+    untracked = subprocess.check_output(["git", "ls-files", "--others", "--exclude-standard", "-z"], cwd=ROOT, text=True).split("\0")
+    require(all(not name or name.startswith("upgrade/stitch_oraculum_android_workspace/") for name in untracked),
+            "Commit all source files before producing the release artifact; only untracked Stitch originals are excluded")
     metadata = json.loads((ROOT / "release.json").read_text())
     target = ARTIFACT_DIR / f"oraculum-{metadata['version']}-{metadata['androidVersionCode']}.apk"
     environment = tool_environment()

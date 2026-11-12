@@ -4,7 +4,20 @@ import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promis
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'vitest';
-import { assertCleanGatewaySource, hash, inventoryRuntime, root, untrackedDesignInput } from './build-gateway-runtime.mjs';
+import { assertCleanGatewaySource, assertGatewayReleaseMetadata, hash, inventoryRuntime, root, untrackedDesignInput } from './build-gateway-runtime.mjs';
+
+test('Gateway release contract accepts Debian Beta ordering and rejects inconsistent release metadata', () => {
+  const beta = { component: 'gateway', packageName: 'oraculum-gateway', architecture: 'amd64',
+    version: '2.0.0~beta.1', candidate: false, releaseChannel: 'beta' };
+  assertGatewayReleaseMetadata(beta);
+  assertGatewayReleaseMetadata({ ...beta, version: '2.0.0', candidate: true, releaseChannel: undefined });
+  execFileSync('dpkg', ['--compare-versions', beta.version, 'lt', '2.0.0']);
+  for (const change of [{ version: '2.0.0-beta.1' }, { version: '2.0.0~beta.0' },
+    { version: '2.0.0\nInjected: value' }, { version: '2.0.0~beta.1\n' }, { candidate: true }, { candidate: 'false' },
+    { releaseChannel: undefined }, { releaseChannel: 'stable' }, { architecture: 'arm64' }]) {
+    assert.throws(() => assertGatewayReleaseMetadata({ ...beta, ...change }));
+  }
+});
 
 test('candidate source gate ignores only untracked design originals and rejects tracked or other new source changes', async () => {
   const scratch = await mkdtemp(join(tmpdir(), 'gateway-source-test-'));

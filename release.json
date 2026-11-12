@@ -1,6 +1,6 @@
 {
-  "version": "0.1.2",
-  "androidVersionCode": 4,
+  "version": "2.0.0-beta.1",
+  "androidVersionCode": 5,
   "components": {
     "bridge": {
       "version": "0.2.0"

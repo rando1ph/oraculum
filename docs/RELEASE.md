@@ -4,7 +4,38 @@ Bridge/Desktop now use the independent [component candidate workflow](COMPONENT_
 and [phase B installation handoff](PHASE_B_SPLIT_PACKAGES.md). Their versions come
 from `release.json.components`; Desktop no longer embeds Bridge or server Node.
 The bundled runtime instructions below describe the historical 0.1.x release.
-The Android section continues to use the unchanged top-level version/code.
+The Android section uses the top-level version/code.
+
+## Oraculum 2.0 Beta 1
+
+The [Beta release task](https://app.notion.com/p/4165421e690b81d89265e1d138ab1719)
+authorizes one GitHub Pre-release named `Oraculum 2.0.0 Beta 1`, tagged
+`v2.0.0-beta.1`. Build Gateway `2.0.0~beta.1` amd64 and Android
+`2.0.0-beta.1` / code `5` from the same clean committed `main` SHA.
+Bridge/Desktop component versions remain unchanged and are not built.
+
+Gateway metadata uses `releaseChannel: beta`, `candidate: false`: a distributable
+pre-release rather than an unpublished development candidate. This is not a Stable
+declaration or proof of publication. See [Gateway verification](../gateway/README.md).
+Run `pnpm check`, Gateway/protocol tests, `pnpm verify:gateway:protocol`, isolated
+fault/live checks, `pnpm build:gateway:deb` and the actual DEB verifier. Its dpkg,
+initialization and pairing checks operate only on disposable fixtures.
+
+For Android, preserve earlier build outputs, then run
+`bash scripts/android-release-build.sh --unsigned` and the existing
+`python3 scripts/android-signing.py release --auto --apk <reviewed-unsigned.apk>`.
+Both source gates exclude only the user's untracked Stitch originals; tracked
+changes and all other untracked source remain blocking. Keep all original
+signing identity, ownership, backup-attestation, certificate and integrity checks.
+
+After both artifacts pass, publish the immutable tag at their common source SHA
+and a GitHub release with `prerelease=true` and Latest disabled. Attach the DEB,
+signed APK, `gateway-release.json`, `android-release.json`, `SHA256SUMS` and
+`RELEASE_NOTES.md`. Manifests record full source SHA, clean status, version,
+size/hash, protocol/schema or APK identity/certificate. Verify downloaded assets,
+tag provenance and pre-release status after publication. Record evidence in the
+task and keep it In progress for user acceptance. No production install,
+initialization, pairing, service or network changes are authorized by this release.
 
 Phase 4 authorization and product decisions remain in the Notion Project/Task.
 Building does not authorize installation, service registration/start, migration,

@@ -1,16 +1,15 @@
-// Candidate assembly only. This script never installs the package or touches
+// Package assembly only. This script never installs the package or touches
 // systemd, production configuration, or an existing application's state.
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { chmod, cp, lstat, mkdir, mkdtemp, readFile, readdir, rename, rm, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { assertCleanGatewaySource, hash, inventoryRuntime, root } from './build-gateway-runtime.mjs';
+import { assertCleanGatewaySource, assertGatewayReleaseMetadata, hash, inventoryRuntime, root } from './build-gateway-runtime.mjs';
 
 process.umask(0o022);
 const source = assertCleanGatewaySource();
 const selected = JSON.parse(await readFile(join(root, 'packaging/gateway/metadata.json'), 'utf8'));
-assert.equal(selected.component, 'gateway'); assert.equal(selected.packageName, 'oraculum-gateway');
-assert.equal(selected.architecture, 'amd64'); assert.match(selected.version, /^\d+\.\d+\.\d+$/);
+assertGatewayReleaseMetadata(selected);
 const runtime = join(root, 'dist/gateway-runtime');
 const metadata = JSON.parse(await readFile(join(runtime, 'build.json'), 'utf8'));
 for (const [key, value] of Object.entries({ ...selected, ...source })) assert.deepEqual(metadata[key], value, `Stale Gateway runtime ${key}; rebuild the committed source`);
@@ -58,5 +57,5 @@ try {
   // Refuse races with another build; rename alone can replace an empty dir.
   try { await lstat(output); assert.fail(`Candidate already exists: ${output}`); } catch (error) { if (error.code !== 'ENOENT') throw error; }
   await rename(candidate, output);
-  console.log(`Gateway candidate: ${join(output, artifactName)}`);
+  console.log(`Gateway package: ${join(output, artifactName)}`);
 } finally { await rm(stage, { recursive: true, force: true }); }
