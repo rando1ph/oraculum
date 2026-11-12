@@ -1,5 +1,5 @@
 // Generated from schema/v2.json by quicktype-core 24.0.0; DO NOT EDIT.
-// Schema SHA-256: 71d4b2c1ac79489c5d445c22192a1d99c735b84f7578de88cc2c7c519eaab466
+// Schema SHA-256: af14e5c70a986cedda4f6c3271b5f02246dc93fae0a2cee57871ce980a6339d1
 export interface ProtocolVersion {
     major:          number;
     minClientMinor: number;
@@ -433,11 +433,26 @@ export interface HistoryPage {
     epoch:           string;
     historyRevision: string;
     itemCursors?:    { [key: string]: string };
-    items:           unknown[];
-    nextCursor:      null | string;
-    source:          HistoryPageSource;
-    truncated:       boolean;
+    /**
+     * Optional native producer timing by native Item ID. Full-read fallback may omit it.
+     */
+    itemTimings?: { [key: string]: HistoryPageItemTiming };
+    items:        unknown[];
+    nextCursor:   null | string;
+    source:       HistoryPageSource;
+    truncated:    boolean;
     [property: string]: unknown;
+}
+
+export interface HistoryPageItemTiming {
+    /**
+     * Native producer Unix timestamp in milliseconds; omitted when unavailable.
+     */
+    completedAtMs?: number;
+    /**
+     * Native producer Unix timestamp in milliseconds; omitted when unavailable.
+     */
+    startedAtMs?: number;
 }
 
 export type HistoryPageSource = "native-pagination" | "native-read-projection";
@@ -465,11 +480,26 @@ export interface HistoryObject {
     epoch:           string;
     historyRevision: string;
     itemCursors?:    { [key: string]: string };
-    items:           unknown[];
-    nextCursor:      null | string;
-    source:          HistoryPageSource;
-    truncated:       boolean;
+    /**
+     * Optional native producer timing by native Item ID. Full-read fallback may omit it.
+     */
+    itemTimings?: { [key: string]: HistoryItemTiming };
+    items:        unknown[];
+    nextCursor:   null | string;
+    source:       HistoryPageSource;
+    truncated:    boolean;
     [property: string]: unknown;
+}
+
+export interface HistoryItemTiming {
+    /**
+     * Native producer Unix timestamp in milliseconds; omitted when unavailable.
+     */
+    completedAtMs?: number;
+    /**
+     * Native producer Unix timestamp in milliseconds; omitted when unavailable.
+     */
+    startedAtMs?: number;
 }
 
 export interface InteractionElement {
@@ -718,7 +748,15 @@ export interface ItemDelta {
 
 export interface ItemCompleted {
     complete: boolean;
-    item:     ItemCompletedItem;
+    /**
+     * Native producer Unix timestamp in milliseconds; omitted when unavailable.
+     */
+    completedAtMs?: number;
+    item:           ItemCompletedItem;
+    /**
+     * Native producer Unix timestamp in milliseconds; omitted when unavailable.
+     */
+    startedAtMs?: number;
     [property: string]: unknown;
 }
 

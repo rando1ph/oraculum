@@ -307,5 +307,41 @@
       "observedAt": 123,
       "source": "thread.resume"
     }
+  },
+  {
+    "name": "ItemCompleted-negative-time",
+    "contract": "ItemCompleted",
+    "value": {
+      "item": {
+        "id": "message",
+        "type": "agentMessage"
+      },
+      "complete": true,
+      "completedAtMs": -1
+    }
+  },
+  {
+    "name": "ItemCompleted-string-time",
+    "contract": "ItemCompleted",
+    "value": {
+      "item": {
+        "id": "message",
+        "type": "agentMessage"
+      },
+      "complete": true,
+      "completedAtMs": "1700000002345"
+    }
+  },
+  {
+    "name": "ItemCompleted-fractional-time",
+    "contract": "ItemCompleted",
+    "value": {
+      "item": {
+        "id": "message",
+        "type": "agentMessage"
+      },
+      "complete": true,
+      "completedAtMs": 1700000002345.5
+    }
   }
 ]

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { CodexError, type CodexAdapter, type NativeItem, type NativeThread, type NativeTurn } from './codex';
-import { NativeHistory, projectItem } from './history';
+import { NativeHistory, nativeItemTiming, projectItem } from './history';
 
 const scope = 'device-1:project-1';
 const item = (id: string, text = id): NativeItem => ({ id, type: 'agentMessage', text });
@@ -14,6 +14,24 @@ function peer() {
   };
 }
 describe('bounded native history', () => {
+  it('preserves producer item timing separately from native Item contents and Turn timing', async () => {
+    const codex = peer();
+    codex.listTurns.mockResolvedValue({ data: [{ ...turn('timed'), startedAt: 1700000000, completedAt: 1700000002, durationMs: 2150 }], nextCursor: null });
+    codex.listItems.mockResolvedValue({ data: [{ turnId: 'timed', item: item('i'), startedAtMs: 1700000000123, completedAtMs: 1700000002345 }], nextCursor: null });
+    const history = new NativeHistory(codex, { epoch: 'e' });
+    const page = await history.turns('t', { scope });
+    expect(page.data[0]).toMatchObject({ startedAt: 1700000000, completedAt: 1700000002, durationMs: 2150 });
+    expect(page.itemTimings).toEqual({ i: { startedAtMs: 1700000000123, completedAtMs: 1700000002345 } });
+    expect(page.data[0].items[0]).toEqual(item('i'));
+    expect((await history.items('t', 'timed', { scope })).itemTimings).toEqual(page.itemTimings);
+  });
+  it('does not invent timing for full-read fallback or accept invalid native timestamps', async () => {
+    const codex = peer(); codex.listTurns.mockRejectedValue(new CodexError('NATIVE_PAGINATION_UNSUPPORTED', 'unsupported store', 'rejected'));
+    expect((await new NativeHistory(codex, { epoch: 'e' }).turns('t', { scope })).itemTimings).toBeUndefined();
+    expect(nativeItemTiming({ startedAtMs: '1700000000000', completedAtMs: -1 })).toEqual({});
+    expect(nativeItemTiming({ startedAtMs: Number.NaN, completedAtMs: 253402300800000 })).toEqual({});
+    expect(nativeItemTiming({ startedAtMs: 1700000000000 })).toEqual({ startedAtMs: 1700000000000 });
+  });
   it('provides chronological stable IDs with opaque device/project-bound cursors', async () => {
     const codex = peer(), history = new NativeHistory(codex, { epoch: 'epoch-1', sequence: () => 42 });
     const page = await history.turns('t', { scope });

@@ -7,7 +7,7 @@ import { ProjectRegistry, HostFileError } from './projects';
 import { FileService } from './files';
 import { AttachmentStore, type AttachmentOwner, type AttachmentRow } from './attachments';
 import { CodexAdapter, CodexError, record, type NativeThread, type NativeNotification, type NativeRequest } from './codex';
-import { NativeHistory, projectItem } from './history';
+import { NativeHistory, nativeItemTiming, projectItem } from './history';
 import { Interactions, InteractionError, type Interaction, type InteractionResponse } from './interactions';
 import { extensionSection } from './extensions';
 import { permissionReadback, type PermissionReadback } from './permission-readback';
@@ -199,7 +199,7 @@ export class GatewayService {
                 type: string;
             });
             this.broadcast({ kind: message.method === 'item/completed' ? 'item.completed' : 'item.started', impact: 'state', scope: { ...scope, itemId: p.item.id },
-                payload: { item: { id: p.item.id, type: p.item.type, data: projected.item, truncated: projected.truncated, detailsAvailable: projected.truncated }, complete: !projected.truncated } });
+                payload: { item: { id: p.item.id, type: p.item.type, data: projected.item, truncated: projected.truncated, detailsAvailable: projected.truncated }, complete: !projected.truncated, ...nativeItemTiming(p) } });
         }
         else if (/^(turn\/|thread\/|serverRequest\/)/.test(message.method)) {
             const projected = projectItem({ ...p, id: threadId, type: message.method });
@@ -467,7 +467,8 @@ export class GatewayService {
             fail('STALE_EPOCH', 409, 'Native connection changed while reading');
         this.observed.add('history');
         return { epoch, historyRevision: page.revision, source: page.source === 'native-read' ? 'native-read-projection' : 'native-pagination', items: page.data,
-            nextCursor: page.nextCursor, ...(page.itemCursors ? { itemCursors: page.itemCursors } : {}), complete: page.complete, truncated: page.truncated };
+            nextCursor: page.nextCursor, ...(page.itemCursors ? { itemCursors: page.itemCursors } : {}),
+            ...(page.itemTimings ? { itemTimings: page.itemTimings } : {}), complete: page.complete, truncated: page.truncated };
     }
     async itemDetails(auth: Authorized, threadId: string, input: {
         projectId: string;

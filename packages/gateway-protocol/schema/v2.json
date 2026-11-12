@@ -1255,6 +1255,28 @@
           "additionalProperties": {
             "type": "string"
           }
+        },
+        "itemTimings": {
+          "type": "object",
+          "description": "Optional native producer timing by native Item ID. Full-read fallback may omit it.",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "startedAtMs": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 253402300799999,
+                "description": "Native producer Unix timestamp in milliseconds; omitted when unavailable."
+              },
+              "completedAtMs": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 253402300799999,
+                "description": "Native producer Unix timestamp in milliseconds; omitted when unavailable."
+              }
+            },
+            "additionalProperties": false
+          }
         }
       },
       "required": [
@@ -2047,6 +2069,18 @@
         },
         "complete": {
           "type": "boolean"
+        },
+        "startedAtMs": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 253402300799999,
+          "description": "Native producer Unix timestamp in milliseconds; omitted when unavailable."
+        },
+        "completedAtMs": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 253402300799999,
+          "description": "Native producer Unix timestamp in milliseconds; omitted when unavailable."
         }
       },
       "required": [

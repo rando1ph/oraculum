@@ -4,6 +4,17 @@ export class HistoryError extends Error {
     constructor(readonly code: 'HISTORY_BUSY' | 'HISTORY_TIMEOUT' | 'HISTORY_STALE' | 'HISTORY_CURSOR_INVALID' | 'HISTORY_PROTOCOL', message: string) { super(message); }
 }
 type HistoryAdapter = Pick<CodexAdapter, 'listTurns' | 'listItems' | 'readThread'>;
+export type NativeItemTiming = { startedAtMs?: number; completedAtMs?: number };
+/** Producer timestamps only; absent/invalid native values are not replaced with the receipt clock. */
+export function nativeItemTiming(value: Record<string, unknown>): NativeItemTiming {
+    const result: NativeItemTiming = {};
+    for (const key of ['startedAtMs', 'completedAtMs'] as const) {
+        const timestamp = value[key];
+        if (typeof timestamp === 'number' && Number.isSafeInteger(timestamp) && timestamp > 0 && timestamp <= 253402300799999)
+            result[key] = timestamp;
+    }
+    return result;
+}
 type Cursor = {
     scope: string;
     pageSize?: number;
@@ -25,6 +36,7 @@ export type HistoryPage<T> = {
     truncated: boolean;
     snapshotSeq: number;
     itemCursors?: Record<string, string>;
+    itemTimings?: Record<string, NativeItemTiming>;
 };
 const fallback = (error: unknown) => error instanceof CodexError && ['NATIVE_UNSUPPORTED', 'NATIVE_EXPERIMENTAL', 'NATIVE_PAGINATION_UNSUPPORTED'].includes(error.code);
 /** Bounded display projection; never stored as canonical history or used for operation correlation. */
@@ -194,6 +206,7 @@ export class NativeHistory {
             const revision = this.revision(threadId), snapshotSeq = this.options.sequence?.() ?? 0;
             const position = this.decode(options.cursor, threadId, undefined, revision, 'turns', options.scope, pageSize);
             const itemCursors: Record<string, string> = Object.create(null);
+            const itemTimings: Record<string, NativeItemTiming> = Object.create(null);
             let source: Cursor['source'] = position?.source ?? 'native-pages', turns: NativeTurn[], next: string | number | null;
             if (source === 'native-pages') {
                 try {
@@ -207,6 +220,7 @@ export class NativeHistory {
                     for (const turn of turns) {
                         const part = await this.itemPage(threadId, turn.id, undefined, deadline);
                         turn.items = part.items;
+                        Object.assign(itemTimings, part.itemTimings);
                         turn.itemsView = part.next === null ? 'full' : 'summary';
                         if (part.next !== null)
                             itemCursors[turn.id] = this.encode({ scope: options.scope, threadId, turnId: turn.id, revision, kind: 'items', source: part.source, position: part.next });
@@ -237,7 +251,7 @@ export class NativeHistory {
                 }
             }
             this.check(threadId, revision, deadline);
-            let budget = 256 * 1024, truncated = false;
+            let budget = 256 * 1024 - Buffer.byteLength(JSON.stringify(itemTimings)), truncated = false;
             const data = turns!.reverse().map(turn => {
                 const items: NativeItem[] = [];
                 for (const item of turn.items) {
@@ -255,6 +269,7 @@ export class NativeHistory {
                 return { ...metadata.item, id: turn.id, status: turn.status, items } as NativeTurn;
             });
             return { epoch: this.options.epoch, revision, source, data, snapshotSeq, truncated, itemCursors,
+                ...(Object.keys(itemTimings).length ? { itemTimings } : {}),
                 complete: next! === null && Object.keys(itemCursors).length === 0 && !truncated,
                 nextCursor: next! === null ? null : this.encode({ scope: options.scope, pageSize, threadId, revision, kind: 'turns', source, position: next! }) };
         });
@@ -269,7 +284,13 @@ export class NativeHistory {
                     throw new HistoryError('HISTORY_PROTOCOL', 'Native item cursor did not advance');
                 if (page.data.some(entry => entry.turnId !== turnId))
                     throw new HistoryError('HISTORY_PROTOCOL', 'Native history returned another turn');
-                return { items: [...new Map(page.data.map(entry => [entry.item.id, entry.item])).values()].slice(0, 40).reverse(), next: page.nextCursor, source: 'native-pages' as const };
+                const entries = [...new Map(page.data.map(entry => [entry.item.id, entry])).values()].slice(0, 40).reverse();
+                const itemTimings: Record<string, NativeItemTiming> = Object.create(null);
+                for (const entry of entries) {
+                    const timing = nativeItemTiming(entry);
+                    if (Object.keys(timing).length) itemTimings[entry.item.id] = timing;
+                }
+                return { items: entries.map(entry => entry.item), itemTimings, next: page.nextCursor, source: 'native-pages' as const };
             }
             catch (error) {
                 if (!fallback(error))
@@ -285,7 +306,7 @@ export class NativeHistory {
         if (!turn)
             throw new HistoryError('HISTORY_STALE', 'Native history turn no longer exists');
         const offset = (position?.position as number | undefined) ?? 0, total = turn.items.length;
-        return { items: turn.items.slice(Math.max(0, total - offset - 40), Math.max(0, total - offset)), next: offset + 40 < total ? offset + 40 : null, source: 'native-read' as const };
+        return { items: turn.items.slice(Math.max(0, total - offset - 40), Math.max(0, total - offset)), itemTimings: {}, next: offset + 40 < total ? offset + 40 : null, source: 'native-read' as const };
     }
     async items(threadId: string, turnId: string, options: {
         cursor?: string;
@@ -296,7 +317,7 @@ export class NativeHistory {
             const position = this.decode(options.cursor, threadId, turnId, revision, 'items', options.scope);
             const page = await this.itemPage(threadId, turnId, position, deadline);
             this.check(threadId, revision, deadline);
-            let budget = 256 * 1024, truncated = false;
+            let budget = 256 * 1024 - Buffer.byteLength(JSON.stringify(page.itemTimings)), truncated = false;
             const data = page.items.map(item => {
                 if (budget < Buffer.byteLength(JSON.stringify({ id: item.id, type: item.type })) + 64)
                     throw new HistoryError('HISTORY_PROTOCOL', 'Native item identities exceeded the projection budget');
@@ -306,6 +327,7 @@ export class NativeHistory {
                 return projected.item;
             });
             return { epoch: this.options.epoch, revision, source: page.source, data, snapshotSeq, truncated, complete: page.next === null && !truncated,
+                ...(Object.keys(page.itemTimings).length ? { itemTimings: page.itemTimings } : {}),
                 nextCursor: page.next === null ? null : this.encode({ scope: options.scope, threadId, turnId, revision, kind: 'items', source: page.source, position: page.next }) };
         });
     }

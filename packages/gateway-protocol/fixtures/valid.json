@@ -1046,5 +1046,53 @@
       "observedAt": 123,
       "source": "thread.resume"
     }
+  },
+  {
+    "name": "HistoryPage-native-item-timing",
+    "contract": "HistoryPage",
+    "value": {
+      "epoch": "12345678-1234-4123-8123-123456789abc",
+      "historyRevision": "native-timed",
+      "source": "native-pagination",
+      "items": [
+        {
+          "id": "turn",
+          "status": "completed",
+          "items": [
+            {
+              "id": "message",
+              "type": "agentMessage",
+              "text": "hello"
+            }
+          ]
+        }
+      ],
+      "itemTimings": {
+        "message": {
+          "startedAtMs": 1700000000123,
+          "completedAtMs": 1700000002345
+        }
+      },
+      "nextCursor": null,
+      "complete": true,
+      "truncated": false
+    }
+  },
+  {
+    "name": "ItemCompleted-native-time",
+    "contract": "ItemCompleted",
+    "value": {
+      "item": {
+        "id": "message",
+        "type": "agentMessage",
+        "data": {
+          "id": "message",
+          "type": "agentMessage",
+          "text": "hello"
+        }
+      },
+      "complete": true,
+      "completedAtMs": 1700000002345
+    }
   }
 ]

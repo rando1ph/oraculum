@@ -1,5 +1,5 @@
 // Generated from schema/v2.json by quicktype-core 24.0.0; DO NOT EDIT.
-// Schema SHA-256: 71d4b2c1ac79489c5d445c22192a1d99c735b84f7578de88cc2c7c519eaab466
+// Schema SHA-256: af14e5c70a986cedda4f6c3271b5f02246dc93fae0a2cee57871ce980a6339d1
 // Decode with Json { ignoreUnknownKeys = true; explicitNulls = true }.
 // Keep encodeDefaults = false. Validate requests against JSON Schema.
 
@@ -895,6 +895,11 @@ data class HistoryPage (
 
     val itemCursors: Map<String, String>? = null,
 
+    /**
+     * Optional native producer timing by native Item ID. Full-read fallback may omit it.
+     */
+    val itemTimings: Map<String, HistoryPageItemTiming>? = null,
+
     @Required
     val items: JsonArray,
 
@@ -906,6 +911,21 @@ data class HistoryPage (
 
     @Required
     val truncated: Boolean
+)
+
+@Serializable
+data class HistoryPageItemTiming (
+    /**
+     * Native producer Unix timestamp in milliseconds; omitted when unavailable.
+     */
+    @SerialName("completedAtMs")
+    val completedAtMS: Long? = null,
+
+    /**
+     * Native producer Unix timestamp in milliseconds; omitted when unavailable.
+     */
+    @SerialName("startedAtMs")
+    val startedAtMS: Long? = null
 )
 
 @Serializable
@@ -964,6 +984,11 @@ data class HistoryClass (
 
     val itemCursors: Map<String, String>? = null,
 
+    /**
+     * Optional native producer timing by native Item ID. Full-read fallback may omit it.
+     */
+    val itemTimings: Map<String, HistoryItemTiming>? = null,
+
     @Required
     val items: JsonArray,
 
@@ -975,6 +1000,21 @@ data class HistoryClass (
 
     @Required
     val truncated: Boolean
+)
+
+@Serializable
+data class HistoryItemTiming (
+    /**
+     * Native producer Unix timestamp in milliseconds; omitted when unavailable.
+     */
+    @SerialName("completedAtMs")
+    val completedAtMS: Long? = null,
+
+    /**
+     * Native producer Unix timestamp in milliseconds; omitted when unavailable.
+     */
+    @SerialName("startedAtMs")
+    val startedAtMS: Long? = null
 )
 
 @Serializable
@@ -1549,8 +1589,20 @@ data class ItemCompleted (
     @Required
     val complete: Boolean,
 
+    /**
+     * Native producer Unix timestamp in milliseconds; omitted when unavailable.
+     */
+    @SerialName("completedAtMs")
+    val completedAtMS: Long? = null,
+
     @Required
-    val item: ItemCompletedItem
+    val item: ItemCompletedItem,
+
+    /**
+     * Native producer Unix timestamp in milliseconds; omitted when unavailable.
+     */
+    @SerialName("startedAtMs")
+    val startedAtMS: Long? = null
 )
 
 @Serializable

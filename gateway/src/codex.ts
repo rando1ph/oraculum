@@ -293,7 +293,7 @@ export class CodexAdapter extends EventEmitter {
   }
   listItems(options: { threadId: string; turnId: string; cursor?: string | null; limit?: number }, timeoutMs?: number) {
     return this.rpc('thread/items/list', { threadId: id(options.threadId), turnId: id(options.turnId), cursor: cursor(options.cursor),
-      limit: limit(options.limit, 40, 40), sortDirection: 'desc' }, timeoutMs) as Promise<NativePage<{ turnId: string; item: NativeItem }>>;
+      limit: limit(options.limit, 40, 40), sortDirection: 'desc' }, timeoutMs) as Promise<NativePage<{ turnId: string; item: NativeItem; startedAtMs?: number | null; completedAtMs?: number | null }>>;
   }
   async readExtensions(kind: 'skills' | 'mcp' | 'apps' | 'plugins', cwd: string): Promise<{ status: 'available'; data: JsonObject } | { status: 'unavailable'; code: NativeFailureCode }> {
     const selected = { skills: ['skills/list', { cwds: [id(cwd)] }], mcp: ['mcpServerStatus/list', { limit: 100 }], apps: ['app/installed', {}], plugins: ['plugin/installed', { cwds: [id(cwd)] }] } as const;
