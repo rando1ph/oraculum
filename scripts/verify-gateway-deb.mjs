@@ -211,6 +211,7 @@ try {
     const code=(await readFile(pairing.pairingFile,'utf8')).trim();const access=await request('/api/v2/auth/pair',{...device,code,label:'Isolated bundled Gateway fixture'});
     const catalog=await request('/api/v2/models',undefined,access.accessToken);assert.equal(catalog.data.data[0].model,'fixture');
     const capabilities=await request('/api/v2/capabilities',undefined,access.accessToken);assert.equal(capabilities.data.protocol.major,2);
+    assert.equal(capabilities.data.gatewayVersion, manifest.version, 'Running package must advertise its Beta version');
     report.isolation.temporaryGatewayProcess=true;
     pass('Bundled Gateway main starts from unrelated cwd, pairs a fresh device and serves authenticated HTTP with a simulated native peer');
   }finally{daemon.kill('SIGTERM');const kill=setTimeout(()=>daemon.kill('SIGKILL'),15000);kill.unref();const [code,signal]=await daemonExit;clearTimeout(kill);assert.equal(code,0);assert.equal(signal,null);}

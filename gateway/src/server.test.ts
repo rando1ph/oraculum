@@ -13,6 +13,7 @@ import { createGatewayServer } from './server';
 import { CodexError, type CodexAdapter, type NativeThread, type NativeTurn, type RpcId } from './codex';
 import type { GatewayConfig } from './config';
 import { validateContract } from '../../packages/gateway-protocol/src/index';
+import gatewayRelease from '../../packaging/gateway/metadata.json';
 
 // This adapter deliberately models only official App Server methods used by the
 // HTTP service. It records dispatch counts to catch retries hidden behind HTTP.
@@ -185,6 +186,7 @@ describe('Gateway HTTP authentication and endpoint boundaries', () => {
     const device = await f.pair(); const renewed = await f.request('/auth/token', { body: { deviceId: device.deviceId, deviceCredential: device.deviceCredential, installationId: device.installationId } });
     expect(renewed.status).toBe(200); expect(renewed.json.accessToken).not.toBe(device.accessToken);
     expect((await f.request('/auth/session', { device })).json.data.deviceId).toBe(device.deviceId);
+    expect((await f.request('/capabilities', { device })).json.data.gatewayVersion).toBe(gatewayRelease.version);
     expect((await f.request('/auth/session', { device: { ...device, accessToken: renewed.json.accessToken } })).status).toBe(200);
     const anonymous = await f.request('/projects'); expect(anonymous.status).toBe(401); expect(anonymous.text).not.toContain(f.root);
     expect(renewed.headers.get('cache-control')).toBe('no-store');

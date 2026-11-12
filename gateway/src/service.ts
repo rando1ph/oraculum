@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import gatewayRelease from '../../packaging/gateway/metadata.json';
 import type { Readable } from 'node:stream';
 import { GatewayStore, GatewayError, type Operation } from './store';
 import type { GatewayConfig } from './config';
@@ -224,7 +225,7 @@ export class GatewayService {
     }
     capabilities() {
         const names = ['projects', 'files', 'attachments', 'thread.list', 'thread.read', 'thread.start', 'thread.resume', 'turn.start', 'turn.interrupt', 'history', 'interactions', 'extensions.read'];
-        return { protocol: PROTOCOL, gatewayVersion: '2.0.0', installationId: this.store.installationId, epoch: this.epoch,
+        return { protocol: PROTOCOL, gatewayVersion: gatewayRelease.version, installationId: this.store.installationId, epoch: this.epoch,
             codex: { version: this.options.codexVersion ?? 'unknown', connectionState: this.codex.alive ? 'connected' : 'disconnected' },
             capabilities: [...names.map(name => ({ name, supported: true, availability: ['projects', 'files', 'attachments'].includes(name) || this.observed.has(name) ? 'available' : this.codex.alive ? 'unverified' : 'unavailable', maturity: ['projects', 'files', 'attachments'].includes(name) ? 'gateway' : 'default-surface', verified: ['projects', 'files', 'attachments'].includes(name) || this.observed.has(name), reasonCode: this.observed.has(name) ? 'OBSERVED' : 'AWAITING_FIRST_USER_OPERATION', observedVersion: this.options.codexVersion ?? 'unknown', epoch: this.epoch })),
                 ...['plan.mode', 'plugins.catalog', 'turn.steer'].map(name => ({ name, supported: false, availability: 'unsupported', maturity: 'under-development', verified: false, reasonCode: 'NOT_IN_VERIFIED_CORE', observedVersion: this.options.codexVersion ?? 'unknown', epoch: this.epoch }))],

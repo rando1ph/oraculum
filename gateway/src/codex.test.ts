@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { CodexAdapter, CodexError } from './codex';
 import { NativeHistory } from './history';
+import gatewayRelease from '../../packaging/gateway/metadata.json';
 
 const adapters: CodexAdapter[] = [], directories: string[] = [];
 const fixture = resolve('gateway/test/fixtures/fake-codex.mjs');
@@ -43,6 +44,7 @@ describe('official Codex stdio boundary', () => {
     await adapter.resumeThread('thread-1');
     await adapter.startTurn({ threadId: 'thread-1', input: [{ type: 'text', text: 'test' }], permissionPreset: 'auto' });
     const log = await messages();
+    expect(log[0].params.clientInfo.version).toBe(gatewayRelease.version);
     expect(log[0].params.capabilities.experimentalApi).toBe(false);
     expect(log[1]).toMatchObject({ method: 'initialized' });
     expect(log.find(v => v.method === 'thread/read').params).toEqual({ threadId: 'thread-1', includeTurns: false });

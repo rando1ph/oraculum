@@ -1,6 +1,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import { randomUUID } from 'node:crypto';
+import gatewayRelease from '../../packaging/gateway/metadata.json';
 
 export type JsonObject = Record<string, unknown>;
 export type RpcId = string | number;
@@ -158,7 +159,7 @@ export class CodexAdapter extends EventEmitter {
     this.child.once('error', () => { if (!this.child?.pid) this.exitResolve?.(); this.fail('NATIVE_UNAVAILABLE', 'Cannot run Codex App Server'); });
     this.child.stdin.on('error', () => { this.fail('NATIVE_UNAVAILABLE', 'Codex App Server input failed'); this.child?.kill(); });
     try {
-      const result = await this.rpc('initialize', { clientInfo: { name: 'oraculum-gateway', title: 'Oraculum Gateway', version: '2.0.0' }, capabilities: { experimentalApi: false } }, 8_000);
+      const result = await this.rpc('initialize', { clientInfo: { name: 'oraculum-gateway', title: 'Oraculum Gateway', version: gatewayRelease.version }, capabilities: { experimentalApi: false } }, 8_000);
       this.write({ method: 'initialized', params: {} });
       this.initialized = true;
       return result;

@@ -86,15 +86,27 @@ try {
   for (const flag of ['allowBackup', 'fullBackupContent', 'usesCleartextTraffic']) assert.match(manifest, new RegExp(`:${flag}\\([^)]*\\)=false`));
   assert.match(manifest, /:networkSecurityConfig\([^)]*\)=@/); assert.match(manifest, /:dataExtractionRules\([^)]*\)=@/);
   const permissions = [...manifest.matchAll(/E: uses-permission[^\n]*\n\s*A: [^\n]*:name\([^)]*\)="([^"]+)"/g)].map(match => match[1]).sort();
-  assert.deepEqual(permissions, ['INTERNET', 'POST_NOTIFICATIONS', 'FOREGROUND_SERVICE', 'FOREGROUND_SERVICE_REMOTE_MESSAGING'].map(name => 'android.permission.' + name).sort());
-  const component = name => manifest.split(/(?=          E: )/).find(section => section.includes(`="dev.oraculum.poc.${name}"`));
-  const service = component('TaskNotificationService'), provider = component('ArtifactFileProvider');
-  assert.ok(service && provider, 'Missing native task notification service or artifact provider');
-  for (const section of [service, provider]) assert.match(section, /:exported\([^)]*\)=false/);
-  assert.match(service, /:foregroundServiceType\([^)]*\)=0x0*200\b/);
+  assert.deepEqual(permissions, ['android.permission.INTERNET', 'android.permission.ACCESS_NETWORK_STATE',
+    'android.permission.POST_NOTIFICATIONS', 'dev.oraculum.poc.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION'].sort());
+  const declaration = manifest.split(/(?=      E: )/).find(section => /^      E: permission\b/.test(section));
+  assert.ok(declaration?.includes('="dev.oraculum.poc.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"'));
+  assert.match(declaration, /:protectionLevel\([^)]*\)=0x0*2\b/);
+  const sections = manifest.split(/(?=          E: )/).filter(section => /^          E: (?:activity|provider|service|receiver)\b/.test(section));
+  const names = sections.map(section => /:name\([^)]*\)="([^"]+)"/.exec(section)?.[1]);
+  assert.deepEqual(names.sort(), ['dev.oraculum.poc.MainActivity', 'dev.oraculum.poc.ArtifactFileProvider',
+    'androidx.startup.InitializationProvider', 'androidx.room.MultiInstanceInvalidationService',
+    'androidx.profileinstaller.ProfileInstallReceiver'].sort());
+  const component = name => sections.find(section => section.includes(`="${name}"`));
+  const provider = component('dev.oraculum.poc.ArtifactFileProvider');
+  for (const name of ['dev.oraculum.poc.ArtifactFileProvider', 'androidx.startup.InitializationProvider', 'androidx.room.MultiInstanceInvalidationService']) {
+    assert.match(component(name), /:exported\([^)]*\)=false/);
+  }
   assert.match(provider, /:authorities\([^)]*\)="dev.oraculum.poc.artifacts"/);
+  assert.match(provider, /:grantUriPermissions\([^)]*\)=true/);
+  assert.match(component('dev.oraculum.poc.MainActivity'), /:exported\([^)]*\)=true/);
+  assert.match(component('androidx.profileinstaller.ProfileInstallReceiver'), /:permission\([^)]*\)="android.permission.DUMP"/);
   report.permissions = permissions;
-  pass('Exact native permissions, private remoteMessaging service and private artifact provider');
+  pass('Exact Compose client permissions/components, signature-only dynamic receivers, private providers/Room service and DUMP-protected profile receiver');
   const resources = run(join(buildTools, 'aapt2'), ['dump', 'resources', artifact]);
   const resourceLines = resources.split('\n');
   const resourceFile = name => {

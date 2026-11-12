@@ -14,6 +14,13 @@ authorizes one GitHub Pre-release named `Oraculum 2.0.0 Beta 1`, tagged
 `2.0.0-beta.1` / code `5` from the same clean committed `main` SHA.
 Bridge/Desktop component versions remain unchanged and are not built.
 
+Gateway advertises the Debian version from its package metadata in capabilities
+and the Codex handshake; its private npm workspace uses `2.0.0-beta.1` SemVer.
+The APK verifier checks the current Compose client's exact three platform
+permissions plus AndroidX's signature-only dynamic receiver permission, private
+artifact/startup providers and Room service, and DUMP-protected profile receiver.
+It does not require the removed legacy WebView foreground service.
+
 Gateway metadata uses `releaseChannel: beta`, `candidate: false`: a distributable
 pre-release rather than an unpublished development candidate. This is not a Stable
 declaration or proof of publication. See [Gateway verification](../gateway/README.md).
