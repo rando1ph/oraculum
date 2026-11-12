@@ -5,15 +5,20 @@ package dev.oraculum.poc.ui
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.AnnotatedString
@@ -32,31 +37,42 @@ import java.util.Date
 
 @Composable
 internal fun ColumnScope.ModelPanel(state: PocUiState, actions: PocActions, onClose: () -> Unit) {
+    var chooseModel by remember { mutableStateOf(false) }
+    val selected = state.models.firstOrNull { it.id == state.selectedModel }
     PanelHeading("模型与思考强度", onClose)
-    Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+    Column(Modifier.heightIn(max = 560.dp).verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        MutedText("用于下一次执行")
         OraculumCard(CardRole.Inset) {
-            SectionLabel("当前原生模型", OraculumSymbol.Model)
-            Text(state.actualModel ?: "尚未确认", style = MaterialTheme.typography.titleMedium)
-            MutedText(state.actualEffort ?: "默认思考强度")
-        }
-        MutedText("设置用于下一次执行，选项来自 Gateway 的可用模型。")
-        if (state.models.isEmpty()) MutedText("尚未取得可用模型。连接后刷新状态。")
-        if (state.modelsLimited) MutedText("当前仅显示 Gateway 已返回的模型页；模型目录尚未完整加载。")
-        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            state.models.forEach { model ->
-                NavigationRow(model.label, model.description, state.selectedModel == model.id, "model-${model.id}", !state.busy, symbol = OraculumSymbol.Model) { actions.onSelectModel(model.id) }
+            Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable(enabled = state.models.isNotEmpty()) { chooseModel = !chooseModel }
+                .testTag("choose-model").semantics { role = Role.Button; stateDescription = if (chooseModel) "已展开模型列表" else "已收起模型列表" },
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                OraculumIcon(OraculumSymbol.Model, tint = MaterialTheme.colorScheme.primary)
+                Text(selected?.label ?: "选择模型", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
+                OraculumIcon(if (chooseModel) OraculumSymbol.ExpandLess else OraculumSymbol.ExpandMore)
+            }
+            selected?.let { model ->
+                if (model.description.isNotBlank()) Text(model.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text("思考强度", style = MaterialTheme.typography.labelLarge)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    model.efforts.forEach { effort ->
+                        FilterChip(selected = state.selectedEffort == effort, onClick = { actions.onSelectEffort(effort) }, enabled = !state.busy,
+                            label = { Text(effort) }, modifier = Modifier.heightIn(min = 48.dp).testTag("effort-$effort"))
+                    }
+                }
+                if (model.efforts.isEmpty()) MutedText("此模型使用默认思考强度。")
             }
         }
-        state.models.firstOrNull { it.id == state.selectedModel }?.let { model ->
-            SectionLabel("思考强度", OraculumSymbol.Tune)
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                model.efforts.forEach { effort ->
-                    FilterChip(selected = state.selectedEffort == effort, onClick = { actions.onSelectEffort(effort) }, enabled = !state.busy,
-                        label = { Text(effort) }, leadingIcon = { OraculumIcon(if (state.selectedEffort == effort) OraculumSymbol.Check else OraculumSymbol.Tune) },
-                        modifier = Modifier.heightIn(min = 48.dp).testTag("effort-$effort"))
+        if (chooseModel || selected == null) {
+            state.models.forEach { model ->
+                NavigationRow(model.label, "", state.selectedModel == model.id, "model-${model.id}", !state.busy) {
+                    actions.onSelectModel(model.id); chooseModel = false
                 }
             }
-            if (model.efforts.isEmpty()) MutedText("此模型未提供可选思考强度。")
+        }
+        if (state.models.isEmpty()) MutedText("连接后刷新可用模型。")
+        if (state.modelsLimited) MutedText("这里只显示已加载的可用模型。")
+        state.actualModel?.let { actual ->
+            MutedText("最近执行：$actual${state.actualEffort?.let { " · $it" }.orEmpty()}")
         }
     }
 }
@@ -64,20 +80,25 @@ internal fun ColumnScope.ModelPanel(state: PocUiState, actions: PocActions, onCl
 @Composable
 internal fun ColumnScope.PermissionPanel(state: PocUiState, actions: PocActions, onClose: () -> Unit) {
     var confirmFull by remember { mutableStateOf(false) }
+    var details by remember { mutableStateOf(false) }
     PanelHeading("执行权限", onClose)
-    Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        MutedText("以下选择用于下一次执行；不会改写主机默认配置。")
+    Column(Modifier.heightIn(max = 560.dp).verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text("下一次执行", style = MaterialTheme.typography.titleSmall)
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             NavigationRow("Read only", "只读沙箱；写入和受限操作仍遵循原生审批。", state.permissionPreset == "read-only", "permission-read-only", !state.busy, symbol = OraculumSymbol.Shield, detailMaxLines = Int.MAX_VALUE) { actions.onSelectPermission("read-only", false) }
-            NavigationRow("Auto", "允许在工作区内写入；需要提升权限的操作交由原生审批。", state.permissionPreset == "auto", "permission-auto", !state.busy, symbol = OraculumSymbol.Folder, detailMaxLines = Int.MAX_VALUE) { actions.onSelectPermission("auto", false) }
-            NavigationRow("Full access", "取消沙箱限制，可能修改工作区以外文件并访问网络。", state.permissionPreset == "full-access", "permission-full-access", !state.busy, symbol = OraculumSymbol.Warning, detailMaxLines = Int.MAX_VALUE) { confirmFull = true }
+            NavigationRow("Auto", "允许工作区内写入；提升权限仍需原生审批。", state.permissionPreset == "auto", "permission-auto", !state.busy, symbol = OraculumSymbol.Folder, detailMaxLines = Int.MAX_VALUE) { actions.onSelectPermission("auto", false) }
+            NavigationRow("Full access", "取消沙箱限制，可修改工作区外文件并访问网络。", state.permissionPreset == "full-access", "permission-full-access", !state.busy, symbol = OraculumSymbol.Warning, detailMaxLines = Int.MAX_VALUE) { confirmFull = true }
         }
-        OraculumCard(CardRole.Inset) {
-            SectionLabel("最近原生回读", OraculumSymbol.History)
-            state.permissionReadback?.let { readback ->
-                Text("沙箱：${readback.sandboxType}\n审批策略：${readback.approvalPolicy}\n预设映射：${readback.preset ?: "自定义/未映射"}", style = MaterialTheme.typography.bodyMedium)
-                MutedText("来源：${readback.source}\n时间：${DateFormat.getDateTimeInstance().format(Date(readback.observedAt))}")
-            } ?: MutedText("无有效回读，当前权限未知")
+        HorizontalDivider()
+        val readback = state.permissionReadback
+        Text("最近确认：${when (readback?.preset) { "read-only" -> "Read only"; "auto" -> "Auto"; "full-access" -> "Full access"; else -> if (readback == null) "尚无执行记录" else "自定义权限" }}", style = MaterialTheme.typography.bodyMedium)
+        MutedText("上方选择不会改写主机默认配置；实际权限以执行时确认的状态为准。")
+        if (readback != null) {
+            TextButton({ details = !details }) { Text(if (details) "收起权限详情" else "权限详情") }
+            if (details) OraculumCard(CardRole.Inset) {
+                Text("沙箱：${readback.sandboxType}\n审批策略：${readback.approvalPolicy}", style = MaterialTheme.typography.bodySmall)
+                MutedText("${DateFormat.getDateTimeInstance().format(Date(readback.observedAt))} · ${readback.source}")
+            }
         }
     }
     if (confirmFull) AlertDialog(onDismissRequest = { confirmFull = false }, icon = { OraculumIcon(OraculumSymbol.Warning) }, title = { Text("启用 Full access？") },
@@ -91,8 +112,8 @@ internal fun ColumnScope.InspectorPanel(state: PocUiState, actions: PocActions, 
     filesState: FilesUiState, filesActions: FilesActions, onClose: (() -> Unit)?) {
     PanelHeading("Inspector", onClose)
     Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        listOf(Triple("diff", "Diff", OraculumSymbol.Difference), Triple("output", "输出", OraculumSymbol.Terminal), Triple("files", "文件", OraculumSymbol.Folder),
-            Triple("usage", "用量", OraculumSymbol.DataUsage), Triple("extensions", "扩展", OraculumSymbol.Extension)).forEach { (id, label, symbol) ->
+        listOf(Triple("extensions", "MCP", OraculumSymbol.Extension), Triple("diff", "Diff", OraculumSymbol.Difference), Triple("output", "输出", OraculumSymbol.Terminal),
+            Triple("files", "文件", OraculumSymbol.Folder), Triple("usage", "用量", OraculumSymbol.DataUsage)).forEach { (id, label, symbol) ->
             FilterChip(selected = id == tab, onClick = { onTab(id) }, label = { Text(label) }, leadingIcon = { OraculumIcon(symbol) },
                 modifier = Modifier.heightIn(min = 48.dp).testTag("inspector-$id"))
         }
@@ -130,49 +151,30 @@ internal fun ColumnScope.InspectorPanel(state: PocUiState, actions: PocActions, 
             }
             if (tab == "usage") {
                 SectionLabel("会话用量", OraculumSymbol.DataUsage)
-                state.inspector.usage?.let { usage ->
-                    val preview = remember(usage) { boundedContentPreview(sequenceOf(usage)) }
-                    OraculumCard {
-                        if (preview.truncated) MutedText(CONTENT_PREVIEW_NOTICE)
-                        // The projection already formats the actual native values. No estimates or inferred percentages.
-                        SelectionContainer {
-                            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                                preview.text.lines().forEach { line ->
-                                    val separator = line.indexOf('：')
-                                    if (separator > 0) {
-                                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                            Text(line.take(separator), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                            Text(line.substring(separator + 1), style = MaterialTheme.typography.titleMedium.copy(fontFeatureSettings = "tnum"))
-                                        }
-                                    } else Text(line, style = MaterialTheme.typography.bodyMedium)
-                                }
-                            }
-                        }
-                    }
-                } ?: PanelEmptyState(OraculumSymbol.DataUsage, "当前原生状态尚未提供 token / 上下文用量。")
-                MutedText("账户额度未由当前 Gateway 公开。")
+                state.inspector.tokenUsage?.let { TokenUsageCard(it) }
+                    ?: PanelEmptyState(OraculumSymbol.DataUsage, "本次尚未取得用量。执行后如有返回，将在这里显示。")
+                MutedText("账户额度暂未提供。")
             }
             if (tab == "extensions") {
-                SectionLabel("受支持的扩展", OraculumSymbol.Extension)
-                if (state.inspector.extensions.isEmpty()) PanelEmptyState(OraculumSymbol.Extension, "尚未获取扩展状态。刷新后显示 Gateway 支持的只读信息。")
-                state.inspector.extensions.forEach { section ->
+                SectionLabel("MCP 与扩展", OraculumSymbol.Extension)
+                if (state.inspector.extensions.isEmpty()) PanelEmptyState(OraculumSymbol.Extension, "连接后刷新，查看可用的 MCP 与扩展。")
+                state.inspector.extensions.sortedBy { listOf("mcp", "skills", "apps", "plugins").indexOf(it.kind).let { index -> if (index < 0) Int.MAX_VALUE else index } }.forEach { section ->
                     OraculumCard {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             OraculumIcon(OraculumSymbol.Extension, tint = MaterialTheme.colorScheme.primary)
-                            Text(section.kind, Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
-                            NativeStatusLabel(section.status)
+                            Text(extensionSectionTitle(section.kind), Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
+                            Text(if (section.status == "available") "${section.entries.size} 项" else "暂未开放", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
-                        section.reason?.let { MutedText(it) }
+                        if (section.status != "available") MutedText(extensionUnavailableReason(section.kind, section.reason))
                         section.entries.forEach { entry ->
                             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                             Text(entry.title, fontWeight = FontWeight.Medium, style = MaterialTheme.typography.bodyMedium)
-                            if (entry.body.isNotBlank()) MutedText(entry.body)
+                            extensionEntryDescription(entry.body).takeIf { it.isNotBlank() }?.let { MutedText(it) }
                         }
-                        if (section.entries.isEmpty() && section.status == "available") MutedText("没有返回可显示条目。")
-                        if (section.limited) MutedText("当前结果受限，并非完整清单。")
+                        if (section.entries.isEmpty() && section.status == "available") MutedText("尚无已配置的${extensionSectionTitle(section.kind)}。")
+                        if (section.limited) MutedText("显示已取得的结果，清单可能不完整。")
                     }
                 }
-                state.inspector.limitations.forEach { MutedText(it) }
             }
             state.inspector.detailTitle?.let { title ->
                 SectionLabel("完整 Item 详情", OraculumSymbol.Code)
@@ -181,7 +183,7 @@ internal fun ColumnScope.InspectorPanel(state: PocUiState, actions: PocActions, 
                 state.inspector.detailText?.let { CodeBlock(it, "完整 Item") }
             }
             OutlinedButton(actions.onRefreshInspector, enabled = state.online && !state.busy, modifier = Modifier.fillMaxWidth().testTag("refresh-inspector")) {
-                ActionLabel(OraculumSymbol.Refresh, "刷新真实状态")
+                ActionLabel(OraculumSymbol.Refresh, "刷新")
             }
         }
     }
@@ -315,6 +317,8 @@ private fun DiffContent(diff: String) {
 @Composable
 internal fun ColumnScope.SettingsPanel(state: PocUiState, actions: PocActions, notificationEnabled: Boolean, onNotifications: () -> Unit, onClose: () -> Unit) {
     var clearCacheOpen by remember { mutableStateOf(false) }
+    var storageOpen by remember { mutableStateOf(false) }
+    var notificationDetails by remember { mutableStateOf(false) }
     var userLabel by remember(state.userLabel) { mutableStateOf(state.userLabel) }
     var assistantLabel by remember(state.assistantLabel) { mutableStateOf(state.assistantLabel) }
     var readingScale by remember(state.readingScale) { mutableFloatStateOf(state.readingScale) }
@@ -322,11 +326,15 @@ internal fun ColumnScope.SettingsPanel(state: PocUiState, actions: PocActions, n
     Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
         SectionLabel("外观", OraculumSymbol.Palette)
         OraculumCard {
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf("light" to "Light", "dark" to "Dark", "oled" to "OLED Dark").forEach { (mode, label) ->
-                    FilterChip(selected = state.themeMode == mode, onClick = { actions.onThemeChange(mode) }, label = { Text(label) },
-                        leadingIcon = { OraculumIcon(if (state.themeMode == mode) OraculumSymbol.Check else OraculumSymbol.Palette) },
-                        modifier = Modifier.heightIn(min = 48.dp).testTag("theme-$mode"))
+            ThemeSelector(state.themeMode, actions.onThemeChange)
+            HorizontalDivider()
+            Text("强调色", style = MaterialTheme.typography.titleSmall)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                accentOptions.forEach { accent ->
+                    FilterChip(selected = state.accentColor == accent.key, onClick = { actions.onAccentChange(accent.key) },
+                        label = { Text(accent.label) }, leadingIcon = {
+                            Box(Modifier.size(18.dp).background(if (state.themeMode == "light") accent.light else accent.dark, CircleShape))
+                        }, modifier = Modifier.heightIn(min = 48.dp).testTag("accent-${accent.key}"))
                 }
             }
             HorizontalDivider()
@@ -338,43 +346,95 @@ internal fun ColumnScope.SettingsPanel(state: PocUiState, actions: PocActions, n
             Slider(readingScale, { readingScale = it }, valueRange = .85f..1.4f, steps = 10,
                 onValueChangeFinished = { actions.onReadingScaleChange(readingScale) },
                 modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("reading-scale").semantics { contentDescription = "阅读字号" })
-            MutedText("仅调整消息与代码阅读字号；其余控件遵循 Android 系统字体缩放。偏好仅保存在本机。")
+            MutedText("其余控件遵循系统字号。")
         }
         SectionLabel("称呼与身份", OraculumSymbol.Person)
         OraculumCard {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                UserAvatar(state.avatarFileName, userLabel.ifBlank { state.userLabel }, Modifier.testTag("avatar-preview"), 56.dp)
+                Column(Modifier.weight(1f)) {
+                    Text(userLabel.ifBlank { state.userLabel }, style = MaterialTheme.typography.titleMedium)
+                    Text("你的本机显示身份", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(actions.onPickAvatar, Modifier.testTag("avatar-pick")) { Text(if (state.avatarFileName == null) "选择头像" else "更换头像") }
+                if (state.avatarFileName != null) TextButton(actions.onRemoveAvatar, Modifier.testTag("avatar-remove")) { Text("移除头像") }
+            }
             OutlinedTextField(userLabel, { if (it.length <= 40) userLabel = it }, label = { Text("你的称呼") }, singleLine = true,
                 leadingIcon = { OraculumIcon(OraculumSymbol.Person) }, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth().testTag("identity-user"))
             OutlinedTextField(assistantLabel, { if (it.length <= 40) assistantLabel = it }, label = { Text("助手称呼") }, singleLine = true,
                 leadingIcon = { OracleEyeMark() }, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth().testTag("identity-assistant"))
             FilledTonalButton({ actions.onIdentityLabelsChange(userLabel, assistantLabel) }, enabled = userLabel.isNotBlank() && assistantLabel.isNotBlank(),
                 modifier = Modifier.fillMaxWidth().testTag("identity-save")) { ActionLabel(OraculumSymbol.Check, "保存称呼") }
-            MutedText("称呼仅用于本机显示，不改变 Codex 身份或发送给模型。")
+            MutedText("头像自动保存到本机，仅用于显示。称呼与头像不会发送给模型。")
         }
         SectionLabel("通知", OraculumSymbol.Notifications)
         OraculumCard {
             Text(if (notificationEnabled) "系统通知已开启" else "系统通知尚未开启", style = MaterialTheme.typography.titleSmall)
-            OutlinedButton(onNotifications, Modifier.fillMaxWidth().testTag("notification-settings")) { ActionLabel(OraculumSymbol.Notifications, if (notificationEnabled) "管理通知" else "开启系统通知") }
-            MutedText("应用在前台或按 Home 后进程与连接仍存活时，可提醒执行完成、审批和错误。进程回收、强制停止或系统省电限制后不能保证送达；回到应用会重新读取真实状态。")
+            OutlinedButton(onNotifications, Modifier.fillMaxWidth().testTag("notification-settings")) { ActionLabel(OraculumSymbol.Notifications, if (notificationEnabled) "管理通知" else "开启通知") }
+            TextButton({ notificationDetails = !notificationDetails }) { Text(if (notificationDetails) "收起提醒说明" else "提醒何时可用") }
+            if (notificationDetails) MutedText("应用或后台进程与连接仍存活时可提醒完成、审批和错误。系统回收、强制停止或省电限制后可能无法送达；返回应用会重新读取状态。")
         }
         SectionLabel("Gateway 连接", if (state.online) OraculumSymbol.Wifi else OraculumSymbol.WifiOff)
         OraculumCard {
-            Text(state.connectionLabel, style = MaterialTheme.typography.titleSmall)
+            Text(if (state.online) "已连接" else state.connectionLabel, style = MaterialTheme.typography.titleSmall)
             SelectionContainer { Text(state.endpoint.ifBlank { "尚未设置 HTTPS 地址" }, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             if (!state.online && !state.busy) OutlinedTextField(state.endpoint, actions.onEndpointChange, label = { Text("HTTPS 地址") }, singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri), modifier = Modifier.fillMaxWidth().testTag("settings-endpoint"))
             if (state.paired) {
-                OutlinedButton(actions.onReconnect, enabled = !state.busy, modifier = Modifier.fillMaxWidth()) { ActionLabel(OraculumSymbol.Wifi, "重新连接") }
-                OutlinedButton(actions.onRefresh, enabled = state.online && !state.busy, modifier = Modifier.fillMaxWidth()) { ActionLabel(OraculumSymbol.Refresh, "刷新原生状态") }
-                HorizontalDivider()
-                TextButton({ clearCacheOpen = true }, enabled = !state.busy, modifier = Modifier.fillMaxWidth().testTag("clear-cache")) { ActionLabel(OraculumSymbol.Delete, "清理可重建历史缓存") }
-                TextButton(actions.onDisconnect, modifier = Modifier.fillMaxWidth()) { ActionLabel(OraculumSymbol.WifiOff, "断开连接") }
-            } else MutedText("使用主机 CLI 生成的一次性配对码。设备凭据仅保存在本机安全存储。")
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(actions.onReconnect, enabled = !state.busy, modifier = Modifier.weight(1f)) { ActionLabel(OraculumSymbol.Wifi, if (state.online) "重连" else "连接") }
+                    OutlinedButton(actions.onRefresh, enabled = state.online && !state.busy, modifier = Modifier.weight(1f)) { ActionLabel(OraculumSymbol.Refresh, "刷新") }
+                }
+                if (state.busy) MutedText("正在处理，请稍候。")
+                else if (!state.online) MutedText("连接后可刷新会话。")
+                TextButton(actions.onDisconnect, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.onSurfaceVariant)) { Text("断开连接") }
+            } else MutedText("首次连接需要主机生成的配对码。")
+        }
+        OraculumCard(CardRole.Inset) {
+            Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable { storageOpen = !storageOpen }.testTag("storage-settings")
+                .semantics { role = Role.Button; stateDescription = if (storageOpen) "已展开" else "已收起" }, verticalAlignment = Alignment.CenterVertically) {
+                Text("存储与修复", Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
+                OraculumIcon(if (storageOpen) OraculumSymbol.ExpandLess else OraculumSymbol.ExpandMore)
+            }
+            if (storageOpen) {
+                MutedText("历史缓存用于离线阅读。显示异常或需要释放空间时，可清理后联网重新读取；不会删除主机上的真实会话。")
+                TextButton({ clearCacheOpen = true }, enabled = !state.busy, modifier = Modifier.fillMaxWidth().testTag("clear-cache")) { ActionLabel(OraculumSymbol.Delete, "清理历史缓存") }
+            }
         }
     }
-    if (clearCacheOpen) AlertDialog(onDismissRequest = { clearCacheOpen = false }, icon = { OraculumIcon(OraculumSymbol.Delete) }, title = { Text("清理历史缓存？") },
-        text = { Text("项目、会话和消息缓存可以联网重建。未发送草稿、发送回执与未知操作记录将保留。") },
+    if (clearCacheOpen) AlertDialog(onDismissRequest = { clearCacheOpen = false }, icon = { OraculumIcon(OraculumSymbol.Delete) }, title = { Text("清理本机历史缓存？") },
+        text = { Text("清理本机保存的项目、会话列表与消息缓存，联网后重新读取。主机真实会话、未发送草稿、发送回执与未知操作记录都会保留。离线时将暂时无法查看已清理的历史。") },
         confirmButton = { TextButton({ actions.onClearCache(); clearCacheOpen = false }, Modifier.testTag("confirm-clear-cache")) { Text("清理缓存") } },
         dismissButton = { TextButton({ clearCacheOpen = false }) { Text("取消") } })
+}
+
+@Composable
+private fun ThemeSelector(selected: String, onSelect: (String) -> Unit) {
+    val options = listOf("light" to "Light", "dark" to "Dark", "oled" to "OLED Dark")
+    val fontScale = LocalDensity.current.fontScale
+    BoxWithConstraints {
+        val compact = maxWidth >= 270.dp && fontScale <= 1.35f
+        if (compact) {
+            Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(14.dp)).selectableGroup()) {
+                options.forEach { (mode, label) ->
+                    ThemeChoice(mode, label, selected == mode, onSelect, Modifier.weight(1f))
+                }
+            }
+        } else Column(Modifier.fillMaxWidth().selectableGroup(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            options.forEach { (mode, label) -> ThemeChoice(mode, label, selected == mode, onSelect, Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))) }
+        }
+    }
+}
+
+@Composable
+private fun ThemeChoice(mode: String, label: String, selected: Boolean, onSelect: (String) -> Unit, modifier: Modifier) {
+    Box(modifier.background(if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerLow)
+        .selectable(selected, onClick = { onSelect(mode) }, role = Role.RadioButton).heightIn(min = 48.dp).padding(horizontal = 5.dp, vertical = 10.dp).testTag("theme-$mode"),
+        contentAlignment = Alignment.Center) {
+        Text(label, style = MaterialTheme.typography.labelMedium, color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface)
+    }
 }
 
 @Composable

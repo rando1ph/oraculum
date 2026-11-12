@@ -4,6 +4,8 @@ import android.Manifest
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
+import android.net.Uri
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
@@ -15,17 +17,28 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.oraculum.poc.notifications.GatewayNotifications
 import dev.oraculum.poc.ui.OraculumScreen
 import dev.oraculum.poc.ui.OraculumTheme
 import dev.oraculum.poc.ui.PocActions
+import dev.oraculum.poc.storage.AvatarStore
+import dev.oraculum.poc.storage.ClientPreferences
+import dev.oraculum.poc.storage.commitAvatarSelection
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 
 /** Native workspace; all execution remains behind the Gateway and official Harness. */
 class MainActivity : ComponentActivity() {
     lateinit var model: PocViewModel
         private set
     private var notificationsEnabled by mutableStateOf(false)
+    private var avatarJob: Job? = null
+    private val avatarPicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) updateAvatar(uri)
+    }
     private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
         notificationsEnabled = GatewayNotifications.notificationsEnabled(this)
     }
@@ -47,7 +60,7 @@ class MainActivity : ComponentActivity() {
                     isAppearanceLightNavigationBars = light
                 }
             }
-            OraculumTheme(mode = state.themeMode, readingScale = state.readingScale) {
+            OraculumTheme(mode = state.themeMode, readingScale = state.readingScale, accentColor = state.accentColor) {
                 OraculumScreen(state, PocActions(
                     onEndpointChange = model::endpointChange,
                     onPair = model::pair,
@@ -66,6 +79,9 @@ class MainActivity : ComponentActivity() {
                     onClearCache = model::clearCache,
                     onDisconnect = model::disconnect,
                     onThemeChange = model::themeChange,
+                    onAccentChange = model::accentChange,
+                    onPickAvatar = { if (avatarJob?.isActive != true) avatarPicker.launch(arrayOf("image/jpeg", "image/png", "image/webp")) },
+                    onRemoveAvatar = { updateAvatar(null) },
                     onIdentityLabelsChange = model::identityLabelsChange,
                     onReadingScaleChange = model::readingScaleChange,
                     onSelectModel = model::selectModel,
@@ -112,6 +128,24 @@ class MainActivity : ComponentActivity() {
     private fun openNotification(intent: Intent?) {
         intent ?: return
         GatewayNotifications.readRoute(intent)?.let(model::openNotification)
+    }
+
+    private fun updateAvatar(uri: Uri?) {
+        if (avatarJob?.isActive == true) return
+        avatarJob = lifecycleScope.launch {
+            val avatars = AvatarStore(applicationContext)
+            val preferences = ClientPreferences(applicationContext)
+            try {
+                commitAvatarSelection(preferences,
+                    importAvatar = { if (uri == null) null else avatars.importAvatar(uri) },
+                    deleteAvatar = avatars::delete,
+                    onCommitted = { model.refreshLocalAvatar() })
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                Toast.makeText(this@MainActivity, "头像未更改。请选择完整的 JPG、PNG 或 WebP 图片（最多 8 MB）。", Toast.LENGTH_LONG).show()
+            }
+        }
     }
 
     private fun configureNotifications() {

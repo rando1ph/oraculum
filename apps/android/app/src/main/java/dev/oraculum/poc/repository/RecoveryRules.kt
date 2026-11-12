@@ -87,6 +87,10 @@ fun blocksWrite(pending: List<PendingIntent>, projectId: String, threadId: Strin
 fun snapshotStillCurrent(startGeneration: Int, currentGeneration: Int, startVersion: Long, currentVersion: Long): Boolean =
     startGeneration == currentGeneration && startVersion == currentVersion
 
+/** An omitted scope is global; an explicit different project/thread cannot change this selection. */
+fun eventAffectsSelection(eventProject: String?, eventThread: String?, selectedProject: String?, selectedThread: String?): Boolean =
+    (eventProject == null || eventProject == selectedProject) && (eventThread == null || eventThread == selectedThread)
+
 /** Obvious invalid inputs are rejected locally; the Gateway performs authoritative path checks. */
 fun validProjectRelativePath(path: String): Boolean = path.length in 1..1024 &&
     path.split('/').let { parts -> parts.size <= 12 && parts.all { part ->

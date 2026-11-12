@@ -126,7 +126,6 @@ class GatewayClient internal constructor(
         val expectedSize = metadata.getValue("size").jsonPrimitive.content.toLongOrNull() ?: throw GatewayProtocol.malformed()
         if (expectedSize !in 1..FileTransferPolicy.MAX_UPLOAD || !file.isFile || file.length() != expectedSize) throw GatewayProtocol.malformed()
         val session = ensureSession()
-        beforeDispatch()
         val body = object : RequestBody() {
             override fun contentType() = "application/octet-stream".toMediaType()
             override fun contentLength() = expectedSize
@@ -148,7 +147,7 @@ class GatewayClient internal constructor(
             .header("X-Oraculum-Protocol", "2").header("Authorization", "Bearer ${session.access.token}")
             .header("X-Oraculum-Upload", Base64.getUrlEncoder().withoutPadding().encodeToString(metadata.toString().toByteArray()))
             .post(body).build()
-        val result = binaryAuthorized(session) { execute(request) { decodeResponse(it) } }
+        val result = binaryAuthorized(session) { execute(request, beforeDispatch) { decodeResponse(it) } }
         GatewayProtocol.envelope(result, session.identity.installationId, operationId)
         return result
     }
@@ -182,9 +181,11 @@ class GatewayClient internal constructor(
         throw error
     }
 
-    private suspend fun <T> execute(request: Request, decode: (Response) -> T): T = suspendCancellableCoroutine { continuation ->
+    private suspend fun <T> execute(request: Request, beforeDispatch: () -> Unit = {}, decode: (Response) -> T): T = suspendCancellableCoroutine { continuation ->
         val call = http.newCall(request)
         continuation.invokeOnCancellation { call.cancel() }
+        if (!continuation.isActive) return@suspendCancellableCoroutine
+        beforeDispatch()
         call.enqueue(object : Callback {
             override fun onFailure(call: Call, error: IOException) {
                 if (continuation.isActive) continuation.resumeWithException(networkError(error))
@@ -264,9 +265,9 @@ class GatewayClient internal constructor(
         val session = ensureSession()
         // Token exchange may suspend while the caller loses its WSS baseline. Recheck the durable
         // operation's lifecycle immediately before enqueueing its one-shot business request.
-        if (!readOnly) beforeDispatch()
         val response = try {
-            request(session.endpoint, method, path, body, query, token = session.access.token)
+            request(session.endpoint, method, path, body, query, token = session.access.token,
+                beforeDispatch = if (readOnly) ({}) else beforeDispatch)
         } catch (error: GatewayException) {
             if ((error.httpStatus == 401 || error.httpStatus == 403) && access === session.access) access = null
             if (error.httpStatus == 401)
@@ -284,6 +285,7 @@ class GatewayClient internal constructor(
     private suspend fun request(
         endpoint: GatewayEndpoint, method: String, path: String, body: JsonObject? = null,
         query: Map<String, String> = emptyMap(), api: Boolean = true, token: String? = null,
+        beforeDispatch: () -> Unit = {},
     ): JsonObject {
         validatePath(path)
         val url = (endpoint.url + (if (api) "api/v2/" else "") + path).toHttpUrl().newBuilder()
@@ -301,6 +303,8 @@ class GatewayClient internal constructor(
         return suspendCancellableCoroutine { continuation ->
             val call = http.newCall(request.build())
             continuation.invokeOnCancellation { call.cancel() }
+            if (!continuation.isActive) return@suspendCancellableCoroutine
+            beforeDispatch()
             call.enqueue(object : Callback {
                 override fun onFailure(call: Call, error: IOException) {
                     if (continuation.isActive) continuation.resumeWithException(networkError(error))

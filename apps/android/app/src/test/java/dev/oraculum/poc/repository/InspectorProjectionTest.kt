@@ -54,7 +54,7 @@ class InspectorProjectionTest {
             put("kind", "native.state"); put("scope", buildJsonObject { put("threadId", "t") })
             put("payload", buildJsonObject { put("method", method); put("data", data); put("truncated", truncated) })
         }
-        projection.event(event("thread/tokenUsage/updated", Json.parseToJsonElement("""{"tokenUsage":{"total":{"totalTokens":54},"modelContextWindow":1000}}""").jsonObject))
+        projection.event(event("thread/tokenUsage/updated", Json.parseToJsonElement("""{"turnId":"turn","tokenUsage":{"total":{"totalTokens":54},"modelContextWindow":1000}}""").jsonObject))
         projection.event(event("turn/diff/updated", buildJsonObject { put("diff", "--- old\n+++ new") }))
         projection.event(event("turn/plan/updated", Json.parseToJsonElement("""{"plan":[{"step":"verify","status":"inProgress"}]}""").jsonObject))
         projection.event(event("thread/tokenUsage/updated", Json.parseToJsonElement("""{"tokenUsage":{"total":{"totalTokens":999}}}""").jsonObject, true))

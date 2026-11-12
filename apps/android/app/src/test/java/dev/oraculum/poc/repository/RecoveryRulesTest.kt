@@ -41,6 +41,17 @@ class RecoveryRulesTest {
         val create = listOf(PendingIntent("project", null, "thread.start", "unknown"))
         assertTrue(blocksWrite(create, "project", "another"))
         assertFalse(blocksWrite(create, "other-project", "another"))
+        assertFalse(blocksWrite(create, "other-project", null))
+        assertTrue(blocksWrite(create, "project", null))
+        assertTrue(blocksWrite(listOf(PendingIntent("", null, "project.register", "unknown")), "other-project", null))
+    }
+
+    @Test fun `unrelated project events do not invalidate the selected thread but unknown scope does`() {
+        assertFalse(eventAffectsSelection("other", null, "selected", "thread"))
+        assertFalse(eventAffectsSelection("selected", "other-thread", "selected", "thread"))
+        assertTrue(eventAffectsSelection("selected", null, "selected", "thread"))
+        assertTrue(eventAffectsSelection(null, null, "selected", "thread"))
+        assertTrue(eventAffectsSelection(null, "thread", "selected", "thread"))
     }
 
     @Test fun `overflow is explicitly incomplete rather than silently clipped`() {

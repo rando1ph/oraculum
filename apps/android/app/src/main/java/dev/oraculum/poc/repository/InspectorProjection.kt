@@ -16,9 +16,21 @@ class InspectorProjection {
     private var eventPlan = emptyList<InspectorEntry>()
     private var eventDiff: String? = null
     private var eventUsage: String? = null
-    fun clear() { items.clear(); types.clear(); turns.clear(); eventPlan = emptyList(); eventDiff = null; eventUsage = null }
+    private var eventTokenUsage: TokenUsageUi? = null
+    fun clear() { items.clear(); types.clear(); turns.clear(); eventPlan = emptyList(); eventDiff = null; eventUsage = null; eventTokenUsage = null }
+    /** Display cache only; never used to establish current execution state. */
+    fun restoreUsage(value: JsonObject?) {
+        eventTokenUsage = value?.let { cached -> cached.string("turnId")?.takeIf { it.isNotBlank() }?.let { tokenUsage(cached, it) } }
+        eventUsage = eventTokenUsage?.let(::formatUsage)
+    }
     fun history(history: JsonObject, turnId: String? = null, replace: Boolean = false) {
-        if (replace) { items.clear(); types.clear(); turns.clear() }
+        if (replace) {
+            items.clear(); types.clear(); turns.clear()
+            val presentTurns = history.array("items").mapNotNull { (it as? JsonObject)?.string("id") }.toSet()
+            if (turnId == null && eventTokenUsage?.turnId != null && eventTokenUsage?.turnId !in presentTurns) {
+                eventTokenUsage = null; eventUsage = null
+            }
+        }
         if (turnId != null) history.array("items").forEach { (it as? JsonObject)?.let { item(it, turnId, history.flag("truncated")) } }
         else history.array("items").forEach { value -> (value as? JsonObject)?.let { turn ->
             val id = turn.string("id").orEmpty()
@@ -63,14 +75,19 @@ class InspectorProjection {
                 InspectorEntry("plan:$i", step.string("step") ?: return@let null, data.string("explanation").orEmpty(), step.string("status").orEmpty())
             } }
             "turn/diff/updated" -> eventDiff = data.string("diff")?.let { boundedContentPreview(sequenceOf(it)).displayText() }
-            "thread/tokenUsage/updated" -> eventUsage = data.obj("tokenUsage")?.let(::formatUsage)
+            "thread/tokenUsage/updated" -> {
+                val turn = data.string("turnId")?.takeIf { it.isNotBlank() } ?: return
+                if (scope.string("turnId") != null && scope.string("turnId") != turn) return
+                eventTokenUsage = data.obj("tokenUsage")?.let { tokenUsage(it, turn) }
+                eventUsage = eventTokenUsage?.let(::formatUsage)
+            }
         }
     }
     fun state(prior: InspectorUiState): InspectorUiState = prior.copy(
         execution = turns.values.toList() + items.values.filter { types[it.id] !in setOf("userMessage", "agentMessage", "plan", "fileChange") },
         plan = eventPlan.ifEmpty { items.values.filter { types[it.id] == "plan" } },
         diff = eventDiff ?: fileChangePreview(),
-        agents = items.values.filter { types[it.id]?.startsWith("collab") == true }, usage = eventUsage,
+        agents = items.values.filter { types[it.id]?.startsWith("collab") == true }, usage = eventUsage, tokenUsage = eventTokenUsage,
     )
     private fun fileChangePreview(): String? {
         val changes = items.values.asSequence().filter { types[it.id] == "fileChange" }
@@ -78,12 +95,12 @@ class InspectorProjection {
         // Stop while aggregating; never allocate the full multi-Item diff first.
         return boundedContentPreview(changes.map { it.body }).displayText()
     }
-    private fun formatUsage(value: JsonObject): String = buildList {
-        value.obj("total")?.let { add("累计：${usageLine(it)}") }
-        value.obj("last")?.let { add("最近 Turn：${usageLine(it)}") }
-        value.number("modelContextWindow")?.let { add("模型上下文窗口：$it tokens") }
-    }.joinToString("\n").ifBlank { value.toString() }
-    private fun usageLine(v: JsonObject) = listOf("totalTokens" to "总计", "inputTokens" to "输入", "cachedInputTokens" to "缓存输入", "outputTokens" to "输出", "reasoningOutputTokens" to "推理输出").mapNotNull { (key,label) -> v.number(key)?.let { "$label $it" } }.joinToString(" · ")
+    private fun formatUsage(value: TokenUsageUi): String = buildList {
+        usageLine(value.total).takeIf { it.isNotEmpty() }?.let { add("累计：$it") }
+        usageLine(value.last).takeIf { it.isNotEmpty() }?.let { add("最近用量：$it") }
+        value.modelContextWindow?.let { add("模型上下文窗口：$it tokens") }
+    }.joinToString("\n")
+    private fun usageLine(v: TokenCountsUi) = listOf(v.totalTokens to "总计", v.inputTokens to "输入", v.cachedInputTokens to "缓存输入", v.outputTokens to "输出", v.reasoningOutputTokens to "推理输出").mapNotNull { (count,label) -> count?.let { "$label $it" } }.joinToString(" · ")
 }
 
 /** Contiguous chunks must name the same immutable native Item version before any text is shown. */

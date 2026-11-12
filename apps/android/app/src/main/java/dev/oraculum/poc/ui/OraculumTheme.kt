@@ -1,6 +1,7 @@
 package dev.oraculum.poc.ui
 
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
@@ -92,11 +93,38 @@ private val MatchaShapes = Shapes(
 
 private val LocalReadingScale = staticCompositionLocalOf { 1f }
 
+internal data class AccentOption(val key: String, val label: String, val light: Color, val dark: Color, val lightContainer: Color, val darkContainer: Color)
+
+/** Fixed accessible pairs keep every selected accent readable in all three modes. */
+internal val accentOptions = listOf(
+    AccentOption("matcha", "抹茶", Color(0xFF446900), Color(0xFFA5D65D), Color(0xFFC0F275), Color(0xFF74A12E)),
+    AccentOption("ocean", "海蓝", Color(0xFF005FAF), Color(0xFFA5C8FF), Color(0xFFD5E3FF), Color(0xFF004786)),
+    AccentOption("violet", "紫罗兰", Color(0xFF6B45A8), Color(0xFFD3BBFF), Color(0xFFEBDCFF), Color(0xFF503182)),
+    AccentOption("rose", "玫瑰", Color(0xFF9E3A60), Color(0xFFFFB0C8), Color(0xFFFFD9E3), Color(0xFF7E2248)),
+    AccentOption("amber", "琥珀", Color(0xFF815600), Color(0xFFF5C15D), Color(0xFFFFDEA6), Color(0xFF624000)),
+    AccentOption("teal", "青碧", Color(0xFF006B60), Color(0xFF6EDBCA), Color(0xFF8FF8E7), Color(0xFF005048)),
+)
+
+internal fun oraculumColorScheme(mode: String, accentColor: String): ColorScheme {
+    val base = when (mode) { "light" -> MatchaLight; "oled" -> MatchaOled; else -> MatchaDark }
+    val accent = accentOptions.firstOrNull { it.key == accentColor } ?: accentOptions.first()
+    if (accent.key == "matcha") return base
+    val light = mode == "light"
+    return base.copy(
+        primary = if (light) accent.light else accent.dark,
+        onPrimary = if (light) Color.White else Color(0xFF121512),
+        primaryContainer = if (light) accent.lightContainer else accent.darkContainer,
+        onPrimaryContainer = if (light) Color(0xFF161A15) else Color.White,
+        surfaceTint = if (light) accent.light else accent.dark,
+        inversePrimary = if (light) accent.dark else accent.light,
+    )
+}
+
 @Composable
-fun OraculumTheme(mode: String = "dark", readingScale: Float = 1f, content: @Composable () -> Unit) {
+fun OraculumTheme(mode: String = "dark", readingScale: Float = 1f, accentColor: String = "matcha", content: @Composable () -> Unit) {
     CompositionLocalProvider(LocalReadingScale provides readingScale.coerceIn(.85f, 1.4f)) {
         MaterialTheme(
-            colorScheme = when (mode) { "light" -> MatchaLight; "oled" -> MatchaOled; else -> MatchaDark },
+            colorScheme = oraculumColorScheme(mode, accentColor),
             typography = MatchaTypography,
             shapes = MatchaShapes,
             content = content,

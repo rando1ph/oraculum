@@ -128,8 +128,18 @@ fun AttachmentChips(state: FilesUiState, actions: FilesActions, compact: Boolean
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 state.attachments.forEach { attachment ->
                     Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh, shape = MaterialTheme.shapes.medium,
-                        modifier = Modifier.widthIn(min = 120.dp, max = 220.dp).testTag("attachment_${attachment.name}")) {
-                        Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        modifier = Modifier.widthIn(min = 120.dp, max = if (compact) 280.dp else 220.dp).testTag("attachment_${attachment.name}")) {
+                        if (compact) Row(Modifier.padding(start = 8.dp, end = 2.dp, top = 2.dp, bottom = 2.dp), verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            if (attachment.previewFile != null) Thumbnail(attachment.previewFile, attachment.name, 36.dp)
+                            else OraculumIcon(OraculumSymbol.AttachFile, tint = MaterialTheme.colorScheme.primary, size = 20.dp)
+                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Text(attachment.name, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text("${formatSize(attachment.size)} · ${attachmentStatus(attachment.status)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            if (attachment.removable) IconButton({ actions.remove(attachment.id) }, enabled = state.writable && !state.busy,
+                                modifier = Modifier.size(48.dp).testTag("remove-attachment-${attachment.id}")) { OraculumIcon(OraculumSymbol.Close, "移除附件 ${attachment.name}", size = 20.dp) }
+                        } else Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             if (!compact) attachment.previewFile?.let { file -> Thumbnail(file, attachment.name) }
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 OraculumIcon(OraculumSymbol.AttachFile, tint = MaterialTheme.colorScheme.primary, size = 18.dp)
@@ -165,12 +175,13 @@ private fun RowScope.FileActionLabel(symbol: OraculumSymbol, text: String) {
 }
 
 @Composable
-private fun Thumbnail(file: File, label: String) {
+private fun Thumbnail(file: File, label: String, size: androidx.compose.ui.unit.Dp = 84.dp) {
     val bitmap by produceState<Bitmap?>(null, file) { value = withContext(Dispatchers.IO) { boundedBitmap(file, 360) } }
     // Image/BitmapPainter retains these pixels for drawing. Let GC release them after
     // all UI references disappear; disposing a state-keyed effect can recycle the
     // newly decoded value, and composition disposal is not a rendering fence.
-    bitmap?.let { Image(it.asImageBitmap(), contentDescription = "附件预览：$label", modifier = Modifier.size(84.dp)) }
+    bitmap?.let { Image(it.asImageBitmap(), contentDescription = "附件预览：$label", modifier = Modifier.size(size), contentScale = androidx.compose.ui.layout.ContentScale.Crop) }
+        ?: OraculumIcon(OraculumSymbol.Description, "附件 $label", modifier = Modifier.size(size))
 }
 
 @Composable

@@ -14,6 +14,33 @@ data class ChatMessage(
     val status: String = "",
     val turnId: String = "",
     val detailsRequired: Boolean = false,
+    val phase: String? = null,
+    val needsAttention: Boolean = false,
+    val timestampMillis: Long? = null,
+    val turn: TurnMetadataUi? = null,
+)
+
+/** Optional native facts only. Missing counters and producer timestamps remain unknown. */
+data class TokenCountsUi(
+    val totalTokens: Long? = null,
+    val inputTokens: Long? = null,
+    val cachedInputTokens: Long? = null,
+    val cacheWriteInputTokens: Long? = null,
+    val outputTokens: Long? = null,
+    val reasoningOutputTokens: Long? = null,
+)
+data class TokenUsageUi(
+    val total: TokenCountsUi = TokenCountsUi(),
+    val last: TokenCountsUi = TokenCountsUi(),
+    val modelContextWindow: Long? = null,
+    val turnId: String? = null,
+)
+data class TurnMetadataUi(
+    val status: String = "",
+    val startedAtMillis: Long? = null,
+    val completedAtMillis: Long? = null,
+    val durationMs: Long? = null,
+    val usage: TokenCountsUi? = null,
 )
 
 data class PermissionReadbackUi(val sandboxType: String, val approvalPolicy: String, val preset: String?, val observedAt: Long, val source: String)
@@ -30,6 +57,7 @@ data class InspectorUiState(
     val diff: String? = null,
     val agents: List<InspectorEntry> = emptyList(),
     val usage: String? = null,
+    val tokenUsage: TokenUsageUi? = null,
     val extensions: List<ExtensionSectionUi> = emptyList(),
     val detailTitle: String? = null,
     val detailText: String? = null,
@@ -53,6 +81,7 @@ data class PocUiState(
     val draft: String = "",
     val executionLabel: String = "",
     val canSend: Boolean = false,
+    val canCreateThread: Boolean = false,
     val canStop: Boolean = false,
     val canResume: Boolean = false,
     val canLoadMore: Boolean = false,
@@ -61,6 +90,8 @@ data class PocUiState(
     val readIndex: Int = 0,
     val readOffset: Int = 0,
     val themeMode: String = "dark",
+    val accentColor: String = "matcha",
+    val avatarFileName: String? = null,
     val userLabel: String = "你",
     val assistantLabel: String = "Oraculum",
     val readingScale: Float = 1f,
@@ -101,6 +132,9 @@ data class PocActions(
     val onClearCache: () -> Unit = {},
     val onDisconnect: () -> Unit = {},
     val onThemeChange: (String) -> Unit = {},
+    val onAccentChange: (String) -> Unit = {},
+    val onPickAvatar: () -> Unit = {},
+    val onRemoveAvatar: () -> Unit = {},
     val onIdentityLabelsChange: (String, String) -> Unit = { _, _ -> },
     val onReadingScaleChange: (Float) -> Unit = {},
     val onSelectModel: (String) -> Unit = {},

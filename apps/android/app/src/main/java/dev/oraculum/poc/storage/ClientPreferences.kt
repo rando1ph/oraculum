@@ -22,6 +22,8 @@ data class ClientPreferenceSnapshot(
     val userLabel: String = "你",
     val assistantLabel: String = "Oraculum",
     val readingScale: Float = 1f,
+    val accentColor: String = "matcha",
+    val avatarFileName: String? = null,
 )
 
 /** Small, non-secret preferences only; a new namespace never reads the legacy WebView state. */
@@ -38,6 +40,8 @@ class ClientPreferences(private val store: DataStore<Preferences>) {
             userLabel = preferences[USER_LABEL] ?: "你",
             assistantLabel = preferences[ASSISTANT_LABEL] ?: "Oraculum",
             readingScale = preferences[READING_SCALE]?.takeIf { it.isFinite() }?.coerceIn(0.85f, 1.4f) ?: 1f,
+            accentColor = preferences[ACCENT]?.takeIf { it in ACCENT_COLOR_KEYS } ?: "matcha",
+            avatarFileName = preferences[AVATAR]?.takeIf(::isAvatarFileName),
         )
     }
 
@@ -77,8 +81,20 @@ class ClientPreferences(private val store: DataStore<Preferences>) {
         store.edit { it[READING_SCALE] = scale }
     }
 
+    suspend fun saveAccent(color: String) {
+        require(color in ACCENT_COLOR_KEYS)
+        store.edit { it[ACCENT] = color }
+    }
+
+    suspend fun saveAvatar(fileName: String?) {
+        require(fileName == null || isAvatarFileName(fileName))
+        store.edit { if (fileName == null) it.remove(AVATAR) else it[AVATAR] = fileName }
+    }
+
     private companion object {
         val USER_LABEL = stringPreferencesKey("user-label")
+        val ACCENT = stringPreferencesKey("accent-color")
+        val AVATAR = stringPreferencesKey("avatar-file-name")
         val ASSISTANT_LABEL = stringPreferencesKey("assistant-label")
         val READING_SCALE = floatPreferencesKey("reading-scale")
         val THEME = stringPreferencesKey("theme")
@@ -88,3 +104,8 @@ class ClientPreferences(private val store: DataStore<Preferences>) {
         val THREAD = stringPreferencesKey("thread")
     }
 }
+
+val ACCENT_COLOR_KEYS = setOf("matcha", "ocean", "violet", "rose", "amber", "teal")
+
+/** Preferences hold a private asset name, never an external URI or arbitrary path. */
+internal fun isAvatarFileName(value: String): Boolean = Regex("avatar-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\.png").matches(value)

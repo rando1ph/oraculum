@@ -159,6 +159,53 @@ class GatewayClientTest {
         }
     }
 
+    @Test fun oversizedBusinessRequestFailsBeforeDispatchSignal() = runBlocking {
+        Fixture().use { f ->
+            f.client.pair(f.endpoint, "C".repeat(32))
+            var dispatchSignalled = false
+            val oversized = buildJsonObject { put("operationId", OPERATION); put("text", "a".repeat(128 * 1024)) }
+            assertEquals("REQUEST_TOO_LARGE", failure {
+                f.client.post("projects", oversized) { dispatchSignalled = true }
+            }.code)
+            assertFalse("Local validation must not leave a durable intent classified as dispatched", dispatchSignalled)
+            assertEquals(0, f.writeRequests.get())
+        }
+    }
+
+    @Test fun authenticationFailureBeforeBusinessEnqueueSettlesOnlyTheOriginalIntent() = runBlocking {
+        Fixture().use { f ->
+            f.client.pair(f.endpoint, "C".repeat(32))
+            f.now += 901
+            f.revoked = true
+            var receipt = "unknown"
+            val error = failure {
+                dev.oraculum.poc.repository.dispatchWriteRequest({ markDispatched ->
+                    f.client.post("projects", operation(), markDispatched)
+                }, { receipt = "rejected/notSent" })
+            }
+            assertEquals("DEVICE_REVOKED", error.code)
+            assertEquals("rejected/notSent", receipt)
+            assertEquals(1, f.tokenRequests.get())
+            assertEquals(0, f.writeRequests.get())
+            assertEquals(1, f.pairRequests.get())
+        }
+    }
+
+    @Test fun lostBusinessAcknowledgementRemainsUnknownAndIsNeverRepeated() = runBlocking {
+        Fixture().use { f ->
+            f.client.pair(f.endpoint, "C".repeat(32))
+            f.loseWriteAck = true
+            var receipt = "unknown"
+            assertEquals("CONNECTION_LOST", failure {
+                dev.oraculum.poc.repository.dispatchWriteRequest({ markDispatched ->
+                    f.client.post("projects", operation(), markDispatched)
+                }, { receipt = "rejected/notSent" })
+            }.code)
+            assertEquals("unknown", receipt)
+            assertEquals(1, f.writeRequests.get())
+        }
+    }
+
     @Test fun incompatibleHealthProtocolStopsBeforePairing() = runBlocking {
         Fixture().use { f ->
             f.protocolMajor = 3
@@ -253,6 +300,7 @@ class GatewayClientTest {
         var installation = INSTALLATION
         var protocolMajor = 2
         var losePairAck = false
+        var loseWriteAck = false
         var persistedBeforePair = false
         var registered: DeviceCredential? = null
         var revoked = false
@@ -299,7 +347,8 @@ class GatewayClientTest {
                             else json(resource("""{"projects":[],"roots":[]}"""))
                         } else {
                             writeRequests.incrementAndGet()
-                            if (writeStatus != 200) error(if (writeStatus == 401) "UNAUTHENTICATED" else "UNAVAILABLE", writeStatus).addHeader("Retry-After", "0")
+                            if (loseWriteAck) MockResponse().setSocketPolicy(SocketPolicy.DISCONNECT_AFTER_REQUEST)
+                            else if (writeStatus != 200) error(if (writeStatus == 401) "UNAUTHENTICATED" else "UNAVAILABLE", writeStatus).addHeader("Retry-After", "0")
                             else json("""{"installationId":"$installation","epoch":"$EPOCH","requestId":"request","operation":{"operationId":"$OPERATION","status":"$writeReceiptStatus"}}""")
                         }
                         "/base/api/v2/events" -> MockResponse().withWebSocketUpgrade(object : WebSocketListener() {

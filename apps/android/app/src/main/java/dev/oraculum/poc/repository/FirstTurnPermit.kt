@@ -22,7 +22,7 @@ class FirstTurnPermit {
     fun allows(project: String, thread: String, epoch: String, generation: Int, online: Boolean, unknown: Boolean): Boolean =
         online && !unknown && isCandidate(project, thread, epoch, generation) && proof?.idleVerified == true
 
-    /** Call only after the durable Turn intent is recorded; even an unknown result consumes it. */
+    /** Call at the dispatch cut point after durable intent; even a lost ACK consumes it. */
     fun consume(project: String, thread: String, epoch: String, generation: Int): Boolean {
         val allowed = allows(project, thread, epoch, generation, online = true, unknown = false)
         invalidate(thread)

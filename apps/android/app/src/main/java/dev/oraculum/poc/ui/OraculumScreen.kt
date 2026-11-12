@@ -1,8 +1,10 @@
-@file:OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@file:OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class, androidx.compose.material3.ExperimentalMaterial3Api::class)
 
 package dev.oraculum.poc.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -35,17 +37,20 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import dev.oraculum.poc.repository.boundedContentPreview
 import dev.oraculum.poc.repository.CONTENT_PREVIEW_NOTICE
 import dev.oraculum.poc.files.AttachmentChips
-import dev.oraculum.poc.files.AttachmentPickerButton
+import dev.oraculum.poc.files.FileTransferPolicy
 import dev.oraculum.poc.files.FilesActions
 import dev.oraculum.poc.files.FilesPanel
 import dev.oraculum.poc.files.FilesUiState
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 import java.text.DateFormat
 import java.util.Date
 
@@ -74,6 +79,7 @@ fun OraculumScreen(
         val imeHeight = with(LocalDensity.current) { WindowInsets.ime.getBottom(this).toDp() }
         val compactViewport = maxHeight - imeHeight < 450.dp
         val composerHeight = ((maxHeight - imeHeight - 76.dp) * .62f).coerceIn(104.dp, 320.dp)
+        val sheetMaximumHeight = maxHeight * .9f
         val persistentInspector = maxWidth >= 1000.dp && state.paired && state.selectedThreadId != null
         Row(Modifier.fillMaxSize()) {
             Scaffold(modifier = Modifier.weight(1f), containerColor = MaterialTheme.colorScheme.background,
@@ -81,7 +87,7 @@ fun OraculumScreen(
                     Surface(color = MaterialTheme.colorScheme.background) {
                         Column(Modifier.statusBarsPadding().padding(horizontal = 12.dp, vertical = 6.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                IconButton(onClick = { panel = "navigation" }, enabled = state.paired,
+                                IconButton(onClick = { panel = "navigation" },
                                     modifier = Modifier.size(48.dp).testTag("navigation").semantics { contentDescription = "打开项目与会话导航" }) {
                                     Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surfaceContainerHigh) {
                                         OracleEyeMark(modifier = Modifier.padding(10.dp), size = 24.dp)
@@ -90,55 +96,57 @@ fun OraculumScreen(
                                 Column(Modifier.weight(1f).padding(horizontal = 10.dp)) {
                                     Text(selectedThread?.label ?: "神谕 · Oraculum", maxLines = 1, overflow = TextOverflow.Ellipsis,
                                         style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                                    Text(selectedProject?.label ?: "你的 Codex 助手", maxLines = 1, overflow = TextOverflow.Ellipsis,
-                                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        if (state.paired) Box(Modifier.size(6.dp).background(if (state.online) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.outline, CircleShape)
+                                            .semantics { contentDescription = if (state.online) "已连接" else "离线" })
+                                        Text(selectedProject?.label ?: "你的 Codex 助手", maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
                                 }
                                 if (state.paired) GlyphButton("inspector", "打开 Inspector", "inspector", onClick = { panel = "inspector"; actions.onRefreshInspector() })
-                                else GlyphButton("settings", "设置", "settings", onClick = { panel = "settings" })
                             }
-                            if (!compactViewport) Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 12.dp)) {
-                                Box(Modifier.size(6.dp).background(if (state.online) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.outline, CircleShape))
-                                Text(state.connectionLabel, Modifier.padding(start = 8.dp).weight(1f), style = MaterialTheme.typography.labelSmall,
-                                    maxLines = 2, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                if (state.paired && !state.online) TextButton(actions.onReconnect, enabled = !state.busy, modifier = Modifier.testTag("reconnect")) { Text("重连") }
-                                if (state.paired) GlyphButton("settings", "设置", "settings", onClick = { panel = "settings" })
+                            if (state.paired && !state.online) Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 12.dp)) {
+                                OraculumIcon(OraculumSymbol.WifiOff, tint = MaterialTheme.colorScheme.onSurfaceVariant, size = 16.dp)
+                                Text("连接已断开 · 草稿已保留", Modifier.padding(start = 8.dp).weight(1f), style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                TextButton(actions.onReconnect, enabled = !state.busy, modifier = Modifier.testTag("reconnect")) { Text("重连") }
                             }
                             if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 4.dp))
                         }
                     }
                 },
                 bottomBar = {
-                    if (state.paired && state.selectedThreadId != null) Composer(state, actions, filesState, filesActions, composerHeight, compactViewport, onOptions = { panel = it })
+                    if (state.paired && state.selectedThreadId != null) Composer(state, actions, filesState, filesActions, composerHeight, compactViewport, onOptions = {
+                        if (it == "files") { inspectorTab = "files"; panel = "inspector"; filesActions.browse("") }
+                        else panel = it
+                    })
                 },
             ) { padding ->
                 Column(Modifier.fillMaxSize().padding(padding)) {
                     state.error?.let { Notice(it, true) }
                     val pendingInteractions = state.interactions.count { it.status == "pending" }
                     if (pendingInteractions > 0) Surface(color = MaterialTheme.colorScheme.secondaryContainer) {
-                        TextButton({ panel = "inspector"; inspectorTab = "output" }, Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("pending-interactions")) {
+                        TextButton({ panel = "approval" }, Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("pending-interactions")) {
                             Text("$pendingInteractions 个请求等待处理 · 查看")
                         }
                     }
-                    if (state.unknownWarning != null || state.unresolvedOperations.isNotEmpty()) {
+                    // A durably reserved write is briefly unresolved while its request is in flight.
+                    // Its write gate remains closed; reserve the recovery alarm for a settled unknown.
+                    if (!state.busy && (state.unknownWarning != null || state.unresolvedOperations.isNotEmpty())) {
                         Surface(color = MaterialTheme.colorScheme.errorContainer) {
                             Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Text("存在待确认操作；受影响会话暂停发送", Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onErrorContainer)
+                                Text(if (state.unknownWarning != null) "此会话有操作待确认，暂不能发送" else "其他操作有待确认结果", Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onErrorContainer)
                                 TextButton({ panel = "unknown" }, Modifier.testTag("unknown-recovery")) { Text("查看与对账", color = MaterialTheme.colorScheme.onErrorContainer) }
                             }
                         }
                     }
                     when {
                         !state.paired -> PairingForm(state, actions, Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(24.dp))
-                        state.selectedThreadId == null -> Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp), verticalArrangement = Arrangement.Center) {
-                            OracleEyeMark(modifier = Modifier.padding(bottom = 16.dp), size = 48.dp)
-                            Text("从一个想法开始", style = MaterialTheme.typography.headlineLarge)
-                            Spacer(Modifier.height(12.dp))
-                            Text(if (state.online) "打开项目与会话，继续你的工作。" else "离线时可阅读已缓存会话，草稿留在本机。", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Spacer(Modifier.height(24.dp))
+                        state.selectedThreadId == null -> EmptyConversation(state, Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
                             Button({ panel = "navigation" }, Modifier.heightIn(min = 48.dp).testTag("choose_thread")) { Text("打开项目与会话") }
                         }
                         else -> {
-                            state.historyWarning?.let { Notice(it) }
+                            state.historyWarning?.takeUnless(::isNormalEmptyHistoryNotice)?.let { Notice(it) }
                             Conversation(state, actions, Modifier.weight(1f))
                         }
                     }
@@ -155,14 +163,33 @@ fun OraculumScreen(
         }
         if (panel != null) {
             val activePanel = panel!!
-            SidePanel(fromLeft = activePanel == "navigation", onDismiss = { panel = null }) {
+            if (activePanel in setOf("model", "permission", "approval")) {
+                ModalBottomSheet(onDismissRequest = { panel = null }, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                    modifier = Modifier.semantics { testTagsAsResourceId = true }.testTag("$activePanel-sheet")) {
+                    Column(Modifier.fillMaxWidth().heightIn(max = sheetMaximumHeight).imePadding()) {
+                        when (activePanel) {
+                            "model" -> ModelPanel(state, actions) { panel = null }
+                            "permission" -> PermissionPanel(state, actions) { panel = null }
+                            else -> {
+                                PanelHeading("待处理请求") { panel = null }
+                                Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                    state.interactions.filter { it.status != "resolved" }.forEach { interaction ->
+                                        NativeInteractionPanel(interaction, state.online && !state.busy && state.unknownWarning == null,
+                                            onApproveFileChange = { response, digest -> actions.onRespondFileChange(interaction.id, response, digest) }) { response -> actions.onRespondInteraction(interaction.id, response) }
+                                    }
+                                    if (state.interactions.none { it.status != "resolved" }) MutedText("当前没有待处理请求。")
+                                }
+                            }
+                        }
+                    }
+                }
+            } else SidePanel(fromLeft = activePanel == "navigation", onDismiss = { panel = null }) {
                 when (activePanel) {
                     "navigation" -> NavigationPanel(state, actions, onDismiss = { panel = null }, onSettings = { panel = "settings" })
                     "inspector" -> InspectorPanel(state, actions, inspectorTab, { inspectorTab = it }, filesState, filesActions) { panel = null }
                     "settings" -> SettingsPanel(state, actions, notificationEnabled, onNotificationSettings) { panel = null }
                     "unknown" -> UnknownRecoveryPanel(state, actions) { panel = null }
-                    "model" -> ModelPanel(state, actions) { panel = null }
-                    "permission" -> PermissionPanel(state, actions) { panel = null }
                 }
             }
         }
@@ -240,7 +267,7 @@ private fun ColumnScope.NavigationPanel(state: PocUiState, actions: PocActions, 
         }
         GlyphButton("close", "关闭面板", "close-panel", onDismiss)
     }
-    Button({ actions.onCreateThread(); onDismiss() }, enabled = canWrite && state.selectedProjectId != null, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).heightIn(min = 48.dp).testTag("new-thread")) { OraculumIcon(OraculumSymbol.Add); Spacer(Modifier.width(8.dp)); Text("新建会话") }
+    Button({ actions.onCreateThread(); onDismiss() }, enabled = state.canCreateThread, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).heightIn(min = 48.dp).testTag("new-thread")) { OraculumIcon(OraculumSymbol.Add); Spacer(Modifier.width(8.dp)); Text("新建会话") }
     if (searchOpen) {
         Surface(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
             Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(start = 12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -294,9 +321,12 @@ private fun ColumnScope.NavigationPanel(state: PocUiState, actions: PocActions, 
     }
     HorizontalDivider()
     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-        OraculumIcon(if (state.online) OraculumSymbol.Wifi else OraculumSymbol.WifiOff, tint = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(if (state.online) "已连接" else "离线缓存", Modifier.weight(1f).padding(start = 8.dp), style = MaterialTheme.typography.bodySmall)
-        TextButton(onSettings, modifier = Modifier.heightIn(min = 48.dp)) { OraculumIcon(OraculumSymbol.Settings); Spacer(Modifier.width(8.dp)); Text("设置") }
+        UserAvatar(state.avatarFileName, state.userLabel, size = 28.dp)
+        Column(Modifier.weight(1f).padding(start = 8.dp)) {
+            Text(state.userLabel, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(if (state.online) "已连接" else "离线缓存", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        TextButton(onSettings, modifier = Modifier.heightIn(min = 48.dp).testTag("settings")) { OraculumIcon(OraculumSymbol.Settings); Spacer(Modifier.width(8.dp)); Text("设置") }
     }
 }
 
@@ -318,69 +348,71 @@ internal fun NavigationRow(title: String, detail: String, selected: Boolean, tag
 }
 
 @Composable
+private fun EmptyConversation(state: PocUiState, modifier: Modifier = Modifier, action: (@Composable () -> Unit)? = null) {
+    Column(modifier.padding(horizontal = 28.dp, vertical = 24.dp).testTag("empty-brand"),
+        verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
+        OracleEyeMark(contentDescription = "神谕之眼", size = 112.dp, variant = OracleEyeVariant.Full)
+        Spacer(Modifier.height(20.dp))
+        Box(Modifier.width(32.dp).height(2.dp).background(MaterialTheme.colorScheme.primary.copy(alpha = .6f)))
+        Spacer(Modifier.height(18.dp))
+        Text(when {
+            state.selectedProjectId == null -> "万象无疆，诸界未名。"
+            state.selectedThreadId == null -> "万象俯首，静候神谕。"
+            else -> "谕令未书，万象屏息。"
+        }, style = MaterialTheme.typography.headlineSmall, textAlign = TextAlign.Center)
+        Spacer(Modifier.height(12.dp))
+        Text(when {
+            !state.online -> "离线时可阅读缓存，草稿保留在本机。"
+            state.selectedThreadId == null -> "选择项目，继续会话或开启新的工作。"
+            else -> "写下你的想法，或添加文件一起开始。"
+        }, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
+        if (action != null) { Spacer(Modifier.height(24.dp)); action() }
+    }
+}
+
+@Composable
 private fun Conversation(state: PocUiState, actions: PocActions, modifier: Modifier) {
     val headerCount = if (state.canLoadMore) 1 else 0
-    val listState = rememberLazyListState(initialFirstVisibleItemIndex = state.readIndex.coerceAtLeast(0) + headerCount, initialFirstVisibleItemScrollOffset = state.readOffset.coerceAtLeast(0))
+    var expandedTurns by rememberSaveable(state.selectedThreadId) { mutableStateOf(emptyList<String>()) }
+    val pending = state.interactions.filter { it.status != "resolved" }
+    val pendingTurnIds = pending.map { (it.request["turnId"] as? JsonPrimitive)?.contentOrNull?.takeIf(String::isNotBlank) }
+    val rows = conversationRows(state.messages, expandedTurns.toSet(), pendingTurnIds.filterNotNull().toSet(), pendingTurnIds.any { it == null })
+    val listState = rememberLazyListState(initialFirstVisibleItemIndex = rows.rowForSourceIndex(state.readIndex.coerceAtLeast(0)) + headerCount, initialFirstVisibleItemScrollOffset = state.readOffset.coerceAtLeast(0))
     var restoredThread by remember { mutableStateOf<String?>(null) }
     val followingEnd by remember { derivedStateOf {
         val lastVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
         lastVisible >= listState.layoutInfo.totalItemsCount - 2
     } }
     LaunchedEffect(state.messages.lastOrNull()?.text, state.interactions.size) {
-        if (restoredThread == state.selectedThreadId && followingEnd && state.messages.isNotEmpty()) {
-            listState.scrollToItem((headerCount + state.messages.size + state.interactions.size - 1).coerceAtLeast(0))
+        if (restoredThread == state.selectedThreadId && followingEnd && rows.isNotEmpty()) {
+            listState.scrollToItem((headerCount + rows.size + state.interactions.size - 1).coerceAtLeast(0))
         }
     }
     LaunchedEffect(state.selectedThreadId, state.messages.isEmpty()) {
-        if (state.messages.isNotEmpty() && restoredThread != state.selectedThreadId) {
-            listState.scrollToItem(state.readIndex.coerceIn(0, state.messages.lastIndex) + headerCount, state.readOffset.coerceAtLeast(0))
+        if (rows.isNotEmpty() && restoredThread != state.selectedThreadId) {
+            listState.scrollToItem(rows.rowForSourceIndex(state.readIndex.coerceAtLeast(0)) + headerCount, state.readOffset.coerceAtLeast(0))
             restoredThread = state.selectedThreadId
         }
     }
+    val currentRows by rememberUpdatedState(rows)
     LaunchedEffect(listState, state.selectedThreadId, headerCount) {
         snapshotFlow { listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset }.distinctUntilChanged().collect { (index, offset) ->
-            if (restoredThread == state.selectedThreadId) actions.onReadPosition((index - headerCount).coerceAtLeast(0), if (index < headerCount) 0 else offset)
+            if (restoredThread == state.selectedThreadId) {
+                val sourceIndex = currentRows.getOrNull((index - headerCount).coerceAtLeast(0))?.sourceIndex ?: currentRows.lastOrNull()?.sourceIndex ?: 0
+                actions.onReadPosition(sourceIndex, if (index < headerCount) 0 else offset)
+            }
         }
     }
-    LazyColumn(modifier.fillMaxWidth().testTag("conversation"), state = listState, contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    LazyColumn(modifier.fillMaxWidth().testTag("conversation"), state = listState, contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         if (state.canLoadMore) item(key = "history_controls") {
             OutlinedButton(actions.onLoadMore, enabled = state.online && !state.busy, modifier = Modifier.fillMaxWidth().testTag("load-more")) { Text("加载更早历史") }
         }
-        if (state.messages.isEmpty()) item(key = "empty") {
-            Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("准备就绪", style = MaterialTheme.typography.headlineSmall)
-                MutedText(if (state.online) "描述你想完成的工作。只有点击发送才会开始执行。" else "还没有缓存消息。联网后读取原生历史；草稿可以继续编辑。")
-            }
+        if (state.messages.isEmpty() && state.interactions.isEmpty()) item(key = "empty") {
+            EmptyConversation(state, Modifier.fillParentMaxHeight(.85f).fillMaxWidth())
         }
-        items(state.messages, key = { it.id }) { message ->
-            val process = message.role !in listOf("user", "assistant")
-            val user = message.role == "user"
-            var expanded by rememberSaveable(message.id) { mutableStateOf(false) }
-            var copied by remember(message.text) { mutableStateOf(false) }
-            val clipboard = LocalClipboardManager.current
-            OraculumCard(role = when { process -> CardRole.Process; user -> CardRole.User; else -> CardRole.Content },
-                modifier = Modifier.fillMaxWidth().testTag("message_${message.id}"),
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = if (process) 4.dp else 12.dp)) {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    when {
-                        process -> OraculumIcon(when (message.role) { "reasoning" -> OraculumSymbol.Model; "commandExecution" -> OraculumSymbol.Terminal; else -> OraculumSymbol.Code }, tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                        user -> OraculumIcon(OraculumSymbol.Person, tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                        else -> Surface(shape = CircleShape, color = MaterialTheme.colorScheme.primaryContainer) { OracleEyeMark(modifier = Modifier.padding(6.dp), tint = MaterialTheme.colorScheme.onPrimaryContainer, size = 20.dp) }
-                    }
-                    Column(Modifier.weight(1f)) {
-                        Text(when (message.role) { "user" -> state.userLabel; "assistant" -> state.assistantLabel; "reasoning" -> "思考过程"; "commandExecution" -> "命令执行"; "fileChange" -> "文件变更"; else -> message.role },
-                            style = if (process || user) MaterialTheme.typography.labelLarge else MaterialTheme.typography.titleSmall)
-                        if (message.status.isNotBlank()) Text(message.status, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    if (process) IconButton({ expanded = !expanded }, Modifier.size(48.dp).semantics { stateDescription = if (expanded) "已展开" else "已收起" }) {
-                        OraculumIcon(if (expanded) OraculumSymbol.ExpandLess else OraculumSymbol.ExpandMore, if (expanded) "收起执行内容" else "查看执行内容")
-                    } else if (!user) IconButton({ clipboard.setText(AnnotatedString(message.text)); copied = true }, Modifier.size(48.dp)) {
-                        OraculumIcon(if (copied) OraculumSymbol.Check else OraculumSymbol.Copy, if (copied) "已复制答案" else "复制答案", tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
-                if (!process || expanded) MarkdownContent(message.text)
-                if (message.detailsRequired) OutlinedButton({ actions.onLoadItemDetail(message.turnId, message.id) }, enabled = state.online && !state.busy,
-                    modifier = Modifier.fillMaxWidth().testTag("detail-${message.id}")) { OraculumIcon(OraculumSymbol.Description); Spacer(Modifier.width(8.dp)); Text("读取完整 Item 详情") }
+        items(rows, key = { it.key }) { row ->
+            row.message?.let { MessageCard(it, state, actions) } ?: TurnSummary(row) {
+                expandedTurns = if (row.turnId in expandedTurns) expandedTurns - row.turnId else expandedTurns + row.turnId
             }
         }
         items(state.interactions, key = { "interaction-${it.id}" }) { interaction ->
@@ -391,29 +423,109 @@ private fun Conversation(state: PocUiState, actions: PocActions, modifier: Modif
 }
 
 @Composable
+private fun TurnSummary(row: ConversationRow, toggle: () -> Unit) {
+    val turn = row.turn ?: return
+    val label = when (turn.status) { "completed" -> "已完成"; "failed" -> "执行失败"; "interrupted" -> "已停止"; "inProgress" -> "执行中"; else -> "本轮执行" }
+    val usage = turn.usage
+    val tokens = usage?.totalTokens?.let { "最近用量 ${java.text.NumberFormat.getIntegerInstance().format(it)} tokens" }
+    val details = listOfNotNull(turn.durationMs?.let { "用时 ${formatTurnDuration(it)}" }, tokens)
+    val collapsible = row.canCollapse && row.processCount > 0
+    Surface(color = MaterialTheme.colorScheme.surfaceContainerLow, shape = OraculumTokens.ProcessShape,
+        modifier = Modifier.fillMaxWidth().testTag("turn-summary-${row.turnId}").then(if (collapsible) Modifier.clickable(onClick = toggle) else Modifier)
+            .semantics { if (collapsible) { role = Role.Button; stateDescription = if (row.expanded) "已展开" else "已收起" } }) {
+        Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.heightIn(min = if (collapsible) 40.dp else 24.dp)) {
+                OraculumIcon(if (turn.status == "completed") OraculumSymbol.Check else if (turn.status == "failed") OraculumSymbol.Error else OraculumSymbol.Terminal,
+                    tint = if (turn.status == "failed") MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
+                Text((listOf(label) + details).joinToString(" · "), Modifier.weight(1f), style = MaterialTheme.typography.labelLarge)
+                if (collapsible) OraculumIcon(if (row.expanded) OraculumSymbol.ExpandLess else OraculumSymbol.ExpandMore,
+                    if (row.expanded) "收起本轮执行过程" else "展开本轮执行过程")
+            }
+            val counts = listOfNotNull(row.processCount.takeIf { it > 0 }?.let { "$it 项执行记录" },
+                usage?.cachedInputTokens?.let { "最近缓存读取 ${java.text.NumberFormat.getIntegerInstance().format(it)} tokens" })
+            if (counts.isNotEmpty()) Text(counts.joinToString(" · "), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            val times = listOfNotNull(turn.startedAtMillis?.let { "本轮开始 ${DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(it))}" },
+                turn.completedAtMillis?.let { "完成 ${DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(it))}" })
+            if (times.isNotEmpty()) Text(times.joinToString(" · "), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+@Composable
+private fun MessageCard(message: ChatMessage, state: PocUiState, actions: PocActions) {
+    val process = isProcessMessage(message)
+    val user = message.role == "user"
+    var expanded by rememberSaveable(message.id) { mutableStateOf(message.needsAttention || (process && message.turn?.status != "completed")) }
+    LaunchedEffect(message.needsAttention) { if (message.needsAttention) expanded = true }
+    var copied by remember(message.text) { mutableStateOf(false) }
+    val clipboard = LocalClipboardManager.current
+    OraculumCard(role = when { process -> CardRole.Process; user -> CardRole.User; else -> CardRole.Content },
+        modifier = Modifier.fillMaxWidth().testTag("message_${message.id}"),
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = if (process) 4.dp else 12.dp)) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            when {
+                process -> OraculumIcon(when (message.role) { "reasoning" -> OraculumSymbol.Model; "commandExecution" -> OraculumSymbol.Terminal; else -> OraculumSymbol.Code }, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                user -> UserAvatar(state.avatarFileName, state.userLabel, size = 28.dp)
+                else -> Surface(shape = CircleShape, color = MaterialTheme.colorScheme.primaryContainer) { OracleEyeMark(modifier = Modifier.padding(6.dp), tint = MaterialTheme.colorScheme.onPrimaryContainer, size = 20.dp) }
+            }
+            Column(Modifier.weight(1f)) {
+                Text(when (message.role) { "user" -> state.userLabel; "assistant" -> state.assistantLabel; "reasoning" -> "思考过程"; "commandExecution" -> "命令执行"; "fileChange" -> "文件变更"; else -> message.role },
+                    style = if (process || user) MaterialTheme.typography.labelLarge else MaterialTheme.typography.titleSmall)
+                if (message.status.isNotBlank()) Text(message.status, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                message.timestampMillis?.let { Text(DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(it)), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            }
+            if (process) IconButton({ expanded = !expanded }, Modifier.size(48.dp).semantics { stateDescription = if (expanded) "已展开" else "已收起" }) {
+                OraculumIcon(if (expanded) OraculumSymbol.ExpandLess else OraculumSymbol.ExpandMore, if (expanded) "收起执行内容" else "查看执行内容")
+            } else if (!user) IconButton({ clipboard.setText(AnnotatedString(message.text)); copied = true }, Modifier.size(48.dp)) {
+                OraculumIcon(if (copied) OraculumSymbol.Check else OraculumSymbol.Copy, if (copied) "已复制答案" else "复制答案", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        if (!process || expanded) MarkdownContent(message.text)
+        if (message.detailsRequired) OutlinedButton({ actions.onLoadItemDetail(message.turnId, message.id) }, enabled = state.online && !state.busy,
+            modifier = Modifier.fillMaxWidth().testTag("detail-${message.id}")) { OraculumIcon(OraculumSymbol.Description); Spacer(Modifier.width(8.dp)); Text("读取完整 Item 详情") }
+    }
+}
+
+@Composable
 private fun Composer(state: PocUiState, actions: PocActions, filesState: FilesUiState, filesActions: FilesActions,
     maximumHeight: Dp, compact: Boolean, onOptions: (String) -> Unit) {
+    var addMenu by remember { mutableStateOf(false) }
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments(), filesActions.pick)
     Column(Modifier.navigationBarsPadding().imePadding().padding(horizontal = 12.dp, vertical = 6.dp)) {
         Surface(shape = OraculumTokens.PanelShape, color = MaterialTheme.colorScheme.surfaceContainerHigh, border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = .6f))) {
             Column(Modifier.heightIn(max = maximumHeight).padding(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 // Only the content area scrolls; send/stop remain outside it in a 48dp toolbar.
                 Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) {
-                    if (!compact && state.executionLabel.isNotBlank()) Row(Modifier.padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    val executionNotice = composerExecutionNotice(state)
+                    if (executionNotice != null) Row(Modifier.padding(horizontal = 8.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         OraculumIcon(if (state.canStop) OraculumSymbol.Terminal else OraculumSymbol.Info, tint = MaterialTheme.colorScheme.onSurfaceVariant, size = 16.dp)
-                        Text(state.executionLabel, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(executionNotice, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
                     }
                     OutlinedTextField(state.draft, actions.onDraftChange,
-                        placeholder = { Text(if (state.online) "给 Codex 发送消息…" else "离线草稿 · 联网后手动发送") },
-                        minLines = 1, maxLines = if (compact) 3 else 5,
+                        placeholder = { Text(if (!state.online) "离线草稿 · 联网后手动发送" else if (filesState.attachments.isNotEmpty()) "为附件添加说明…" else "给 Codex 发送消息…") },
+                        minLines = 1, maxLines = if (compact) 2 else 4,
                         modifier = Modifier.fillMaxWidth().testTag("draft"), shape = RoundedCornerShape(20.dp),
                         colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Color.Transparent, unfocusedBorderColor = Color.Transparent))
                     if (filesState.attachments.isNotEmpty() || filesState.hasUnknown) {
                         AttachmentChips(filesState, filesActions, compact = true)
-                        if (state.draft.isBlank()) MutedText("添加文字说明后发送附件。")
                     }
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically) {
-                    AttachmentPickerButton(filesState, filesActions)
+                    Box {
+                        IconButton({ addMenu = true }, modifier = Modifier.size(48.dp).testTag("composer-add").semantics { contentDescription = "添加内容与项目操作" }) {
+                            OraculumIcon(OraculumSymbol.Add, size = 24.dp)
+                        }
+                        DropdownMenu(expanded = addMenu, onDismissRequest = { addMenu = false }) {
+                            DropdownMenuItem(text = { Text("图片或文档") }, leadingIcon = { OraculumIcon(OraculumSymbol.AttachFile) },
+                                enabled = filesState.writable && !filesState.busy && !filesState.hasUnknown,
+                                modifier = Modifier.testTag("files_pick"), onClick = { addMenu = false; filesActions.beginPick(); picker.launch(FileTransferPolicy.types.values.distinct().toTypedArray()) })
+                            DropdownMenuItem(text = { Text("项目文件与成果") }, leadingIcon = { OraculumIcon(OraculumSymbol.Folder) },
+                                enabled = filesState.readable && !filesState.busy, modifier = Modifier.testTag("composer-files"),
+                                onClick = { addMenu = false; onOptions("files") })
+                            DropdownMenuItem(text = { Text("切换项目或会话") }, leadingIcon = { OraculumIcon(OraculumSymbol.Chat) },
+                                modifier = Modifier.testTag("composer-navigation"), onClick = { addMenu = false; onOptions("navigation") })
+                        }
+                    }
                     TextButton({ onOptions("permission") }, contentPadding = PaddingValues(horizontal = 8.dp), modifier = Modifier.heightIn(min = 48.dp).testTag("permission-picker").semantics { contentDescription = "选择执行权限" }) {
                         OraculumIcon(OraculumSymbol.Shield, size = 18.dp); Spacer(Modifier.width(4.dp))
                         Text(when (state.permissionPreset) { "full-access" -> "Full"; "auto" -> "Auto"; else -> "只读" }, maxLines = 1)

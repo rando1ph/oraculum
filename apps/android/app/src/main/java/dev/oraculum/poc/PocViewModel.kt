@@ -114,7 +114,8 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
     init {
         action {
             val saved = local.preferences.snapshot()
-            mutableState.value = state.value.copy(endpoint = saved.endpoint, themeMode = saved.themeMode, userLabel = saved.userLabel, assistantLabel = saved.assistantLabel, readingScale = saved.readingScale)
+            mutableState.value = state.value.copy(endpoint = saved.endpoint, themeMode = saved.themeMode, userLabel = saved.userLabel, assistantLabel = saved.assistantLabel, readingScale = saved.readingScale,
+                accentColor = saved.accentColor, avatarFileName = saved.avatarFileName)
             if (saved.endpoint.isNotBlank()) {
                 val endpoint = GatewayEndpoint.parse(saved.endpoint)
                 val identity = client.savedIdentity(endpoint)
@@ -132,6 +133,18 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
         if (mode !in setOf("light", "dark", "oled")) return@action
         local.preferences.saveTheme(mode)
         mutableState.value = state.value.copy(themeMode = mode)
+    }
+
+    fun accentChange(mode: String) = action {
+        local.preferences.saveAccent(mode)
+        mutableState.value = state.value.copy(accentColor = mode)
+    }
+
+    fun refreshLocalAvatar() = viewModelScope.launch {
+        try {
+            val saved = local.preferences.snapshot()
+            mutableState.value = state.value.copy(avatarFileName = saved.avatarFileName)
+        } catch (error: Exception) { handleFailure(error) }
     }
 
     fun identityLabelsChange(user: String, assistant: String) = action {
@@ -385,7 +398,8 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
             pendingObserver?.cancel()
             pending = emptyList()
             projection.clear()
-            mutableState.value = PocUiState(endpoint = value, themeMode = state.value.themeMode, userLabel = state.value.userLabel, assistantLabel = state.value.assistantLabel, readingScale = state.value.readingScale)
+            mutableState.value = PocUiState(endpoint = value, themeMode = state.value.themeMode, userLabel = state.value.userLabel, assistantLabel = state.value.assistantLabel, readingScale = state.value.readingScale,
+                accentColor = state.value.accentColor, avatarFileName = state.value.avatarFileName)
         }
     }
 
@@ -458,11 +472,17 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
         val result = executeWrite("thread.start", projectId, null, "projects/${segment(projectId)}/threads") { id ->
             buildJsonObject { put("operationId", id); put("expectedEpoch", epoch); put("permissionPreset", state.value.permissionPreset); state.value.selectedModel?.let { put("model", it) } }
         }
-        refreshThreads(projectId)
-        if (result.string("status") == "accepted") result.string("nativeThreadId")?.let {
+        val createdThread = result.string("nativeThreadId").takeIf { result.string("status") == "accepted" }
+        // Preserve the accepted acknowledgement before optional list refresh can fail. This is
+        // still only a candidate: selection must confirm native idle in this connection generation.
+        createdThread?.let {
             if (state.value.online && position != null && epoch == startedEpoch && connectionGeneration == startedGeneration)
                 firstTurnPermit.acceptedStart(projectId, it, startedEpoch, startedGeneration)
             freshThreads.add(it)
+            if (state.value.threads.none { thread -> thread.id == it }) mutableState.value = state.value.copy(threads = state.value.threads + ThreadOption(it, "新会话", "idle"))
+        }
+        refreshThreads(projectId)
+        createdThread?.let {
             if (state.value.threads.none { thread -> thread.id == it }) mutableState.value = state.value.copy(threads = state.value.threads + ThreadOption(it, "新会话", "idle"))
             selectThreadInternal(it)
         }
@@ -899,7 +919,7 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
         // Notifications consume only whitelisted native shapes and never alter execution state.
         if (continuity in setOf(EventDecision.APPLY, EventDecision.INVALIDATE)) scopeKey?.let { notifications.onVerifiedEvent(it, event) }
         val scope = event.obj("scope")
-        val relevant = scope?.string("threadId") == null || scope.string("threadId") == state.value.selectedThreadId
+        val relevant = eventAffectsSelection(scope?.string("projectId"), scope?.string("threadId"), state.value.selectedProjectId, state.value.selectedThreadId)
         val eventThread = scope?.string("threadId")
         val eventKind = event.string("kind")
         if (relevant && decision != EventDecision.SKIP) {
@@ -908,18 +928,22 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
         }
         if (relevant && eventThread == state.value.selectedThreadId) {
             inspectorProjection.event(event)
+            if (eventKind == "native.state") {
+                projection.event(event)
+                mutableState.value = state.value.copy(messages = projection.messages())
+            }
             mutableState.value = state.value.copy(inspector = inspectorProjection.state(state.value.inspector))
             if (eventKind in setOf("interaction.opened", "interaction.resolved")) event.obj("payload")?.let { raw ->
                 val interaction = NativeInteractionForms.parse(raw)
                 mutableState.value = state.value.copy(interactions = state.value.interactions.filter { it.id != interaction.id } + interaction)
             }
         }
-        if (decision == EventDecision.INVALIDATE && eventKind != "native.state") firstTurnPermit.invalidate(eventThread)
-        if (eventKind == "operation.changed" && (event.obj("payload")?.string("nativeTurnId") != null || event.obj("payload")?.string("status") == "unknown"))
+        if (relevant && decision == EventDecision.INVALIDATE && eventKind != "native.state") firstTurnPermit.invalidate(eventThread)
+        if (relevant && eventKind == "operation.changed" && (event.obj("payload")?.string("nativeTurnId") != null || event.obj("payload")?.string("status") == "unknown"))
             firstTurnPermit.invalidate(eventThread)
-        if (eventKind in setOf("item.started", "item.delta", "item.completed", "history.invalidated", "connection.reset", "connection.changed"))
+        if (relevant && eventKind in setOf("item.started", "item.delta", "item.completed", "history.invalidated", "connection.reset", "connection.changed"))
             firstTurnPermit.invalidate(eventThread)
-        if (eventKind == "native.state") {
+        if (relevant && eventKind == "native.state") {
             val payload = event.obj("payload")
             val method = payload?.string("method")
             val nativeStatus = payload?.obj("data")?.obj("thread")?.obj("status")?.string("type")
@@ -979,7 +1003,6 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
         val version = invalidationVersion
         val observedTurn = activeTurnId
         val firstTurnCandidate = kind == "turn.start" && !snapshotCurrent && firstTurnAllowed()
-        var firstTurnClaimed = false
         if (!state.value.online || position == null) throw ClientStateException("当前已离线；未派发操作")
         val id = UUID.randomUUID().toString()
         fun dispatchAllowed(): Boolean {
@@ -987,17 +1010,14 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
             if (kind == "turn.interrupt") return observedTurn != null && observedTurn == activeTurnId
             if (blocksWrite(pending.filter { it.operationId != id }.map { PendingIntent(it.projectId, it.threadId, it.kind, it.status) }, project, thread)) return false
             return kind !in setOf("turn.start", "thread.resume") ||
-                ((snapshotCurrent || (firstTurnClaimed && threadStatus == "idle")) && invalidationVersion == version &&
+                ((snapshotCurrent || (firstTurnCandidate && thread != null && threadStatus == "idle" &&
+                    firstTurnPermit.allows(project, thread, writeEpoch, generation, online = true, unknown = false))) && invalidationVersion == version &&
                     activeTurnId == null && state.value.selectedThreadId == thread)
         }
         if (kind in setOf("turn.start", "thread.resume", "interaction.respond") && thread == state.value.selectedThreadId)
             invalidatePermissionReadback()
         // Durable commit happens before the request is constructed/dispatched, and this ID is never retried.
         local.state.insertOperation(OperationRecord(scope, id, project, thread, kind))
-        if (kind == "turn.start" && thread != null) {
-            firstTurnClaimed = firstTurnCandidate && firstTurnPermit.consume(project, thread, writeEpoch, generation)
-            firstTurnPermit.invalidate(thread) // Every durable Turn intent, including unknown, consumes this proof.
-        }
         val remaining = local.state.unresolved(scope)
         if (scopeKey == scope) { pending = remaining; updateControls() }
         if (!dispatchAllowed()) {
@@ -1016,16 +1036,23 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
             files.settleClaim(id, "rejected", "notSent")
             pending = local.state.unresolved(scope)
         })
-        val response = try {
+        val response = dispatchWriteRequest({ markDispatched ->
             client.post(path, requestBody) {
                 if (!dispatchAllowed()) throw DispatchPreventedException()
+                if (kind == "turn.start" && thread != null) {
+                    if (firstTurnCandidate && !snapshotCurrent && !firstTurnPermit.consume(project, thread, writeEpoch, generation))
+                        throw DispatchPreventedException()
+                    // Local preparation/auth failures keep the candidate. Once enqueue is reached,
+                    // even a lost ACK consumes it; no suspension separates consumption and dispatch.
+                    firstTurnPermit.invalidate(thread)
+                }
+                markDispatched()
             }
-        } catch (_: DispatchPreventedException) {
+        }, {
             local.state.updateOperationReceipt(scope, id, "rejected", "notSent")
             files.settleClaim(id, "rejected", "notSent")
             pending = local.state.unresolved(scope)
-            throw ClientStateException("认证刷新期间连接已改变；业务请求未派发，请校正后显式操作")
-        }
+        })
         val receipt = response.obj("operation") ?: throw ClientStateException("操作结果未知；只查询回执，不会自动重发")
         applyReceipt(receipt, project, thread)
         if (receipt.string("status") == "rejected") throw ClientStateException("原生操作被拒绝（${receipt.string("errorCode") ?: "REJECTED"}）")
@@ -1139,6 +1166,7 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
         val project = state.value.selectedProjectId ?: return
         cached("projection", thread)?.let { projection.restoreCached(it) }
         cached("snapshot", thread)?.obj("history")?.let { inspectorProjection.history(it, replace = true) }
+        inspectorProjection.restoreUsage(projection.cachedTokenUsage())
         mutableState.value = state.value.copy(draft = local.state.draft(scope, project, thread)?.text.orEmpty())
         showProjectionWithAnchor()
     }
@@ -1243,6 +1271,8 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
             actualPermissionPreset = current.actualPermissionPreset.takeIf { current.online && position != null && !blocked && activeTurnId == null && (snapshotCurrent || firstTurnAllowed()) },
             permissionReadback = current.permissionReadback.takeIf { current.online && position != null && !blocked && activeTurnId == null && (snapshotCurrent || firstTurnAllowed()) },
             canSend = ready && (snapshotCurrent || firstTurnAllowed()) && !blocked && activeTurnId == null && threadStatus in setOf("idle", "active") && current.draft.isNotBlank() && "turn.start" in capabilities,
+            canCreateThread = current.online && position != null && !current.busy && durableStateAvailable && "thread.start" in capabilities &&
+                current.selectedProjectId?.let { project -> !blocksWrite(pending.map { PendingIntent(it.projectId, it.threadId, it.kind, it.status) }, project, null) } == true,
             canStop = ready && activeTurnId != null && "turn.interrupt" in capabilities,
             canResume = ready && snapshotCurrent && !blocked && activeTurnId == null && threadStatus == "notLoaded" && "thread.resume" in capabilities,
             canLoadMore = current.online && !current.busy && historyPages < 20 && (nextHistoryCursor != null || itemCursors.isNotEmpty()),
@@ -1302,12 +1332,15 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
             }
             is GatewayException -> {
                 mutableState.value = state.value.copy(error = error.userMessage)
-                if (error.authInvalid || error.code == "ACCESS_EXPIRED" || error.httpStatus == null) connectionFailed(error)
+                // The local body-size guard runs before enqueue and says nothing about transport
+                // health. Keep the same-generation first-turn proof after this known notSent.
+                if (error.authInvalid || error.code == "ACCESS_EXPIRED" || (error.httpStatus == null && error.code != "REQUEST_TOO_LARGE")) connectionFailed(error)
                 else if (error.code.contains("CURSOR") || error.code.contains("STALE")) {
                     snapshotCurrent = false; invalidationVersion++; nextHistoryCursor = null; itemCursors.clear(); scheduleSync()
                 }
             }
             is ClientStateException -> mutableState.value = state.value.copy(error = error.message)
+            is DispatchPreventedException -> mutableState.value = state.value.copy(error = "连接状态已改变；操作未派发，请刷新后显式操作")
             else -> { snapshotCurrent = false; mutableState.value = state.value.copy(error = "本机状态或通信校正失败；请重新连接，未确认操作不会重发") }
         }
         updateControls()

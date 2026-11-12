@@ -30,4 +30,16 @@ class WritePreparationTest {
         } catch (_: java.io.IOException) { }
         assertFalse(rejected)
     }
+    @Test fun cancellationBeforeEnqueueFinishesDurableNotSentSettlement() = runBlocking {
+        var rejected = false
+        try { dispatchWriteRequest<Unit>({ throw CancellationException("cancel before enqueue") }, { rejected = true }) }
+        catch (_: CancellationException) { }
+        assertTrue(rejected)
+    }
+    @Test fun cancellationAfterEnqueueKeepsUnknownIntent() = runBlocking {
+        var rejected = false
+        try { dispatchWriteRequest<Unit>({ enqueued -> enqueued(); throw CancellationException("cancel after enqueue") }, { rejected = true }) }
+        catch (_: CancellationException) { }
+        assertFalse(rejected)
+    }
 }
