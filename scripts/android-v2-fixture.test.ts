@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createServer } from 'node:http';
-import { request } from 'node:https';
+import { Agent, request } from 'node:https';
 import { mkdtemp, rm, stat } from 'node:fs/promises';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -15,7 +15,12 @@ describe('Android test-only loopback transport controls', () => {
   const upstream = createServer((req, res) => {
     if (req.method === 'POST') writes++;
     req.resume();
-    req.on('end', () => { res.setHeader('content-type', 'application/json'); res.end(JSON.stringify({ forwarded: req.headers['x-forwarded-proto'] })); });
+    req.on('end', () => {
+      res.setHeader('content-type', 'application/json');
+      // An upstream lifetime must never be advertised as the TLS proxy lifetime.
+      res.setHeader('connection', 'keep-alive'); res.setHeader('keep-alive', 'timeout=72');
+      res.end(JSON.stringify({ forwarded: req.headers['x-forwarded-proto'] }));
+    });
   });
   const ws = new WebSocketServer({ noServer: true });
   upstream.on('upgrade', (req, socket, head) => ws.handleUpgrade(req, socket, head, client => {
@@ -47,6 +52,24 @@ describe('Android test-only loopback transport controls', () => {
     await expect(get(proxy.origin)).rejects.toMatchObject({ code: 'DEPTH_ZERO_SELF_SIGNED_CERT' });
     await expect(get(other.origin, proxy.cert)).rejects.toMatchObject({ code: 'DEPTH_ZERO_SELF_SIGNED_CERT' });
     expect((await stat(join(directory, 'tls', 'key.pem'))).mode & 0o777).toBe(0o600);
+  });
+  it('does not advertise the upstream keep-alive lifetime to Android clients', async () => {
+    const agent = new Agent({ keepAlive: true, ca: proxy.cert });
+    const read = () => new Promise<Record<string, unknown>>((yes, no) => {
+      const req = request(proxy.origin, { agent }, response => {
+        response.resume(); response.once('error', no);
+        response.once('end', () => yes(response.headers));
+      });
+      req.setTimeout(3000, () => req.destroy(new Error('Test timeout')));
+      req.once('error', no); req.end();
+    });
+    try {
+      for (let count = 0; count < 2; count++) {
+        const headers = await read();
+        expect(headers.connection).toBe('close');
+        expect(headers['keep-alive']).toBeUndefined();
+      }
+    } finally { agent.destroy(); }
   });
   it('forwards WSS, closes existing streams offline, and restores transport', async () => {
     const socket = new WebSocket(proxy.origin.replace('https:', 'wss:') + '/events', { ca: proxy.cert });

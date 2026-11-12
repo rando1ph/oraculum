@@ -16,7 +16,7 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { chmod, mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
-import { request as httpRequest } from 'node:http';
+import { request as httpRequest, type IncomingHttpHeaders } from 'node:http';
 import { createServer as createHttpsServer } from 'node:https';
 import { connect, createServer as createNetServer, type AddressInfo } from 'node:net';
 import { homedir, tmpdir } from 'node:os';
@@ -54,6 +54,9 @@ export async function createAndroidFixtureProxy(root: string, upstreamPort: numb
   let droppedWrites = 0, pendingWriteDrop: string | undefined;
   let nextDownloadFault: 'digest' | 'truncate' | undefined, faultedDownloads = 0;
   const server = createHttpsServer({ key: await readFile(keyPath), cert }, (req, res) => {
+    // This test TLS hop has its own lifetime, distinct from the upstream server.
+    // Avoid advertising a longer upstream keep-alive timeout to mobile clients.
+    res.shouldKeepAlive = false;
     if (!online) { req.socket.destroy(); return; }
     const writeDrop = req.method === 'POST' && pendingWriteDrop !== undefined && req.url === pendingWriteDrop;
     const drop = writeDrop || (dropNextTurnAck && req.method === 'POST' && /\/api\/v2\/threads\/[^/]+\/turns$/.test(req.url ?? ''));
@@ -67,7 +70,10 @@ export async function createAndroidFixtureProxy(root: string, upstreamPort: numb
       for (const socket of secureSockets) if (socket !== req.socket) socket.destroy();
     }
     const upstream = httpRequest({ hostname: '127.0.0.1', port: upstreamPort, path: req.url,
-      method: req.method, headers: { ...req.headers, 'x-forwarded-proto': 'https' } }, reply => {
+      method: req.method, agent: false,
+      headers: { ...req.headers, connection: 'close', 'x-forwarded-proto': 'https' } }, reply => {
+      const responseHeaders: IncomingHttpHeaders = { ...reply.headers, connection: 'close' };
+      delete responseHeaders['keep-alive'];
       if (drop) {
         // The real Gateway has received the write. Only its HTTP acknowledgement
         // is discarded; native events / receipt queries remain authoritative.
@@ -80,7 +86,7 @@ export async function createAndroidFixtureProxy(root: string, upstreamPort: numb
       } else if (nextDownloadFault && req.method === 'GET' && /\/api\/v2\/files\/[^/]+\/content$/.test(req.url ?? '') && reply.statusCode === 200) {
         const fault = nextDownloadFault;
         nextDownloadFault = undefined; faultedDownloads++;
-        res.writeHead(reply.statusCode, reply.headers);
+        res.writeHead(reply.statusCode, responseHeaders);
         let changed = false;
         reply.on('data', (chunk: Buffer) => {
           if (!changed && chunk.length > 0) {
@@ -95,7 +101,7 @@ export async function createAndroidFixtureProxy(root: string, upstreamPort: numb
         });
         reply.on('end', () => res.end()); reply.on('error', () => res.destroy());
       } else {
-        reply.on('error', () => res.destroy()); res.writeHead(reply.statusCode!, reply.headers); reply.pipe(res);
+        reply.on('error', () => res.destroy()); res.writeHead(reply.statusCode!, responseHeaders); reply.pipe(res);
       }
     });
     upstream.on('error', () => { if (!res.headersSent) res.writeHead(502); res.end(); });
