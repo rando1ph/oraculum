@@ -1,0 +1,338 @@
+{
+  "format": 1,
+  "productSourceGit": "7c37855f1ebf67bcad75fcba0793b54c68f7b870",
+  "device": "OnePlus A6013 / e5ee4f28 / Android 15 API 35",
+  "rawDevicePng": true,
+  "images": [
+    {
+      "file": "i2-01-native-empty-state.png",
+      "description": "空状态；完整 Oracle Eye、标题与引导。",
+      "url": "https://drive.google.com/file/d/166m7dMZd465X8AX8r1UqAbLJAAunx_pJ/view?usp=drivesdk",
+      "driveId": "166m7dMZd465X8AX8r1UqAbLJAAunx_pJ",
+      "bytes": 126161,
+      "sha256": "8731ea8ada9bcbcd48beb534dc1cfe0b66a472a768273c662b8e4d6cbb74065b",
+      "width": 1080,
+      "height": 2340
+    },
+    {
+      "file": "i2-02-native-conversation.png",
+      "description": "真实 Codex 答复；紧凑标志、消息时间、原生耗时和在线用量。",
+      "url": "https://drive.google.com/file/d/1r6o_1nBVdBttnBZBjv7xPGem0VHY7K0H/view?usp=drivesdk",
+      "driveId": "1r6o_1nBVdBttnBZBjv7xPGem0VHY7K0H",
+      "bytes": 183904,
+      "sha256": "6b1536f746b4d3c46ab6bf757454b9dddef0d8497e243d489b8d4e41964a9643",
+      "width": 1080,
+      "height": 2340
+    },
+    {
+      "file": "i2-03-settings-dark.png",
+      "description": "Dark；普通宽度主题选项单行。",
+      "url": "https://drive.google.com/file/d/1F1JGg6i3KwszWUPVzvnBanZO-SndXe36/view?usp=drivesdk",
+      "driveId": "1F1JGg6i3KwszWUPVzvnBanZO-SndXe36",
+      "bytes": 172841,
+      "sha256": "fe3f978eed923b8633a132433c1273216458ddf1e5f5c1cc848caef90621c93c",
+      "width": 1080,
+      "height": 2340
+    },
+    {
+      "file": "i2-03-settings-light.png",
+      "description": "Light；三主题同组、强调色与身份。",
+      "url": "https://drive.google.com/file/d/1lAESjOfEXf-rzTZD6XaDjsCdj7-P4_5l/view?usp=drivesdk",
+      "driveId": "1lAESjOfEXf-rzTZD6XaDjsCdj7-P4_5l",
+      "bytes": 171315,
+      "sha256": "2228e807b00f4a9aa601fb02b6d08571aef7549efece9120695e7851a402e4ff",
+      "width": 1080,
+      "height": 2340
+    },
+    {
+      "file": "i2-03-settings-oled.png",
+      "description": "OLED Dark；纯黑外背景。",
+      "url": "https://drive.google.com/file/d/1-fvIrczS6WYxpFNX_UHpnLEZpBlOLh-K/view?usp=drivesdk",
+      "driveId": "1-fvIrczS6WYxpFNX_UHpnLEZpBlOLh-K",
+      "bytes": 174700,
+      "sha256": "4535caae0cbb07eeb3ab7917102ead1d844ef47fe0e361ffadf4eeeb1e37138d",
+      "width": 1080,
+      "height": 2340
+    },
+    {
+      "file": "i2-04-settings-accent.png",
+      "description": "海蓝强调色，保留统一组件与对比度。",
+      "url": "https://drive.google.com/file/d/1AGBCmfBRLOFA0ZOGRivYwJuwkKY9pr3R/view?usp=drivesdk",
+      "driveId": "1AGBCmfBRLOFA0ZOGRivYwJuwkKY9pr3R",
+      "bytes": 174700,
+      "sha256": "4535caae0cbb07eeb3ab7917102ead1d844ef47fe0e361ffadf4eeeb1e37138d",
+      "width": 1080,
+      "height": 2340
+    },
+    {
+      "file": "i2-05-settings-identity.png",
+      "description": "昵称与本机身份关联。",
+      "url": "https://drive.google.com/file/d/1JcAfek1FHaZdJls9TX72M0GdwZh-H4jr/view?usp=drivesdk",
+      "driveId": "1JcAfek1FHaZdJls9TX72M0GdwZh-H4jr",
+      "bytes": 186165,
+      "sha256": "7101c25038b2a86c396a157da10551266e9fcf0df6793ad54cbffb2887a16c3f",
+      "width": 1080,
+      "height": 2340
+    },
+    {
+      "file": "i2-06-settings-notifications.png",
+      "description": "通知入口；使用现有系统授权。",
+      "url": "https://drive.google.com/file/d/1tyUwwmqF4Tt5IJBkssh-wxfA6y6UW49J/view?usp=drivesdk",
+      "driveId": "1tyUwwmqF4Tt5IJBkssh-wxfA6y6UW49J",
+      "bytes": 184390,
+      "sha256": "69ff53b0fbf1452c99abb82d94f94dcd3ca83978e3219bc0ff41d55a0f52e0fd",
+      "width": 1080,
+      "height": 2340
+    },
+    {
+      "file": "i2-07-gateway-storage.png",
+      "description": "连接/重连/刷新；存储与修复入口。",
+      "url": "https://drive.google.com/file/d/1pcMYoZVTMdy62BtLsz5FXpOb0E6hD6J0/view?usp=drivesdk",
+      "driveId": "1pcMYoZVTMdy62BtLsz5FXpOb0E6hD6J0",
+      "bytes": 183617,
+      "sha256": "b65c4fd8153a56fb23d20655c47f168e9df622b6695a7960c8f7e1a912f57767",
+      "width": 1080,
+      "height": 2340
+    },
+    {
+      "file": "i2-08-cache-confirmation.png",
+      "description": "缓存范围确认；实际取消，没有清除缓存。",
+      "url": "https://drive.google.com/file/d/1s1GZh_iCRUai5F5ZsAb52u-uaDGwVCq_/view?usp=drivesdk",
+      "driveId": "1s1GZh_iCRUai5F5ZsAb52u-uaDGwVCq_",
+      "bytes": 219184,
+      "sha256": "6ee78f4ca679d47fdbe2c02f86b4b39dbc86beec21e54e74e017c6758259032a",
+      "width": 1080,
+      "height": 2340
+    },
+    {
+      "file": "i2-09-composer-actions.png",
+      "description": "「+」真实菜单：附件、项目文件、项目/会话。",
+      "url": "https://drive.google.com/file/d/1Zt1ArwgWUZbqLF2iUdJ5vvppD73DIJ5f/view?usp=drivesdk",
+      "driveId": "1Zt1ArwgWUZbqLF2iUdJ5vvppD73DIJ5f",
+      "bytes": 196999,
+      "sha256": "a8b9fcc8808f78a264a6785bf2f0fb92de5f9109612e946e3443f559785e759c",
+      "width": 1080,
+      "height": 2340
+    },
+    {
+      "file": "i2-10-composer-project-files.png",
+      "description": "真实授权测试项目文件；未显示私人目录。",
+      "url": "https://drive.google.com/file/d/1HKzFi1YK6nEXUoJQ7HJ1nLj-8Dapg0bH/view?usp=drivesdk",
+      "driveId": "1HKzFi1YK6nEXUoJQ7HJ1nLj-8Dapg0bH",
+      "bytes": 172037,
+      "sha256": "7055a09485b61ef6566ca11524d4817ad4466bb21ab0d705e4101c2754d4df6c",
+      "width": 1080,
+      "height": 2340
+    },
+    {
+      "file": "i2-11-model-effort-sheet.png",
+      "description": "无显式模型选择时的原生模型目录 BottomSheet。",
+      "url": "https://drive.google.com/file/d/1pXVwPasaq16Xf1N0Wu00w7HdBFV_rLu9/view?usp=drivesdk",
+      "driveId": "1pXVwPasaq16Xf1N0Wu00w7HdBFV_rLu9",
+      "bytes": 106240,
+      "sha256": "3ffb454321f5193e46deccf29edd016124aba5bb1ce80e90c4124f7b90f20ab6",
+      "width": 1080,
+      "height": 2340
+    },
+    {
+      "file": "i2-12-model-catalog.png",
+      "description": "展开原生支持的模型目录。",
+      "url": "https://drive.google.com/file/d/1ZPJS_l5ZEE-h-cJOrNkNzUYrda7guC6-/view?usp=drivesdk",
+      "driveId": "1ZPJS_l5ZEE-h-cJOrNkNzUYrda7guC6-",
+      "bytes": 106250,
+      "sha256": "2db7d4b25de85614e569b06b24bfe1fab3ad8f6c5d04639ed8de3acfbae78cc4",
+      "width": 1080,
+      "height": 2340
+    },
+    {
+      "file": "i2-13-permission-sheet.png",
+      "description": "下次执行权限；系统返回可用。",
+      "url": "https://drive.google.com/file/d/1cWIzb7yqqvXZWLHdLFOi706KzjUeK1Za/view?usp=drivesdk",
+      "driveId": "1cWIzb7yqqvXZWLHdLFOi706KzjUeK1Za",
+      "bytes": 204516,
+      "sha256": "47f100fee24d5afe8163427018061ef1e585e93b1436ab36e1ee4a9a90fdc930",
+      "width": 1080,
+      "height": 2340
+    },
+    {
+      "file": "i2-14-full-access-confirmation.png",
+      "description": "Full access 确认；实际取消，没有授权。",
+      "url": "https://drive.google.com/file/d/13Thoto3c8epnhzGShAs6n0zo_MMDpxN7/view?usp=drivesdk",
+      "driveId": "13Thoto3c8epnhzGShAs6n0zo_MMDpxN7",
+      "bytes": 210509,
+      "sha256": "31f44e80dde129ec2b58e9a54064ef41e3d6af95cbe6b9d01d5568a538fbaced",
+      "width": 1080,
+      "height": 2340
+    },
+    {
+      "file": "i2-15-mcp-capabilities.png",
+      "description": "MCP 读取不可用的真实降级；Skills 实际目录。",
+      "url": "https://drive.google.com/file/d/1LX0bGFMz2kJuSkWT9Z-qQQz-sgfGWP4l/view?usp=drivesdk",
+      "driveId": "1LX0bGFMz2kJuSkWT9Z-qQQz-sgfGWP4l",
+      "bytes": 233117,
+      "sha256": "c09c26e1e158185fe23b1bc2d59360b91377c9fd12c2174f143c974f54bbc342",
+      "width": 1080,
+      "height": 2340
+    },
+    {
+      "file": "i2-16-native-usage-live-values.png",
+      "description": "先前在线原图：24,143 tokens，13,056 缓存输入，真实比例。",
+      "url": "https://drive.google.com/file/d/1CguSpUtMc1CmVyMH2m9Pa_bp7UbYYbNt/view?usp=drivesdk",
+      "driveId": "1CguSpUtMc1CmVyMH2m9Pa_bp7UbYYbNt",
+      "bytes": 184849,
+      "sha256": "2395b1ae8e62175e77f59858d3a368ef91449b100800f3c093a457bb222ffdba",
+      "width": 1080,
+      "height": 2340
+    },
+    {
+      "file": "i2-16-native-usage.png",
+      "description": "重读历史后用量缺失的真实降级，不补造百分比。",
+      "url": "https://drive.google.com/file/d/1osXRgf4bOBe8zp6o96nD8M0qtO4ehQOG/view?usp=drivesdk",
+      "driveId": "1osXRgf4bOBe8zp6o96nD8M0qtO4ehQOG",
+      "bytes": 95362,
+      "sha256": "bb9f10a6d41c7f0b41f93257b38d7b5d8023b3e7c16ab649b368cd601bac897b",
+      "width": 1080,
+      "height": 2340
+    },
+    {
+      "file": "i2-17-custom-avatar.png",
+      "description": "SAF 导入专用蓝色测试 PNG 后的私有头像预览。",
+      "url": "https://drive.google.com/file/d/1S8lXPtVfWruAfR2ymGAFV4cYkkt8RdKk/view?usp=drivesdk",
+      "driveId": "1S8lXPtVfWruAfR2ymGAFV4cYkkt8RdKk",
+      "bytes": 175225,
+      "sha256": "0897c55c1c29dc81ea169d3c345acf9974ce49dc257d89e933d425a5c3de09ab",
+      "width": 1080,
+      "height": 2340
+    },
+    {
+      "file": "i2-18-avatar-conversation.png",
+      "description": "同一私有头像与昵称关联到消息；不是 Gateway 附件。",
+      "url": "https://drive.google.com/file/d/1enoMBv0kTb20A9ViK4CQfc-0kbVRNLwl/view?usp=drivesdk",
+      "driveId": "1enoMBv0kTb20A9ViK4CQfc-0kbVRNLwl",
+      "bytes": 189377,
+      "sha256": "92374d918e27d15e71c15fa719136ded270b90ae4dbd4a60bd78821fd6bc0da3",
+      "width": 1080,
+      "height": 2340
+    },
+    {
+      "file": "i2-19-turn-completed-collapsed.png",
+      "description": "原生 Turn 完成后过程收起，最终答复可见。",
+      "url": "https://drive.google.com/file/d/1dcDS09xtZJW19JHivNU2m2w_-5FUK_8U/view?usp=drivesdk",
+      "driveId": "1dcDS09xtZJW19JHivNU2m2w_-5FUK_8U",
+      "bytes": 227067,
+      "sha256": "5c06c0108ba7a465f9abaa8349e85ff41283b364a06a5ad0b627e4d0466aada7",
+      "width": 1080,
+      "height": 2340
+    },
+    {
+      "file": "i2-20-turn-process-expanded.png",
+      "description": "展开过程组，逐项思考/命令记录可继续展开。",
+      "url": "https://drive.google.com/file/d/1pFzT6Mpzij7fMDiuAWEkd-DoxwUlDpqf/view?usp=drivesdk",
+      "driveId": "1pFzT6Mpzij7fMDiuAWEkd-DoxwUlDpqf",
+      "bytes": 220689,
+      "sha256": "92c5437ee96eb45e199a16eede7dc1dedbd0088a5fb60fe757a6f5469696d33e",
+      "width": 1080,
+      "height": 2340
+    },
+    {
+      "file": "i2-21-final-answer-visible.png",
+      "description": "再次收起后最终答复仍可见。",
+      "url": "https://drive.google.com/file/d/1ivo7F_T53AEnW9L1wMKEyE1GGYnNC_DV/view?usp=drivesdk",
+      "driveId": "1ivo7F_T53AEnW9L1wMKEyE1GGYnNC_DV",
+      "bytes": 227067,
+      "sha256": "5c06c0108ba7a465f9abaa8349e85ff41283b364a06a5ad0b627e4d0466aada7",
+      "width": 1080,
+      "height": 2340
+    },
+    {
+      "file": "i2-22-real-native-approval.png",
+      "description": "真实命令审批及本应用通知；实际取消，目标文件未写入。",
+      "url": "https://drive.google.com/file/d/1worrLf3jVEGnpKEmr-HllBVX3Co9QSnd/view?usp=drivesdk",
+      "driveId": "1worrLf3jVEGnpKEmr-HllBVX3Co9QSnd",
+      "bytes": 179979,
+      "sha256": "37ea292bb36a23ab9586f2e3e879edddce2372f91616c2b5fd166550cfd9f719",
+      "width": 1080,
+      "height": 2340
+    },
+    {
+      "file": "i2-25-native-ime.png",
+      "description": "真机输入法；输入框和发送入口可见。",
+      "url": "https://drive.google.com/file/d/1usgYs3qVX2qTtVdT_UyigRBCAOLSvHv4/view?usp=drivesdk",
+      "driveId": "1usgYs3qVX2qTtVdT_UyigRBCAOLSvHv4",
+      "bytes": 199541,
+      "sha256": "e5e549dcd41337e8e691085e0bb20570cfd5941e8e056be3ad6f7805575eb314",
+      "width": 1080,
+      "height": 2340
+    },
+    {
+      "file": "i2-26-landscape.png",
+      "description": "稳定横屏原图；草稿和所选会话保留。",
+      "url": "https://drive.google.com/file/d/1gLErBLKKNZJLFd7StAab_EsH26cqs7VW/view?usp=drivesdk",
+      "driveId": "1gLErBLKKNZJLFd7StAab_EsH26cqs7VW",
+      "bytes": 110164,
+      "sha256": "9fb80ca807d0c30bf75e358c3ba8eb9929a7143c11cb14b9c798f78aa3cf8098",
+      "width": 2340,
+      "height": 1080
+    },
+    {
+      "file": "i2-27-real-attachment-ready.png",
+      "description": "真实 SAF 文本附件已上传，可移除；没有重复上传。",
+      "url": "https://drive.google.com/file/d/1iSz4M2Q09k_W5QPxf5PNQVCamHek6qID/view?usp=drivesdk",
+      "driveId": "1iSz4M2Q09k_W5QPxf5PNQVCamHek6qID",
+      "bytes": 227055,
+      "sha256": "f3c6af3fa861f5ddee94055660b2c619ae6e8e4a5a77f5a78bf1fc89a04d3a03",
+      "width": 1080,
+      "height": 2340
+    },
+    {
+      "file": "i2-28-unknown-write-held.png",
+      "description": "请求期间断连；原草稿、unknown 和 held 附件保留。",
+      "url": "https://drive.google.com/file/d/1yg59LLSpHBn-86b3pMxy2UlnES-jJv7I/view?usp=drivesdk",
+      "driveId": "1yg59LLSpHBn-86b3pMxy2UlnES-jJv7I",
+      "bytes": 262702,
+      "sha256": "500bf2987171fb83ebcff8ff8a36b5352097c026eacf14f84b128f5a61bf1588",
+      "width": 1080,
+      "height": 2340
+    },
+    {
+      "file": "i2-29-unknown-process-restored.png",
+      "description": "进程重启仍保护同一未知写入；传输中断被现有提示泛化为 TLS 错误。",
+      "url": "https://drive.google.com/file/d/1Tk5daByiVjaxirifmD0CpCVBxpf9BPy4/view?usp=drivesdk",
+      "driveId": "1Tk5daByiVjaxirifmD0CpCVBxpf9BPy4",
+      "bytes": 258281,
+      "sha256": "e0b92b56a94836b0e4dd0e00045106bfcdf36eba0239885bc24e3ad48be7c9e7",
+      "width": 1080,
+      "height": 2340
+    },
+    {
+      "file": "i2-30-unrecorded-receipt-protected.png",
+      "description": "在线查询原回执仍 404，继续保护；不是 accepted 恢复成功。",
+      "url": "https://drive.google.com/file/d/1M4xqdZa54XZPx_9hsqfltCIkbD0xZAk7/view?usp=drivesdk",
+      "driveId": "1M4xqdZa54XZPx_9hsqfltCIkbD0xZAk7",
+      "bytes": 249545,
+      "sha256": "db13c8d260f969fa7fe47d312cf46125efaef90b4e5d664bda07adee26c2db78",
+      "width": 1080,
+      "height": 2340
+    },
+    {
+      "file": "i2-31-background-notification-routed.png",
+      "description": "Home 后真实通知 PendingIntent 回到对应会话 Inspector。",
+      "url": "https://drive.google.com/file/d/1UadSr62qzMZ8HzAr6t4qFeo8oL5vHLzH/view?usp=drivesdk",
+      "driveId": "1UadSr62qzMZ8HzAr6t4qFeo8oL5vHLzH",
+      "bytes": 170178,
+      "sha256": "bfee6948d1c6fb15e8ae9f46936f98547d042e61079890e920d2fb6193ce599c",
+      "width": 1080,
+      "height": 2340
+    },
+    {
+      "file": "i2-32-model-effort-selected.png",
+      "description": "实际原生模型与支持的 low effort 同屏；仅设置下次执行。",
+      "url": "https://drive.google.com/file/d/1onNNC1mZhWn5i1b7TNAKkvMKXiedXBpr/view?usp=drivesdk",
+      "driveId": "1onNNC1mZhWn5i1b7TNAKkvMKXiedXBpr",
+      "bytes": 175594,
+      "sha256": "2a527a1b97df30d7c41bad3b5f36e5b24e0403017f05e8c62af2812f8f1c3629",
+      "width": 1080,
+      "height": 2340
+    }
+  ]
+}

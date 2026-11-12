@@ -1,0 +1,159 @@
+{
+  "format": 1,
+  "device": "OnePlus A6013 / API 35",
+  "productSourceGit": "7c37855f1ebf67bcad75fcba0793b54c68f7b870",
+  "directedStagesPassed": [
+    {
+      "method": "homeCompletionAndActualPendingIntentWithExplicitLifecycleCleanup",
+      "log": "homeCompletionAndActualPendingIntentWithExplicitLifecycleCleanup-1794483644.log",
+      "sha256": "698eb075a077a18941786acc654674e2e7c312deee4862c2ddbb7fb316abf0c2"
+    },
+    {
+      "method": "nativeImeAndLandscape",
+      "log": "nativeImeAndLandscape-1794481807.log",
+      "sha256": "0daf9445334c4618b45bc72abca6f0a50ec1c29dc6b9532bc81d56d7e31c7c3c"
+    },
+    {
+      "method": "unknownAfterProcessRestart",
+      "log": "unknownAfterProcessRestart-1794483750.log",
+      "sha256": "01fcef83d1b3358ea7033a0e913a3205bc8ace7d3cc0138724e6f5288540e09a"
+    },
+    {
+      "method": "restoreOriginalLocalPreferences",
+      "log": "restoreOriginalLocalPreferences-1794484173.log",
+      "sha256": "c6b72a3ae2dd23478856765086f0f57621f2ebb3494b1c76f80413d161af46dd"
+    },
+    {
+      "method": "visualPanels",
+      "log": "visualPanels-1794481432.log",
+      "sha256": "dc1654523c1678ae7736d8dd6d474f40e425dfefc67305f0dafb59451f4b2fe9"
+    },
+    {
+      "method": "unrecordedReceiptKeepsOriginalUnknown",
+      "log": "unrecordedReceiptKeepsOriginalUnknown-1794484159.log",
+      "sha256": "14e2f08feb7d71f97571c4581aa2801c0a177eb18a803437cc72c460329d109f"
+    },
+    {
+      "method": "toolsTurnAndCollapse",
+      "log": "toolsTurnAndCollapse-1794481792.log",
+      "sha256": "eab45271efac513ae65245f90d441df6f2fc1d623909301be351cb6c95271383"
+    },
+    {
+      "method": "modelAndEffortSelection",
+      "log": "modelAndEffortSelection-1794481780.log",
+      "sha256": "63d6f1afff7be658ac873a75b3fef5ac6bf0a0e3b68dd8f953e92fff5939fe3c"
+    },
+    {
+      "method": "avatarSystemPickerAndPrivatePersistence",
+      "log": "avatarSystemPickerAndPrivatePersistence-1794481730.log",
+      "sha256": "0ca705ebfe71479ecefe82110ad9113cab9ad1c8ec5c010c9111bbca0b56f4e0"
+    },
+    {
+      "method": "actualNativeApprovalCanBeCancelled",
+      "log": "actualNativeApprovalCanBeCancelled-1794481834.log",
+      "sha256": "37237eccceda5080f48d2639f7dc8b87e6feeb0fcb22dc900e2fa22fe800425b"
+    },
+    {
+      "method": "prepareUnknownDraftAndSend",
+      "log": "prepareUnknownDraftAndSend-1794483708.log",
+      "sha256": "2f3a49ac53351a7b16e4bfd3c9233da6fb2a770da706ef0583319c98775b58d2"
+    },
+    {
+      "method": "prepareAndSendNativeTurn",
+      "log": "prepareAndSendNativeTurn-1794480590.log",
+      "sha256": "6c9e5ce7186c3c3d5ee7c3db320175fd501f3be3c98b7278ae9191d936d26413"
+    }
+  ],
+  "notCountedAsPassing": [
+    {
+      "method": "homeBackgroundNotification",
+      "log": "homeBackgroundNotification-1794481075.log",
+      "sha256": "ec429b8976b1638974e58a1ab2be16a2e3b6d673e73c0eb848ab89d6fd4fb5e5"
+    },
+    {
+      "method": "reconcileKnownReceipt",
+      "log": "reconcileKnownReceipt-1794483764.log",
+      "sha256": "fb14931cc306f94f0c82f97d7f92a204b9d96e69761ef52afdf0e77c405aabbd"
+    }
+  ],
+  "isolatedTestsPassed": 14,
+  "acceptedReceiptRecoveryVerified": false,
+  "unknownRecordsKept": 1,
+  "automaticResendObserved": false,
+  "performanceBenchmarkPerformed": false,
+  "preservation": {
+    "stateSchemaUnchanged": true,
+    "reviewRequired": [],
+    "drafts": {
+      "baseline": 1,
+      "added": 1,
+      "textUnchanged": 1
+    },
+    "operations": {
+      "baseline": 12,
+      "baselineUnknown": 0,
+      "added": 10,
+      "statusPreserved": 12
+    },
+    "readAnchors": {
+      "baseline": 1,
+      "after": 2,
+      "changesAllowedForNormalReading": true
+    },
+    "pairing": {
+      "baselineCredentialFiles": 1,
+      "byteIdentical": 1,
+      "addedCredentialFiles": 0,
+      "keystoreNotExported": true,
+      "runtimeReconnectRequiredToProveKeyUsability": true
+    },
+    "connectionPreferences": {
+      "endpointUnchanged": true,
+      "scopeUnchanged": true
+    },
+    "localExperiencePreferences": {
+      "changedBaselineKeys": 1,
+      "selectionThemeAccentAvatarNicknameChangesAllowed": true
+    },
+    "attachments": {
+      "baselineDrafts": 2,
+      "baselineRows": 1,
+      "rowsUnchanged": 1
+    },
+    "cache": {
+      "comparisonExcluded": true,
+      "reason": "History projections/event cursors are rebuildable and expected to change during native reads."
+    },
+    "gateway": {
+      "capturedAt": "2026-11-12T11:50:53.683460+00:00",
+      "installationMatchesOpeningMetadata": true,
+      "originalDevicePresent": true,
+      "originalDeviceCreatedAtMatches": true,
+      "originalDeviceNotRevoked": true,
+      "deviceCount": 1,
+      "codexConfigMatchesOpeningHash": true,
+      "fingerprintsCapturedAt": "2026-11-12T11:02:10.419305+00:00",
+      "fileContentsUnchangedSinceAuditCapture": {
+        "configPath": true,
+        "certPath": true,
+        "keyPath": true,
+        "pairingFile": true,
+        "codexConfigPath": true
+      },
+      "trustFactsUnchangedSinceAuditCapture": true
+    },
+    "result": "original_records_preserved"
+  },
+  "cleanup": {
+    "gatewayPidExited": true,
+    "tlsPidExited": true,
+    "port44539Closed": true,
+    "port33713Closed": true,
+    "reverseEmpty": true,
+    "installedApkStillMatches": true,
+    "globalCodexConfigUnchanged": true,
+    "screenNonInteractive": true,
+    "displayOff": true
+  },
+  "instrumentationSourceGit": "0e82a0a192aab2c05ec82e55ba4ffd54b122f150"
+}
