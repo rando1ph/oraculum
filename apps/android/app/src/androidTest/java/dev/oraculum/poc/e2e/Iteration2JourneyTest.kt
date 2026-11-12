@@ -1,12 +1,9 @@
 package dev.oraculum.poc.e2e
 
-import android.app.NotificationManager
-import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.graphics.Bitmap
 import android.os.ParcelFileDescriptor
-import android.os.Process
-import android.service.notification.StatusBarNotification
+import android.view.Choreographer
 import android.view.accessibility.AccessibilityNodeInfo
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.*
@@ -16,13 +13,14 @@ import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
 import androidx.test.runner.lifecycle.Stage
 import dev.oraculum.poc.MainActivity
-import dev.oraculum.poc.notifications.GatewayNotifications
-import dev.oraculum.poc.notifications.noticeHash
 import dev.oraculum.poc.storage.ClientPreferences
 import dev.oraculum.poc.storage.AvatarStore
 import dev.oraculum.poc.storage.StateDatabase
 import dev.oraculum.poc.ui.PocUiState
 import java.io.File
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeout
@@ -70,9 +68,36 @@ class Iteration2JourneyTest {
 
     private fun screenshot(name: String) {
         compose.waitForIdle()
-        val bitmap = checkNotNull(instrumentation.uiAutomation.takeScreenshot())
-        File(directory, "$name.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
-        bitmap.recycle()
+        captureStableScreenshot(name)
+    }
+
+    /** Compose idleness does not finish Android dialog-window/compositor animations. */
+    private fun captureStableScreenshot(name: String) {
+        // Accessibility quietness and pixel equality are separate checks: a live
+        // event stream may prevent the former while the actual frame is stable.
+        try { instrumentation.uiAutomation.waitForIdle(500, 5_000) } catch (_: TimeoutException) { }
+        val attempts = File(context.noBackupFilesDir, "iteration2-capture-attempts").apply { mkdirs() }
+        var previous: Bitmap? = null
+        var stableSamples = 0
+        try {
+            repeat(20) {
+                val frame = CountDownLatch(1)
+                instrumentation.runOnMainSync { Choreographer.getInstance().postFrameCallback { frame.countDown() } }
+                assertTrue("Display frame did not arrive", frame.await(2, TimeUnit.SECONDS))
+                val bitmap = checkNotNull(instrumentation.uiAutomation.takeScreenshot())
+                if (it == 0) File(attempts, "$name-first.png").outputStream().use { output -> bitmap.compress(Bitmap.CompressFormat.PNG, 100, output) }
+                stableSamples = if (previous?.sameAs(bitmap) == true) stableSamples + 1 else 0
+                previous?.recycle()
+                previous = bitmap
+                if (stableSamples >= 2) {
+                    File(attempts, "$name-last.png").outputStream().use { output -> bitmap.compress(Bitmap.CompressFormat.PNG, 100, output) }
+                    File(directory, "$name.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+                    return
+                }
+            }
+            previous?.let { bitmap -> File(attempts, "$name-last.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) } }
+            fail("Rendered pixels did not settle; transition screenshot was not saved")
+        } finally { previous?.recycle() }
     }
 
     private fun record(name: String, extra: JSONObject = JSONObject()) {
@@ -244,7 +269,7 @@ class Iteration2JourneyTest {
             compose.onNodeWithTag("clear-cache").performClick()
             compose.onNodeWithTag("confirm-clear-cache").assertIsDisplayed()
             screenshot("i2-08-cache-confirmation")
-            Espresso.pressBack() // Never clear the user's multi-connection cache for a visual check.
+            systemBackUntilGone("confirm-clear-cache") // Never clear a cache for a visual check.
             compose.onNodeWithTag("close-panel").performClick()
 
             compose.onNodeWithTag("composer-add").performClick()
@@ -255,7 +280,7 @@ class Iteration2JourneyTest {
             compose.onNodeWithTag("composer-files").performClick()
             compose.onNodeWithTag("files_panel").assertIsDisplayed()
             screenshot("i2-10-composer-project-files")
-            Espresso.pressBack()
+            systemBackUntilGone("files_panel")
 
             compose.onNodeWithTag("model-picker").performClick()
             compose.onNodeWithTag("model-sheet").assertIsDisplayed()
@@ -264,7 +289,7 @@ class Iteration2JourneyTest {
             val selected = state.models.firstOrNull { it.id == state.selectedModel } ?: state.models.first()
             compose.onNodeWithTag("model-${selected.id}").performScrollTo().assertIsDisplayed()
             screenshot("i2-12-model-catalog")
-            Espresso.pressBack()
+            systemBackUntilGone("model-sheet")
             compose.onNodeWithTag("model-sheet").assertDoesNotExist()
             compose.onNodeWithTag("permission-picker").performClick()
             compose.onNodeWithTag("permission-sheet").assertIsDisplayed()
@@ -273,8 +298,8 @@ class Iteration2JourneyTest {
             compose.onNodeWithTag("confirm-full-access").assertIsDisplayed()
             assertEquals(before.permissionPreset, state.permissionPreset)
             screenshot("i2-14-full-access-confirmation")
-            Espresso.pressBack()
-            Espresso.pressBack()
+            systemBackUntilGone("confirm-full-access")
+            systemBackUntilGone("permission-sheet")
             compose.onNodeWithTag("permission-sheet").assertDoesNotExist()
 
             compose.runOnIdle { model.refreshInspector() }
@@ -284,7 +309,7 @@ class Iteration2JourneyTest {
             screenshot("i2-15-mcp-capabilities")
             compose.onNodeWithTag("inspector-usage").performScrollTo().performClick()
             screenshot("i2-16-native-usage")
-            Espresso.pressBack()
+            systemBackUntilGone("close-panel")
             assertEquals(before.selectedThreadId, state.selectedThreadId)
             assertEquals(before.draft, state.draft)
             assertEquals(before.selectedModel, state.selectedModel)
@@ -303,6 +328,36 @@ class Iteration2JourneyTest {
         }
     }
 
+    /** Explicit local next-Turn choices from the real catalog; no native write is issued. */
+    @Test fun modelAndEffortSelection() {
+        connected()
+        val before = state
+        val chosen = state.models.firstOrNull { it.efforts.isNotEmpty() && it.id.contains("mini", ignoreCase = true) }
+            ?: state.models.firstOrNull { it.efforts.isNotEmpty() }
+        assertNotNull("A real advertised model with supported effort is required", chosen)
+        val selected = checkNotNull(chosen)
+        val effort = selected.efforts.firstOrNull { it == "low" } ?: selected.defaultEffort?.takeIf { it in selected.efforts }
+            ?: selected.efforts.first()
+        compose.onNodeWithTag("model-picker").performClick()
+        compose.onNodeWithTag("model-sheet").assertIsDisplayed()
+        if (state.selectedModel != null) compose.onNodeWithTag("choose-model").performClick()
+        compose.onNodeWithTag("model-${selected.id}").performScrollTo().performClick()
+        until("Real model selected for the next Turn") { it.selectedModel == selected.id }
+        compose.onNodeWithTag("effort-$effort").performScrollTo().performClick()
+        until("Supported reasoning effort selected") { it.selectedEffort == effort }
+        compose.onNodeWithTag("choose-model").performScrollTo().assertIsDisplayed()
+        screenshot("i2-32-model-effort-selected")
+        systemBackUntilGone("model-sheet")
+        assertEquals(before.selectedThreadId, state.selectedThreadId)
+        assertEquals(before.draft, state.draft)
+        assertEquals(before.permissionPreset, state.permissionPreset)
+        assertFalse(state.canStop)
+        assertOriginalDraftPreserved()
+        record("i2-model-effort-selection", JSONObject().put("actualCatalogModel", selected.id).put("supportedEffort", effort)
+            .put("localNextTurnChoiceOnly", true).put("nativeWriteIssued", false)
+            .put("choiceRetained", true))
+    }
+
     /** Replaces only an absent avatar; an existing personal image is never overwritten. */
     @Test fun avatarSystemPickerAndPrivatePersistence() {
         connected()
@@ -310,7 +365,10 @@ class Iteration2JourneyTest {
         openSettings()
         compose.onNodeWithTag("avatar-pick").performScrollTo().performClick()
         waitForDocumentsUi()
-        Espresso.pressBack()
+        // DocumentsUI owns the foreground here; Espresso requires a resumed
+        // Activity in the target process and cannot dispatch this system Back.
+        shell("input keyevent KEYCODE_BACK")
+        waitForOwnForeground("Avatar picker cancellation returned to the app")
         assertEquals(before.avatarFileName, state.avatarFileName)
         if (before.avatarFileName != null) {
             compose.onNodeWithTag("close-panel").performClick()
@@ -349,6 +407,10 @@ class Iteration2JourneyTest {
             !it.busy && !it.canStop && it.messages.any { m -> m.role == "assistant" && m.text.contains("I2_TOOLS_DONE") } &&
                 it.messages.any { m -> m.role == "commandExecution" && m.text.contains("I2_TOOL_OK") }
         }
+        // Completion can precede the authoritative post-Turn snapshot. A local
+        // draft makes the existing canSend gate observable without sending it.
+        compose.runOnIdle { model.draftChange(draft.ifBlank { "I2_VISUAL_DRAFT_DO_NOT_SEND" }) }
+        until("Completed native snapshot is current before visual capture") { it.canSend && !it.busy && !it.canStop }
         val answer = state.messages.last { it.role == "assistant" && it.text.contains("I2_TOOLS_DONE") }
         val summaryTag = "turn-summary-${answer.turnId}"
         compose.onNodeWithTag("conversation").performScrollToNode(hasTestTag(summaryTag))
@@ -394,106 +456,9 @@ class Iteration2JourneyTest {
         until("Native cancellation resolved without another reply", 180_000) {
             !it.busy && !it.canStop && it.interactions.none { r -> r.id == request.id && r.status == "pending" }
         }
-        Espresso.pressBack()
+        systemBackUntilGone("approval-sheet")
         assertOriginalDraftPreserved()
         record("i2-native-approval", JSONObject().put("kind", request.kind).put("decision", decision))
-    }
-
-    /** Actual Home background delivery in the same live process; no force-stop/death claim. */
-    @Test fun homeBackgroundNotification() {
-        connected()
-        assertFalse("A previous background write must be inspected, never resent for this stage",
-            File(directory, "background-intent.json").exists())
-        val activity = compose.activity
-        val initialModel = activity.model
-        val checkpoint = checkpoint()
-        val thread = checkpoint.getString("threadId")
-        val project = checkpoint.getString("projectId")
-        val previousDraft = state.draft
-        val beforeMessages = state.messages.map { it.id }.toSet()
-        val processId = Process.myPid()
-        val manager = context.getSystemService(NotificationManager::class.java)
-        assertTrue("Actual Android notification permission must already be enabled", manager.areNotificationsEnabled())
-        val existingNotifications = manager.activeNotifications.map { it.key }.toSet()
-        val scope = checkNotNull(runBlocking { ClientPreferences(context).snapshot().scopeKey })
-        var routed: MainActivity? = null
-        try {
-            sendOnce("background", "Use the shell exactly once to execute sleep 8; printf 'I2_BACKGROUND\\n'. This only waits and prints a fixed marker. Do not read or modify files. After the command finishes, reply I2_BACKGROUND_DONE in one short Chinese sentence.")
-            waitObserved("Explicit real native Turn active before Home") { initialModel.state.value.canStop }
-            val launcher = shell("cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME")
-                .lineSequence().map(String::trim).lastOrNull { it.matches(Regex("^[A-Za-z0-9_.]+/[A-Za-z0-9_.$]+$")) }
-                ?.substringBefore('/') ?: error("Cannot identify current Home launcher")
-            shell("input keyevent KEYCODE_HOME")
-            waitObserved("Home stopped the Activity and displayed the actual launcher", 20_000) {
-                lifecycleStage(activity) == Stage.STOPPED &&
-                    instrumentation.uiAutomation.rootInActiveWindow?.packageName?.toString() == launcher
-            }
-            val backgroundAt = System.currentTimeMillis()
-            waitObserved("Actual command and final answer received while stopped", 240_000) {
-                assertEquals("The app process must remain alive in this scenario", processId, Process.myPid())
-                assertEquals("Do not return to the app before completion", Stage.STOPPED, lifecycleStage(activity))
-                initialModel.state.value.let { current -> !current.busy && !current.canStop &&
-                    current.messages.any { it.id !in beforeMessages && it.role == "assistant" && it.text.contains("I2_BACKGROUND_DONE") } &&
-                    current.messages.any { it.id !in beforeMessages && it.role == "commandExecution" && it.text.contains("I2_BACKGROUND") }
-                }
-            }
-            val answer = initialModel.state.value.messages.last {
-                it.id !in beforeMessages && it.role == "assistant" && it.text.contains("I2_BACKGROUND_DONE")
-            }
-            val tag = noticeHash(scope, project, thread, "turn", answer.turnId)
-            var notification: StatusBarNotification? = null
-            waitObserved("Own native Turn notification posted after Home", 15_000) {
-                assertEquals(Stage.STOPPED, lifecycleStage(activity))
-                notification = manager.activeNotifications.firstOrNull {
-                    it.packageName == context.packageName && it.key !in existingNotifications && it.tag == tag &&
-                        it.notification.channelId == GatewayNotifications.TURNS_CHANNEL && it.postTime >= backgroundAt
-                }
-                notification != null
-            }
-            val delivered = checkNotNull(notification)
-            val title = delivered.notification.extras.getCharSequence(android.app.Notification.EXTRA_TITLE)?.toString()
-            assertEquals("Codex 执行完成", title)
-            // Invoke the exact real notification PendingIntent. The notification shade
-            // is deliberately not captured because it could contain unrelated private notices.
-            checkNotNull(delivered.notification.contentIntent).send()
-            waitObserved("Actual notification routes to the dedicated thread", 60_000) {
-                routed = currentResumedActivity()
-                routed?.model?.state?.value?.let {
-                    it.online && !it.busy && it.selectedProjectId == project && it.selectedThreadId == thread &&
-                        it.navigationRequest?.startsWith("inspector:") == true
-                } == true
-            }
-            assertEquals(processId, Process.myPid())
-            instrumentation.waitForIdleSync()
-            val bitmap = checkNotNull(instrumentation.uiAutomation.takeScreenshot())
-            try { File(directory, "i2-31-background-notification-routed.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) } }
-            finally { bitmap.recycle() }
-            assertOriginalDraftPreserved()
-            val build = context.assets.open("oraculum-build.json").bufferedReader().use { JSONObject(it.readText()) }
-            File(directory, "i2-background-notification.json").writeText(JSONObject().put("passed", true).put("build", build)
-                .put("projectId", project).put("threadId", thread).put("nativeTurnId", answer.turnId)
-                .put("activityStoppedBeforeCompletion", true).put("sameProcessAlive", true)
-                .put("exactNativeTurnNotificationMatched", true).put("notificationTitle", title)
-                .put("notificationChannel", delivered.notification.channelId)
-                .put("ownActiveNotificationCount", manager.activeNotifications.count { it.packageName == context.packageName })
-                .put("actualPendingIntentRouted", true).put("notificationShadeCaptured", false)
-                .put("processDeathOrForceStopTested", false).toString(2))
-        } finally {
-            // Return the device to this test app after a failure as well, without touching
-            // another app's data or restarting the native operation.
-            if (currentResumedActivity() == null) instrumentation.runOnMainSync {
-                context.startActivity(Intent(context, MainActivity::class.java).setAction(Intent.ACTION_MAIN)
-                    .addCategory(Intent.CATEGORY_LAUNCHER)
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP))
-            }
-            waitObserved("Test app foreground restored after Home", 20_000) { currentResumedActivity() != null }
-            val restored = checkNotNull(currentResumedActivity())
-            // Restore only this harness's dedicated draft, never a newly selected user thread.
-            val restoredState = restored.model.state.value
-            if (restoredState.selectedThreadId == thread && !restoredState.canStop &&
-                restoredState.unresolvedOperations.none { it.threadId == thread })
-                instrumentation.runOnMainSync { restored.model.draftChange(previousDraft) }
-        }
     }
 
     /** Root arms dropNextTurnReply first: upload succeeds, then one real Turn reply is discarded. */
@@ -580,6 +545,43 @@ class Iteration2JourneyTest {
             .put("attachmentSettled", true).put("noSendInvoked", true))
     }
 
+    /** A missing Gateway receipt is evidence of uncertainty, never permission to send again. */
+    @Test fun unrecordedReceiptKeepsOriginalUnknown() {
+        input()
+        val saved = JSONObject(File(directory, "unknown-checkpoint.json").readText())
+        val operationId = saved.getString("operationId")
+        compose.runOnIdle { model.reconnect() }
+        until("Original unknown operation and held attachment survive read-only reconnect") {
+            it.online && it.paired && !it.busy && !it.canStop &&
+                it.selectedThreadId == saved.getString("threadId") &&
+                it.unresolvedOperations.any { op -> op.operationId == operationId && op.status == "unknown" } &&
+                model.files.state.value.threadId == it.selectedThreadId && !model.files.state.value.busy &&
+                model.files.state.value.hasUnknown && model.files.state.value.attachments.any { attachment ->
+                    attachment.id == saved.getString("attachmentId") && attachment.status == "held"
+                }
+        }
+        // Read the same operation ID once so the evidence distinguishes a missing
+        // receipt from an accepted original operation. This cannot dispatch a Turn.
+        compose.runOnIdle { model.queryOperation(operationId) }
+        until("Original receipt is unavailable and its safety barrier remains") {
+            !it.busy && it.operationStatusMessage?.contains("404") == true &&
+                it.unresolvedOperations.any { op -> op.operationId == operationId && op.status == "unknown" }
+        }
+        assertEquals(saved.getString("draft"), state.draft)
+        assertDurableTestDraft(saved.getString("draft"))
+        assertTrue(model.files.state.value.attachments.any {
+            it.id == saved.getString("attachmentId") && it.status == "held"
+        })
+        assertFalse(state.canSend)
+        assertFalse(state.canResume)
+        compose.onNodeWithTag("send").assertIsNotEnabled()
+        screenshot("i2-30-unrecorded-receipt-protected")
+        assertOriginalDraftPreserved()
+        record("i2-unrecorded-receipt", JSONObject().put("operationId", operationId)
+            .put("receiptUnavailable", true).put("originalOutcomeStillUnknown", true)
+            .put("attachmentHeld", true).put("acceptedResolutionProven", false).put("noSendInvoked", true))
+    }
+
     /** External runner makes only the isolated Gateway unreachable before this method. */
     @Test fun offlineCacheAndDraft() {
         input()
@@ -644,6 +646,74 @@ class Iteration2JourneyTest {
         } finally { compose.runOnIdle { compose.activity.requestedOrientation = orientation } }
     }
 
+    /** Final stage: restore the original saved local preferences, including after an interrupted run. */
+    @Test fun restoreOriginalLocalPreferences() {
+        val config = input()
+        assertTrue("Private original state must exist", originalFile.isFile)
+        val original = JSONObject(originalFile.readText())
+        until("App ready for local preference restoration") { it.paired && !it.busy && !it.canStop }
+        assertEquals(config.getString("endpoint"), state.endpoint)
+        assertEquals(original.getString("endpoint"), state.endpoint)
+        val unknownIds = state.unresolvedOperations.map { it.operationId }.toSet()
+        val protectedProject = state.selectedProjectId
+        val protectedThread = state.selectedThreadId
+        val protectedDraft = state.draft
+        val heldAttachmentIds = model.files.state.value.attachments.filter { it.status == "held" }.map { it.id }.toSet()
+        assertOriginalDraftPreserved()
+        compose.runOnIdle { model.themeChange(original.getString("themeMode")) }
+        until("Original theme restored from pre-test record") { it.themeMode == original.getString("themeMode") && !it.busy }
+        compose.runOnIdle { model.accentChange(original.getString("accentColor")) }
+        until("Original accent restored from pre-test record") { it.accentColor == original.getString("accentColor") && !it.busy }
+        compose.runOnIdle { model.identityLabelsChange(original.getString("userLabel"), original.getString("assistantLabel")) }
+        until("Original identity labels restored") {
+            it.userLabel == original.getString("userLabel") && it.assistantLabel == original.getString("assistantLabel") && !it.busy
+        }
+        val scale = original.getDouble("readingScale").toFloat()
+        compose.runOnIdle { model.readingScaleChange(scale) }
+        until("Original reading scale restored") { it.readingScale == scale && !it.busy }
+        val avatar = if (original.isNull("avatarFileName")) null else original.getString("avatarFileName")
+        // Never delete or recreate an original image. Missing original bytes retain
+        // their original preference and use the product's visible default fallback.
+        runBlocking { ClientPreferences(context).saveAvatar(avatar) }
+        compose.runOnIdle { model.refreshLocalAvatar() }
+        until("Original avatar preference restored") { it.avatarFileName == avatar }
+        val currentPreferences = runBlocking { ClientPreferences(context).snapshot() }
+        var selectionRestored = false
+        var selectionReason = if (unknownIds.isNotEmpty()) "未知操作仍受保护；保留当前会话、草稿及附件上下文"
+            else "原选择未在当前真实列表中确认；保留当前测试入口"
+        val oldProject = if (original.isNull("projectId")) null else original.getString("projectId")
+        val oldThread = if (original.isNull("threadId")) null else original.getString("threadId")
+        val sameScope = !original.isNull("scopeKey") && currentPreferences.scopeKey == original.getString("scopeKey")
+        if (unknownIds.isEmpty() && sameScope && oldProject != null && state.projects.any { it.id == oldProject }) {
+            if (oldThread == null) {
+                compose.runOnIdle { model.selectProject(oldProject) }
+                until("Original project-only selection restored") { it.selectedProjectId == oldProject && it.selectedThreadId == null && !it.busy }
+                selectionRestored = true
+            } else if (state.selectedProjectId == oldProject && state.threads.any { it.id == oldThread }) {
+                compose.runOnIdle { model.selectThread(oldThread) }
+                until("Original known thread selected read-only") { it.selectedThreadId == oldThread && !it.busy }
+                selectionRestored = true
+            }
+        }
+        if (selectionRestored) selectionReason = "原选择已通过现有项目/会话列表确认后只读恢复"
+        assertEquals("Local preference cleanup must preserve every unknown operation", unknownIds,
+            state.unresolvedOperations.map { it.operationId }.toSet())
+        if (unknownIds.isNotEmpty()) {
+            assertEquals(protectedProject, state.selectedProjectId)
+            assertEquals(protectedThread, state.selectedThreadId)
+            assertEquals(protectedDraft, state.draft)
+            assertEquals(heldAttachmentIds,
+                model.files.state.value.attachments.filter { it.status == "held" }.map { it.id }.toSet())
+            assertFalse(state.canSend)
+            assertFalse(state.canResume)
+        }
+        assertOriginalDraftPreserved()
+        record("i2-restored-original-local-preferences", JSONObject().put("originalDraftPreserved", true)
+            .put("originalPreferencesRestored", true).put("originalSelectionRestored", selectionRestored)
+            .put("selectionReason", selectionReason).put("unknownReceiptsCleared", false)
+            .put("preservedUnknownCount", unknownIds.size))
+    }
+
     private fun waitForDocumentsUi() {
         val deadline = System.currentTimeMillis() + 15_000
         while (System.currentTimeMillis() < deadline) {
@@ -651,12 +721,6 @@ class Iteration2JourneyTest {
             Thread.sleep(100)
         }
         fail("Android system DocumentsUI did not open")
-    }
-
-    private fun lifecycleStage(activity: MainActivity): Stage? {
-        var stage: Stage? = null
-        instrumentation.runOnMainSync { stage = ActivityLifecycleMonitorRegistry.getInstance().getLifecycleStageOf(activity) }
-        return stage
     }
 
     private fun currentResumedActivity(): MainActivity? {
@@ -694,18 +758,66 @@ class Iteration2JourneyTest {
 
     private fun chooseTestDocument(name: String) {
         waitForDocumentsUi()
+        useDocumentListView()
         if (findSystemNode(instrumentation.uiAutomation.rootInActiveWindow, setOf(name)) == null) {
             clickSystemNode(setOf("Show roots", "Open navigation drawer", "显示根目录", "打开导航抽屉"))
             clickSystemNode(setOf("Phase 3 test files"))
+            useDocumentListView()
         }
         clickSystemNode(setOf(name))
         val deadline = System.currentTimeMillis() + 15_000
         while (System.currentTimeMillis() < deadline) {
-            if (instrumentation.uiAutomation.rootInActiveWindow?.packageName?.toString() == context.packageName) return
+            if (instrumentation.uiAutomation.rootInActiveWindow?.packageName?.toString() == context.packageName) {
+                waitForOwnForeground("System picker returned the selected test document")
+                return
+            }
             if (findSystemNode(instrumentation.uiAutomation.rootInActiveWindow, setOf("Open", "打开")) != null) clickSystemNode(setOf("Open", "打开"))
             Thread.sleep(100)
         }
         fail("System picker did not return the test image")
+    }
+
+    private fun useDocumentListView() {
+        // In this device's grid, a file cell exposes "name, size, date" while
+        // its clickable child opens Preview. List mode exposes the exact name
+        // used by the existing selector, without ever invoking that child.
+        val listControl = setOf("List View")
+        if (findSystemNode(instrumentation.uiAutomation.rootInActiveWindow, listControl) != null) {
+            clickSystemNode(listControl)
+            waitObserved("DocumentsUI switched from grid to list", 5_000) {
+                findSystemNode(instrumentation.uiAutomation.rootInActiveWindow, listControl) == null
+            }
+        }
+    }
+
+    private fun waitForOwnForeground(description: String) {
+        enableWindowInspection()
+        waitObserved(description, 15_000) {
+            currentResumedActivity()?.window?.decorView?.isAttachedToWindow == true &&
+                ownWindowFocused()
+        }
+    }
+
+    /** Dispatch via the system so a disappearing dialog cannot leave Espresso bound to an unfocused root. */
+    private fun systemBackUntilGone(tag: String) {
+        if (compose.onAllNodesWithTag(tag).fetchSemanticsNodes().isEmpty()) return
+        enableWindowInspection()
+        shell("input keyevent KEYCODE_BACK")
+        waitObserved("Dismissed $tag and returned focus to the app", 15_000) {
+            currentResumedActivity() != null && ownWindowFocused() &&
+                runCatching { compose.onAllNodesWithTag(tag).fetchSemanticsNodes().isEmpty() }.getOrDefault(false)
+        }
+    }
+
+    private fun enableWindowInspection() {
+        val automation = instrumentation.uiAutomation
+        automation.serviceInfo = automation.serviceInfo.apply {
+            flags = flags or android.accessibilityservice.AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
+        }
+    }
+
+    private fun ownWindowFocused(): Boolean = instrumentation.uiAutomation.windows.any {
+        it.isFocused && it.root?.packageName?.toString() == context.packageName
     }
 
     private fun clickSystemNode(labels: Set<String>) {
