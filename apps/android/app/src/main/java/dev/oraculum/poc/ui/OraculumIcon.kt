@@ -73,13 +73,20 @@ fun OraculumIcon(
     Icon(painterResource(symbol.drawable), contentDescription, modifier.size(size), tint)
 }
 
-/** Original, theme-tinted in-app mark. The approved launcher PNG is kept separately. */
+/** The user's full and compact Oracle Eye artwork, faithfully converted from the supplied SVGs. */
+enum class OracleEyeVariant(@DrawableRes internal val drawable: Int) {
+    Compact(R.drawable.oracle_eye_compact),
+    Full(R.drawable.oracle_eye_full),
+}
+
+/** In-app branding only. Full is for large brand areas; Compact is for toolbar/avatar sizes. */
 @Composable
 fun OracleEyeMark(
     contentDescription: String? = null,
     modifier: Modifier = Modifier,
     tint: Color = MaterialTheme.colorScheme.primary,
     size: Dp = 24.dp,
+    variant: OracleEyeVariant = OracleEyeVariant.Compact,
 ) {
-    Icon(painterResource(R.drawable.oracle_eye_line), contentDescription, modifier.size(size), tint)
+    Icon(painterResource(variant.drawable), contentDescription, modifier.size(size), tint)
 }
