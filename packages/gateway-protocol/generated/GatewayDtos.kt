@@ -1,5 +1,5 @@
 // Generated from schema/v2.json by quicktype-core 24.0.0; DO NOT EDIT.
-// Schema SHA-256: 90f64b3809976fa72e268094911d59ed35b99c0dd3bb96b50bb8a776d42aa483
+// Schema SHA-256: e30983d4bee805f0ebeff389e480d790a30fd964b27cf2a447f07cc4bf4713eb
 // Decode with Json { ignoreUnknownKeys = true; explicitNulls = true }.
 // Keep encodeDefaults = false. Validate requests against JSON Schema.
 
@@ -1994,6 +1994,23 @@ data class SectionEntry (
 
 @Serializable
 data class ThreadMutationRequest (
+    @Required
+    val expectedEpoch: String,
+
+    @Required
+    @SerialName("operationId")
+    val operationID: String,
+
+    @Required
+    @SerialName("projectId")
+    val projectID: String
+)
+
+@Serializable
+data class ThreadDeleteRequest (
+    @Required
+    val confirm: Boolean,
+
     @Required
     val expectedEpoch: String,
 

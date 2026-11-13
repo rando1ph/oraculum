@@ -75,6 +75,7 @@ export const contractNames = [
   "ExtensionSection",
   "ExtensionsSnapshot",
   "ThreadMutationRequest",
+  "ThreadDeleteRequest",
   "ThreadNameRequest",
   "ThreadForkRequest",
   "ThreadRevertRequest",

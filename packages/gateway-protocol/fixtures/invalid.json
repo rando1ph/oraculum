@@ -503,5 +503,34 @@
       "limited": false,
       "accountId": "private-account"
     }
+  },
+  {
+    "name": "thread-delete-no-confirmation",
+    "contract": "ThreadDeleteRequest",
+    "value": {
+      "operationId": "12345678-1234-4123-8123-123456789abc",
+      "projectId": "12345678-1234-4123-8123-123456789abc",
+      "expectedEpoch": "12345678-1234-4123-8123-123456789abc"
+    }
+  },
+  {
+    "name": "thread-delete-false-confirmation",
+    "contract": "ThreadDeleteRequest",
+    "value": {
+      "operationId": "12345678-1234-4123-8123-123456789abc",
+      "projectId": "12345678-1234-4123-8123-123456789abc",
+      "expectedEpoch": "12345678-1234-4123-8123-123456789abc",
+      "confirm": false
+    }
+  },
+  {
+    "name": "thread-delete-string-confirmation",
+    "contract": "ThreadDeleteRequest",
+    "value": {
+      "operationId": "12345678-1234-4123-8123-123456789abc",
+      "projectId": "12345678-1234-4123-8123-123456789abc",
+      "expectedEpoch": "12345678-1234-4123-8123-123456789abc",
+      "confirm": "true"
+    }
   }
 ]

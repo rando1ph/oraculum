@@ -28,9 +28,9 @@
 | GET `/api/v2/projects/{projectId}/threads/{threadId}` | 无 | `Thread` |
 | POST `/api/v2/threads/{threadId}/resume` | `ThreadResumeRequest` | `OperationResponse` |
 | POST `/api/v2/threads/{threadId}/name` | `ThreadNameRequest` | `OperationResponse` |
-| POST `/api/v2/threads/{threadId}/archive` | `ThreadMutationRequest` | 409 `NATIVE_CASCADE_SCOPE_UNVERIFIABLE` |
+| POST `/api/v2/threads/{threadId}/archive` | `ThreadMutationRequest` | `OperationResponse` |
 | POST `/api/v2/threads/{threadId}/unarchive` | `ThreadMutationRequest` | `OperationResponse` |
-| DELETE `/api/v2/threads/{threadId}` | `ThreadMutationRequest` | 409 `NATIVE_CASCADE_SCOPE_UNVERIFIABLE` |
+| DELETE `/api/v2/threads/{threadId}` | `ThreadDeleteRequest`（`confirm:true`） | `OperationResponse` |
 | POST `/api/v2/threads/{threadId}/fork` | `ThreadForkRequest` | `OperationResponse` |
 | POST `/api/v2/threads/{threadId}/revert` | `ThreadRevertRequest` | `OperationResponse` |
 | POST `/api/v2/threads/{threadId}/compact` | `ThreadMutationRequest` | `OperationResponse` |
@@ -61,7 +61,8 @@
 - `NativeDefaults` 来自项目 cwd 下的 `config/read`，只包含模型、强度、审批、sandbox、workspace-write 网络开关及来源类别。缺失值为 null；它是有效配置事实，不等于当前会话最近一次执行读回。来源不包含配置文件路径，接口不开放配置写入。当前命名权限 profile 无法从这组旧 sandbox 字段完整还原；null 不表示只读，省略权限覆盖仍由原生决定。
 - `AccountRateLimits` 保留真实额度窗口、原生重置时间、可用 credits 等字段；`AccountUsage` 为累计 token、运行时长、streak 与按日 token 桶，不是当前会话 token 用量。两者带读取时间、null 和 `limited`；不推算缺失额度，不返回账户身份或原始附加信息。额度窗口中的 `resetsAt` 保留原生 Unix 秒，`readAt` 为 Gateway UTC epoch milliseconds。
 - 会话管理、插话、分叉、回退与压缩均使用有限的原生方法，不接受任意 RPC。所有写请求保留 `operationId`、`expectedEpoch`、操作回执和 unknown 屏障；`accepted` 是请求交付确认，压缩触发后仍须等待原生 Turn/Item 事件完成。插话携带路径中的当前 Turn ID，以防输入落到后续 Turn。
-- `fork` 由原生继承会话历史，可用 `lastTurnId` 限定分叉点。`revert` 以 `beforeTurnId` 排除目标 Turn 及之后历史，仅适用于原生支持的已加载、持久化分页会话，不撤销工作区文件变更。原生归档和删除会级联后代会话，稳定接口无法提供原子性的项目范围约束；本版本将两者声明为不可用并返回 `NATIVE_CASCADE_SCOPE_UNVERIFIABLE`，不会发送上游调用。
+- `fork` 由原生继承会话历史，可用 `lastTurnId` 限定分叉点。`revert` 以 `beforeTurnId` 排除目标 Turn 及之后历史，仅适用于原生支持的已加载、持久化分页会话，不撤销工作区文件变更。
+- 原生归档和删除可能级联后代会话。Gateway 在调用前读取有界的全来源原生会话清单，检查后代的项目归属；跨项目后代或无法完成范围核查时拒绝该次请求，普通项目内会话可以执行。此预检不是原生原子事务范围保证。删除永久移除原生会话历史，必须由客户端提交 `confirm:true`；归档、删除均交由 Codex 执行，不删除工作区文件，也不因断线自动重发。
 
 ## 类型与安全语义
 

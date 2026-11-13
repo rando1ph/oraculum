@@ -124,6 +124,9 @@ export async function createGatewayServer(service: GatewayService, config: Gatew
         return operation(request, reply, receipt(service.store.getOperation(q.operationId, caller.deviceId)!));
     });
     app.get(api + '/models', async (request) => resource(request, await service.codex.listModels({ limit: 100 }), 'ModelPage'));
+    app.get(api + '/projects/:projectId/native-defaults', async (request) => resource(request, await service.nativeDefaults(auth(request), params(request).projectId!), 'NativeDefaults'));
+    app.get(api + '/account/rate-limits', async (request) => resource(request, await service.account(auth(request), 'rateLimits'), 'AccountRateLimits'));
+    app.get(api + '/account/usage', async (request) => resource(request, await service.account(auth(request), 'usage'), 'AccountUsage'));
     app.get(api + '/projects/:projectId/extensions', async (request) => resource(request, await service.extensions(auth(request), params(request).projectId!), 'ExtensionsSnapshot'));
     app.get(api + '/projects/:projectId/threads', async (request) => {
         const query = request.query as Record<string, string>, q = parseContract('ThreadQuery', { ...query, ...(query.limit ? { limit: Number(query.limit) } : {}), ...(query.archived ? { archived: query.archived === 'true' ? true : query.archived === 'false' ? false : query.archived } : {}) });
@@ -135,8 +138,16 @@ export async function createGatewayServer(service: GatewayService, config: Gatew
         return resource(request, service.threadView(thread, p.projectId!), 'Thread');
     });
     app.post(api + '/threads/:threadId/resume', async (request, reply) => operation(request, reply, await service.resumeThread(auth(request), params(request).threadId!, parseContract('ThreadResumeRequest', request.body))));
+    for (const action of ['name', 'archive', 'unarchive', 'fork', 'revert', 'compact'] as const) {
+        app.post(api + '/threads/:threadId/' + action, async (request, reply) => operation(request, reply,
+            await service.mutateThread(auth(request), params(request).threadId!, action,
+                parseContract(action === 'name' ? 'ThreadNameRequest' : action === 'fork' ? 'ThreadForkRequest' : action === 'revert' ? 'ThreadRevertRequest' : 'ThreadMutationRequest', request.body))));
+    }
+    app.delete(api + '/threads/:threadId', async (request, reply) => operation(request, reply,
+        await service.mutateThread(auth(request), params(request).threadId!, 'delete', parseContract('ThreadDeleteRequest', request.body))));
     app.post(api + '/threads/:threadId/turns', async (request, reply) => operation(request, reply, await service.startTurn(auth(request), params(request).threadId!, parseContract('TurnStartRequest', request.body))));
     app.post(api + '/threads/:threadId/turns/:turnId/interrupt', async (request, reply) => operation(request, reply, await service.interrupt(auth(request), params(request).threadId!, params(request).turnId!, parseContract('TurnInterruptRequest', request.body))));
+    app.post(api + '/threads/:threadId/turns/:turnId/steer', async (request, reply) => operation(request, reply, await service.steer(auth(request), params(request).threadId!, params(request).turnId!, parseContract('TurnSteerRequest', request.body))));
     app.post(api + '/threads/:threadId/history/query', async (request) => resource(request, await service.historyPage(auth(request), params(request).threadId!, parseContract('HistoryQuery', request.body)), 'HistoryPage'));
     app.post(api + '/threads/:threadId/history/details', async (request) => resource(request, await service.itemDetails(auth(request), params(request).threadId!, parseContract('ItemDetailsRequest', request.body)), 'ItemDetails'));
     app.post(api + '/threads/:threadId/snapshot', async (request) => { const q = parseContract('SnapshotRequest', request.body); return resource(request, await service.snapshot(auth(request), params(request).threadId!, q.projectId), 'Snapshot'); });

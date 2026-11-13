@@ -53,7 +53,10 @@ export async function extensionSection(codex: Pick<CodexAdapter, 'readExtensions
       if (!record(server) || !record(server.tools) || !Array.isArray(server.resources)) { incompatible = true; continue; }
       const status = display(server.runtimeStatus, 80), auth = display(server.authStatus, 80);
       append(server, server.name, server.name, { ...(status || auth ? { status: [status, auth].filter(Boolean).join(' / ') } : {}),
-        toolCount: Object.keys(server.tools).length, resourceCount: server.resources.length });
+        // Gateway requests toolsAndAuthOnly: resource arrays are deliberately empty,
+        // so their length is not a discovered resource count. A toolsError likewise
+        // means no tool catalog was returned, rather than an authoritative zero.
+        ...(server.toolsError == null ? { toolCount: Object.keys(server.tools).length } : {}) });
       limited ||= server.toolsError != null;
     }
   } else {
@@ -65,5 +68,7 @@ export async function extensionSection(codex: Pick<CodexAdapter, 'readExtensions
   }
   if (incompatible && !entries.length) return unavailable(kind, 'NATIVE_PROTOCOL');
   limited ||= incompatible;
+  if (kind === 'mcp') return { kind, status: 'available', entries, limited: true,
+    reasonCode: limited ? 'PARTIAL_NATIVE_RESULT' : 'MCP_RESOURCES_NOT_REQUESTED' };
   return { kind, status: 'available', entries, limited, ...(limited ? { reasonCode: 'PARTIAL_NATIVE_RESULT' } : {}) };
 }

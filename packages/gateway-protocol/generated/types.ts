@@ -1,5 +1,5 @@
 // Generated from schema/v2.json by quicktype-core 24.0.0; DO NOT EDIT.
-// Schema SHA-256: 90f64b3809976fa72e268094911d59ed35b99c0dd3bb96b50bb8a776d42aa483
+// Schema SHA-256: e30983d4bee805f0ebeff389e480d790a30fd964b27cf2a447f07cc4bf4713eb
 export interface ProtocolVersion {
     major:          number;
     minClientMinor: number;
@@ -973,6 +973,13 @@ export interface SectionEntry {
 }
 
 export interface ThreadMutationRequest {
+    expectedEpoch: string;
+    operationId:   string;
+    projectId:     string;
+}
+
+export interface ThreadDeleteRequest {
+    confirm:       boolean;
     expectedEpoch: string;
     operationId:   string;
     projectId:     string;

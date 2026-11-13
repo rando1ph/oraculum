@@ -57,6 +57,12 @@ EnvironmentFile=%E/oraculum-gateway/network.env
 
 公共字段、路由、TS/Kotlin DTO 与 fixture 见 [Gateway 协议](../packages/gateway-protocol/README.md)。所有 `/api/v2` 请求和 WS 握手携带 `X-Oraculum-Protocol: 2`；access 只放 Authorization。WS 只接收 resume/ping，业务写只走 HTTP。
 
+协议 2.1 开放原生重命名、归档／恢复、确认删除、分叉、历史撤回、同 Turn 插话和手动上下文压缩。生命周期操作沿用旧 Bridge 的有界原生依赖盘点与最终状态复读：普通根会话可操作，有子会话依赖、活动执行、待处理审批或无法核实范围时明确拒绝该次操作。删除需要 `confirm:true`，由 Codex 永久删除会话历史；不使用本地文件清理替代。压缩回执只确认触发，完成仍以原生 `contextCompaction` Item／Turn 事件为准。`revert` 使用原生 `beforeTurnId`，不回滚工作区文件，旧会话存储不支持时返回原生拒绝。
+
+省略 `model`、`effort` 和 `permissionPreset` 继续继承 Codex 设置；有效默认值可通过项目 `native-defaults` 读取，实际会话设置优先使用最新原生 `Thread` 事实。`ultra` 及未来强度值由选定模型的真实目录验证，不把目录推荐默认当成当前配置。新接口仅投影必要配置／来源类别及账户额度／用量，不返回凭据、账户身份、原始配置或私有路径。
+
+MCP 使用 `toolsAndAuthOnly` 轻量发现与 20 秒预算（显式 adapter 读取超时仍优先）；未请求资源时标记 `MCP_RESOURCES_NOT_REQUESTED`，省略资源数量，避免把未发现当作零。Skills／Apps 的结果不被 MCP 失败替换。原生默认接口尚无自动标题生成 RPC；`thread.name.auto` 明确不可用，已有原生名称与 `thread/name/updated` 仍正常同步，不用首条消息 preview 冒充自动标题。
+
 所有可派发写入先持久保存 UUIDv4 `operationId`。相同 ID 一律 409，随后只读查询 `/operations/{id}`。断线、超时、原生 ACK 与本地提交之间的崩溃保持 `unknown`，不自动重发；未知新建线程阻塞整个项目，未知 Turn 阻塞该线程，各设备共同遵守。首版未知操作没有人工强制清除入口：保留读取原生状态与停止已观察活动 Turn 的安全出口。新 ID、换设备或重新注册项目都不能绕过屏障。
 
 原生审批只回答当前 epoch/generation 的真实请求，多设备竞争只向原生发送一次；必须使用原生提供的决定。写入 stdin 仅产生 unknown，匹配的原生 resolved 才校正为 accepted；这不代表工具成功或永久授权。未知交互形态关闭该交互能力，不能推测同意。
@@ -77,6 +83,7 @@ pnpm test
 pnpm verify:gateway:protocol
 pnpm test:gateway:faults
 pnpm test:gateway:live
+pnpm exec tsx gateway/test/native-capabilities-live.ts
 pnpm build:gateway:deb
 node scripts/verify-gateway-deb.mjs dist/gateway/SOURCE_SHA/oraculum-gateway_2.0.0~beta.1_amd64.deb SOURCE_SHA
 ```
@@ -87,4 +94,4 @@ DEB 含私有 Node 24.21.0、CLI 和未启用的 user systemd 单元，程序/�
 
 Beta 发行使用 Debian `2.0.0~beta.1`（低于后续 `2.0.0`）、`releaseChannel: beta` 和 `candidate: false`。这里 `candidate` 仅表示未发行的开发候选；false 表示按预发行契约准备的可分发包，不代表 Stable，也不代表已安装。实际发布状态以 GitHub Pre-release 为准。旧候选清单继续接受原 `candidate: true`、三段数字版本；所有清单和包内 `build.json` 必须一致。
 
-首版关闭实验 API、Plan 模式、未验证的 Plugin 目录和 Turn steer；被动原生 input/MCP form 适配有夹具验证，不能据此宣称真实模型已触发所有形态。正式 APK、Android/Desktop UI、Stitch 修改、旧状态迁移、VPS/网络变更和正式部署均不在本阶段。
+实验 API、Plan 模式、未验证的 Plugin 目录继续关闭；协议 2.1 已开放 Turn steer。被动原生 input/MCP form 适配有夹具验证，不能据此宣称真实模型已触发所有形态。`native-capabilities-live.ts` 使用独立 HTTP/WebSocket 回环实例验证新增原生能力，报告经过脱敏；它不等于公网 HTTPS/WSS 或 Android 验收。正式 APK、Android/Desktop UI、Stitch 修改、旧状态迁移、VPS/网络变更和正式部署均不在本阶段。

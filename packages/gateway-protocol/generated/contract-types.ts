@@ -76,6 +76,7 @@ export interface ContractTypes {
   ExtensionSection: Dto.ExtensionSection;
   ExtensionsSnapshot: Dto.ExtensionsSnapshot;
   ThreadMutationRequest: Dto.ThreadMutationRequest;
+  ThreadDeleteRequest: Dto.ThreadDeleteRequest;
   ThreadNameRequest: Dto.ThreadNameRequest;
   ThreadForkRequest: Dto.ThreadForkRequest;
   ThreadRevertRequest: Dto.ThreadRevertRequest;

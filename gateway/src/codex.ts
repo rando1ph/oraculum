@@ -39,8 +39,11 @@ const cursor = (v?: string | null) => v == null ? undefined : id(v);
 
 // Deliberately finite. Neither HTTP nor WS can turn this adapter into arbitrary RPC.
 const methods = new Set(['initialize', 'model/list', 'thread/list', 'thread/read', 'thread/start', 'thread/resume',
-  'turn/start', 'turn/interrupt', 'thread/turns/list', 'thread/items/list', 'skills/list', 'mcpServerStatus/list', 'app/installed', 'plugin/installed']);
-const writes = new Set(['thread/start', 'thread/resume', 'turn/start', 'turn/interrupt']);
+  'turn/start', 'turn/interrupt', 'turn/steer', 'thread/name/set', 'thread/archive', 'thread/unarchive', 'thread/delete',
+  'thread/fork', 'thread/revert', 'thread/compact/start', 'config/read', 'account/rateLimits/read', 'account/usage/read',
+  'thread/turns/list', 'thread/items/list', 'skills/list', 'mcpServerStatus/list', 'app/installed', 'plugin/installed']);
+const writes = new Set(['thread/start', 'thread/resume', 'turn/start', 'turn/interrupt', 'turn/steer', 'thread/name/set',
+  'thread/archive', 'thread/unarchive', 'thread/delete', 'thread/fork', 'thread/revert', 'thread/compact/start']);
 const notifications = new Set(['thread/started', 'thread/status/changed', 'thread/name/updated', 'thread/archived', 'thread/unarchived',
   'thread/closed', 'thread/deleted', 'thread/tokenUsage/updated', 'turn/started', 'turn/completed', 'turn/diff/updated', 'turn/plan/updated',
   'item/started', 'item/completed', 'item/agentMessage/delta', 'item/plan/delta', 'item/reasoning/summaryTextDelta',
@@ -95,10 +98,13 @@ function validate(method: string, value: unknown): asserts value is JsonObject {
       !v.supportedReasoningEfforts.every(e => record(e) && identifier(e.reasoningEffort))) bad();
   });
   if (method === 'thread/list') page(thread);
-  if (['thread/read', 'thread/start', 'thread/resume'].includes(method)) thread(value.thread);
-  if (['thread/start', 'thread/resume'].includes(method) &&
+  if (['thread/read', 'thread/start', 'thread/resume', 'thread/fork', 'thread/revert', 'thread/unarchive'].includes(method)) thread(value.thread);
+  if (['thread/start', 'thread/resume', 'thread/fork'].includes(method) &&
     (!(typeof value.approvalPolicy === 'string' || record(value.approvalPolicy)) || !record(value.sandbox) || !identifier(value.sandbox.type))) bad();
   if (method === 'turn/start') turn(value.turn);
+  if (method === 'turn/steer' && !identifier(value.turnId)) bad();
+  if (method === 'config/read' && (!record(value.config) || !record(value.origins))) bad();
+  if (method === 'account/rateLimits/read' && !record(value.rateLimits)) bad();
   if (method === 'thread/turns/list') page(turn);
   if (method === 'thread/items/list') page(v => { if (!record(v) || !identifier(v.turnId)) return bad(); item(v.item); });
   if (method === 'skills/list' && (!Array.isArray(value.data) || !value.data.every(entry => record(entry) && identifier(entry.cwd) && Array.isArray(entry.skills) && Array.isArray(entry.errors)))) bad();
@@ -266,9 +272,18 @@ export class CodexAdapter extends EventEmitter {
   readThread(threadId: string, includeTurns = false, timeoutMs?: number) {
     return this.rpc('thread/read', { threadId: id(threadId), includeTurns }, timeoutMs) as Promise<NativeThreadResult>;
   }
-  startThread(options: { cwd: string; model?: string; permissionPreset?: PermissionPreset }) {
+  /** Internal lifecycle dependency preflight; never exposed as a host-wide HTTP catalog. */
+  listLifecycleThreads(options: { archived: boolean; cursor?: string; timeoutMs?: number }) {
+    if (typeof options.archived !== 'boolean') throw invalid();
+    return this.rpc('thread/list', { archived: options.archived, cursor: cursor(options.cursor), limit: 100, modelProviders: [],
+      sourceKinds: ['cli', 'vscode', 'exec', 'appServer', 'subAgent', 'subAgentReview', 'subAgentCompact', 'subAgentThreadSpawn', 'subAgentOther', 'unknown'] },
+      options.timeoutMs ?? this.options.readTimeoutMs ?? 20_000) as Promise<NativePage<NativeThread>>;
+  }
+  startThread(options: { cwd: string; model?: string; effort?: string; permissionPreset?: PermissionPreset }) {
+    const permission = permissions(options.permissionPreset, false);
+    if (options.effort !== undefined && !/^[a-z][a-z0-9_-]{0,63}$/.test(options.effort)) throw invalid();
     return this.rpc('thread/start', { cwd: id(options.cwd), ...(options.model === undefined ? {} : { model: id(options.model) }),
-      ...permissions(options.permissionPreset, false) }) as Promise<NativeThreadResult>;
+      ...permission, ...(options.effort === undefined ? {} : { config: { ...(record(permission.config) ? permission.config : {}), model_reasoning_effort: options.effort } }) }) as Promise<NativeThreadResult>;
   }
   resumeThread(threadId: string) {
     return this.rpc('thread/resume', { threadId: id(threadId), excludeTurns: true }) as Promise<NativeThreadResult>;
@@ -280,7 +295,7 @@ export class CodexAdapter extends EventEmitter {
       if (part.type === 'localImage') return { type: 'localImage', path: id(part.path) };
       throw invalid();
     });
-    if (options.effort !== undefined && !['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra'].includes(options.effort)) throw invalid();
+    if (options.effort !== undefined && !/^[a-z][a-z0-9_-]{0,63}$/.test(options.effort)) throw invalid();
     return this.rpc('turn/start', { threadId: id(options.threadId), input, ...(options.model === undefined ? {} : { model: id(options.model) }),
       ...(options.effort === undefined ? {} : { effort: options.effort }), ...(options.clientUserMessageId === undefined ? {} : { clientUserMessageId: id(options.clientUserMessageId) }),
       ...permissions(options.permissionPreset, true) }) as Promise<JsonObject & { turn: NativeTurn }>;
@@ -288,6 +303,33 @@ export class CodexAdapter extends EventEmitter {
   interruptTurn(threadId: string, turnId: string) {
     return this.rpc('turn/interrupt', { threadId: id(threadId), turnId: id(turnId) });
   }
+  setThreadName(threadId: string, name: string) {
+    if (typeof name !== 'string' || !name.trim() || name.length > 200 || /[\x00-\x1f\x7f]/.test(name)) throw invalid();
+    return this.rpc('thread/name/set', { threadId: id(threadId), name });
+  }
+  unarchiveThread(threadId: string) { return this.rpc('thread/unarchive', { threadId: id(threadId) }); }
+  archiveThread(threadId: string) { return this.rpc('thread/archive', { threadId: id(threadId) }); }
+  deleteThread(threadId: string) { return this.rpc('thread/delete', { threadId: id(threadId) }); }
+  forkThread(threadId: string, lastTurnId?: string) {
+    return this.rpc('thread/fork', { threadId: id(threadId), excludeTurns: true,
+      ...(lastTurnId === undefined ? {} : { lastTurnId: id(lastTurnId) }) }) as Promise<NativeThreadResult>;
+  }
+  revertThread(threadId: string, beforeTurnId: string) {
+    return this.rpc('thread/revert', { threadId: id(threadId), beforeTurnId: id(beforeTurnId) }) as Promise<NativeThreadResult>;
+  }
+  compactThread(threadId: string) { return this.rpc('thread/compact/start', { threadId: id(threadId) }); }
+  steerTurn(options: { threadId: string; expectedTurnId: string; input: NativeInput[]; clientUserMessageId: string }) {
+    if (!Array.isArray(options.input) || options.input.length < 1 || options.input.length > 100) throw invalid();
+    const input = options.input.map(part => {
+      if (part.type !== 'text' || typeof part.text !== 'string' || !part.text.length || Buffer.byteLength(part.text) > 128 * 1024) throw invalid();
+      return { type: 'text', text: part.text, text_elements: [] };
+    });
+    return this.rpc('turn/steer', { threadId: id(options.threadId), expectedTurnId: id(options.expectedTurnId),
+      input, clientUserMessageId: id(options.clientUserMessageId) }) as Promise<JsonObject & { turnId: string }>;
+  }
+  readConfig(cwd: string) { return this.rpc('config/read', { cwd: id(cwd), includeLayers: false }); }
+  readAccountRateLimits() { return this.rpc('account/rateLimits/read', {}); }
+  readAccountUsage() { return this.rpc('account/usage/read', {}); }
   listTurns(options: { threadId: string; cursor?: string | null; limit?: number }, timeoutMs?: number) {
     return this.rpc('thread/turns/list', { threadId: id(options.threadId), cursor: cursor(options.cursor), limit: limit(options.limit, 5, 20),
       sortDirection: 'desc', itemsView: 'notLoaded' }, timeoutMs) as Promise<NativePage<NativeTurn>>;
@@ -297,10 +339,10 @@ export class CodexAdapter extends EventEmitter {
       limit: limit(options.limit, 40, 40), sortDirection: 'desc' }, timeoutMs) as Promise<NativePage<{ turnId: string; item: NativeItem; startedAtMs?: number | null; completedAtMs?: number | null }>>;
   }
   async readExtensions(kind: 'skills' | 'mcp' | 'apps' | 'plugins', cwd: string): Promise<{ status: 'available'; data: JsonObject } | { status: 'unavailable'; code: NativeFailureCode }> {
-    const selected = { skills: ['skills/list', { cwds: [id(cwd)] }], mcp: ['mcpServerStatus/list', { limit: 100 }], apps: ['app/installed', {}], plugins: ['plugin/installed', { cwds: [id(cwd)] }] } as const;
+    const selected = { skills: ['skills/list', { cwds: [id(cwd)] }], mcp: ['mcpServerStatus/list', { limit: 100, detail: 'toolsAndAuthOnly' }], apps: ['app/installed', {}], plugins: ['plugin/installed', { cwds: [id(cwd)] }] } as const;
     if (!Object.hasOwn(selected, kind)) throw invalid();
     const [method, params] = selected[kind];
-    try { return { status: 'available', data: await this.rpc(method, params, 3000) }; }
+    try { return { status: 'available', data: await this.rpc(method, params, kind === 'mcp' ? this.options.readTimeoutMs ?? 20_000 : 3000) }; }
     catch (error) { return { status: 'unavailable', code: error instanceof CodexError ? error.code : 'NATIVE_PROTOCOL' }; }
   }
   /** Internal interaction manager only. Native request IDs never come from HTTP clients. */
