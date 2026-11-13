@@ -10,6 +10,7 @@ internal data class ConversationRow(
     val processCount: Int = 0,
     val canCollapse: Boolean = false,
     val expanded: Boolean = false,
+    val children: List<ConversationRow> = emptyList(),
 )
 
 /** As in the original native projection, unknown assistant phases remain visible. */
@@ -36,8 +37,30 @@ internal fun conversationRows(messages: List<ChatMessage>, expandedTurns: Set<St
     }
 }
 
+/** Wrap only contiguous rows of the same turn; never pull content across a user message. */
+internal fun groupConversationRows(rows: List<ConversationRow>): List<ConversationRow> = buildList {
+    var index = 0
+    while (index < rows.size) {
+        val row = rows[index++]
+        if (row.turn == null) {
+            add(row)
+        } else {
+            val children = mutableListOf<ConversationRow>()
+            while (index < rows.size) {
+                val next = rows[index]
+                if (next.message?.role == "user" || next.message?.turnId != row.turnId) break
+                children.add(next)
+                index++
+            }
+            add(row.copy(children = children))
+        }
+    }
+}
+
 internal fun List<ConversationRow>.rowForSourceIndex(sourceIndex: Int): Int =
-    indexOfFirst { it.sourceIndex >= sourceIndex }.takeIf { it >= 0 } ?: lastIndex.coerceAtLeast(0)
+    indexOfFirst { row ->
+        row.sourceIndex >= sourceIndex || row.children.any { it.sourceIndex >= sourceIndex }
+    }.takeIf { it >= 0 } ?: lastIndex.coerceAtLeast(0)
 
 internal fun isNormalEmptyHistoryNotice(text: String): Boolean = text == "新会话历史尚未生成，可发送首条消息"
 

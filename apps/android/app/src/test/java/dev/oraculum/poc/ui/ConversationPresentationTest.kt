@@ -51,6 +51,22 @@ class ConversationPresentationTest {
         assertFalse(isProcessMessage(ChatMessage("review", "exitedReviewMode", "review")))
     }
 
+    @Test fun groupedTurnKeepsAnswerAndExecutionTogetherAndMapsReadingAnchor() {
+        val rows = groupConversationRows(conversationRows(turn(), emptySet(), emptySet(), false))
+        assertEquals(2, rows.size)
+        assertEquals("answer", rows.last().children.single().message?.id)
+        assertEquals(1, rows.rowForSourceIndex(3))
+        val expanded = groupConversationRows(conversationRows(turn(), setOf("turn"), emptySet(), false))
+        assertEquals(listOf("progress", "command", "answer"), expanded.last().children.map { it.message?.id })
+        assertEquals(1, expanded.rowForSourceIndex(2))
+        val pending = groupConversationRows(conversationRows(turn(), emptySet(), setOf("turn"), false))
+        assertEquals(3, pending.last().children.size)
+        val nextUser = ChatMessage("next", "user", "next request", turnId = "next")
+        val separate = groupConversationRows(conversationRows(turn() + nextUser, emptySet(), emptySet(), false))
+        assertEquals("next", separate.last().message?.id)
+        assertEquals(1, separate[1].children.size)
+    }
+
     @Test fun OnlyTheKnownNormalEmptyNoticeIsSuppressed() {
         assertTrue(isNormalEmptyHistoryNotice("新会话历史尚未生成，可发送首条消息"))
         assertFalse(isNormalEmptyHistoryNotice("原生状态暂未稳定；自动校正已暂停"))

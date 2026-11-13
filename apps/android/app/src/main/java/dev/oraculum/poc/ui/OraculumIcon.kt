@@ -29,7 +29,7 @@ enum class OraculumSymbol(@DrawableRes internal val drawable: Int) {
     Stop(R.drawable.ms_stop_circle),
     AttachFile(R.drawable.ms_attach_file),
     Shield(R.drawable.ms_shield),
-    Model(R.drawable.ms_smart_toy),
+    Model(R.drawable.ms_tune),
     Tune(R.drawable.ms_tune),
     Code(R.drawable.ms_code),
     Terminal(R.drawable.ms_terminal),

@@ -89,7 +89,8 @@ fun OraculumScreen(
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 IconButton(onClick = { panel = "navigation" },
                                     modifier = Modifier.size(48.dp).testTag("navigation").semantics { contentDescription = "打开项目与会话导航" }) {
-                                    Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+                                    Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.35f))) {
                                         OracleEyeMark(modifier = Modifier.padding(10.dp), size = 24.dp)
                                     }
                                 }
@@ -351,16 +352,19 @@ internal fun NavigationRow(title: String, detail: String, selected: Boolean, tag
 private fun EmptyConversation(state: PocUiState, modifier: Modifier = Modifier, action: (@Composable () -> Unit)? = null) {
     Column(modifier.padding(horizontal = 28.dp, vertical = 24.dp).testTag("empty-brand"),
         verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
-        OracleEyeMark(contentDescription = "神谕之眼", size = 112.dp, variant = OracleEyeVariant.Full)
+        Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surfaceContainerLow,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)),
+            modifier = Modifier.padding(bottom = 24.dp)) {
+            OracleEyeMark(contentDescription = "神谕之眼", modifier = Modifier.padding(20.dp), size = 88.dp, variant = OracleEyeVariant.Full)
+        }
+        Box(Modifier.width(28.dp).height(2.dp).background(MaterialTheme.colorScheme.primary.copy(alpha = .7f)))
         Spacer(Modifier.height(20.dp))
-        Box(Modifier.width(32.dp).height(2.dp).background(MaterialTheme.colorScheme.primary.copy(alpha = .6f)))
-        Spacer(Modifier.height(18.dp))
         Text(when {
             state.selectedProjectId == null -> "万象无疆，诸界未名。"
             state.selectedThreadId == null -> "万象俯首，静候神谕。"
             else -> "谕令未书，万象屏息。"
-        }, style = MaterialTheme.typography.headlineSmall, textAlign = TextAlign.Center)
-        Spacer(Modifier.height(12.dp))
+        }, style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.SemiBold), textAlign = TextAlign.Center)
+        Spacer(Modifier.height(10.dp))
         Text(when {
             !state.online -> "离线时可阅读缓存，草稿保留在本机。"
             state.selectedThreadId == null -> "选择项目，继续会话或开启新的工作。"
@@ -376,7 +380,7 @@ private fun Conversation(state: PocUiState, actions: PocActions, modifier: Modif
     var expandedTurns by rememberSaveable(state.selectedThreadId) { mutableStateOf(emptyList<String>()) }
     val pending = state.interactions.filter { it.status != "resolved" }
     val pendingTurnIds = pending.map { (it.request["turnId"] as? JsonPrimitive)?.contentOrNull?.takeIf(String::isNotBlank) }
-    val rows = conversationRows(state.messages, expandedTurns.toSet(), pendingTurnIds.filterNotNull().toSet(), pendingTurnIds.any { it == null })
+    val rows = groupConversationRows(conversationRows(state.messages, expandedTurns.toSet(), pendingTurnIds.filterNotNull().toSet(), pendingTurnIds.any { it == null }))
     val listState = rememberLazyListState(initialFirstVisibleItemIndex = rows.rowForSourceIndex(state.readIndex.coerceAtLeast(0)) + headerCount, initialFirstVisibleItemScrollOffset = state.readOffset.coerceAtLeast(0))
     var restoredThread by remember { mutableStateOf<String?>(null) }
     val followingEnd by remember { derivedStateOf {
@@ -411,8 +415,14 @@ private fun Conversation(state: PocUiState, actions: PocActions, modifier: Modif
             EmptyConversation(state, Modifier.fillParentMaxHeight(.85f).fillMaxWidth())
         }
         items(rows, key = { it.key }) { row ->
-            row.message?.let { MessageCard(it, state, actions) } ?: TurnSummary(row) {
-                expandedTurns = if (row.turnId in expandedTurns) expandedTurns - row.turnId else expandedTurns + row.turnId
+            if (row.message != null) MessageCard(row.message, state, actions)
+            else OraculumCard(CardRole.Content, Modifier.fillMaxWidth(), PaddingValues(0.dp)) {
+                TurnSummary(row) {
+                    expandedTurns = if (row.turnId in expandedTurns) expandedTurns - row.turnId else expandedTurns + row.turnId
+                }
+                row.children.forEach { child ->
+                    child.message?.let { MessageCard(it, state, actions, embedded = true) }
+                }
             }
         }
         items(state.interactions, key = { "interaction-${it.id}" }) { interaction ->
@@ -427,57 +437,57 @@ private fun TurnSummary(row: ConversationRow, toggle: () -> Unit) {
     val turn = row.turn ?: return
     val label = when (turn.status) { "completed" -> "已完成"; "failed" -> "执行失败"; "interrupted" -> "已停止"; "inProgress" -> "执行中"; else -> "本轮执行" }
     val usage = turn.usage
-    val tokens = usage?.totalTokens?.let { "最近用量 ${java.text.NumberFormat.getIntegerInstance().format(it)} tokens" }
-    val details = listOfNotNull(turn.durationMs?.let { "用时 ${formatTurnDuration(it)}" }, tokens)
+    val tokens = usage?.totalTokens?.let { "用量 ${java.text.NumberFormat.getIntegerInstance().format(it)}" }
+    val details = listOfNotNull(turn.durationMs?.let { formatTurnDuration(it) }, tokens)
     val collapsible = row.canCollapse && row.processCount > 0
-    Surface(color = MaterialTheme.colorScheme.surfaceContainerLow, shape = OraculumTokens.ProcessShape,
+    Surface(color = Color.Transparent,
         modifier = Modifier.fillMaxWidth().testTag("turn-summary-${row.turnId}").then(if (collapsible) Modifier.clickable(onClick = toggle) else Modifier)
             .semantics { if (collapsible) { role = Role.Button; stateDescription = if (row.expanded) "已展开" else "已收起" } }) {
-        Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Column(Modifier.padding(horizontal = 14.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.heightIn(min = if (collapsible) 40.dp else 24.dp)) {
-                OraculumIcon(if (turn.status == "completed") OraculumSymbol.Check else if (turn.status == "failed") OraculumSymbol.Error else OraculumSymbol.Terminal,
-                    tint = if (turn.status == "failed") MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
-                Text((listOf(label) + details).joinToString(" · "), Modifier.weight(1f), style = MaterialTheme.typography.labelLarge)
+                Box(Modifier.size(8.dp).background(if (turn.status == "completed") MaterialTheme.colorScheme.primary else if (turn.status == "failed") MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.tertiary, CircleShape))
+                Text((listOf(label) + details).joinToString(" · "), Modifier.weight(1f), style = MaterialTheme.typography.labelMedium.copy(fontFamily = FontFamily.Monospace), color = MaterialTheme.colorScheme.onSurface)
                 if (collapsible) OraculumIcon(if (row.expanded) OraculumSymbol.ExpandLess else OraculumSymbol.ExpandMore,
-                    if (row.expanded) "收起本轮执行过程" else "展开本轮执行过程")
+                    if (row.expanded) "收起本轮执行过程" else "展开本轮执行过程", size = 18.dp, tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             val counts = listOfNotNull(row.processCount.takeIf { it > 0 }?.let { "$it 项执行记录" },
-                usage?.cachedInputTokens?.let { "最近缓存读取 ${java.text.NumberFormat.getIntegerInstance().format(it)} tokens" })
+                usage?.cachedInputTokens?.let { "缓存读取 ${java.text.NumberFormat.getIntegerInstance().format(it)}" })
             if (counts.isNotEmpty()) Text(counts.joinToString(" · "), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            val times = listOfNotNull(turn.startedAtMillis?.let { "本轮开始 ${DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(it))}" },
-                turn.completedAtMillis?.let { "完成 ${DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(it))}" })
-            if (times.isNotEmpty()) Text(times.joinToString(" · "), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            val times = listOfNotNull(turn.startedAtMillis?.let { "开始 ${DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(it))}" },
+                turn.completedAtMillis?.let { "结束 ${DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(it))}" })
+            if (row.expanded && times.isNotEmpty()) Text(times.joinToString(" · "), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f))
         }
     }
 }
 
 @Composable
-private fun MessageCard(message: ChatMessage, state: PocUiState, actions: PocActions) {
+private fun MessageCard(message: ChatMessage, state: PocUiState, actions: PocActions, embedded: Boolean = false) {
     val process = isProcessMessage(message)
     val user = message.role == "user"
     var expanded by rememberSaveable(message.id) { mutableStateOf(message.needsAttention || (process && message.turn?.status != "completed")) }
     LaunchedEffect(message.needsAttention) { if (message.needsAttention) expanded = true }
     var copied by remember(message.text) { mutableStateOf(false) }
     val clipboard = LocalClipboardManager.current
-    OraculumCard(role = when { process -> CardRole.Process; user -> CardRole.User; else -> CardRole.Content },
+    MessageContainer(embedded = embedded, role = when { process -> CardRole.Process; user -> CardRole.User; else -> CardRole.Content },
         modifier = Modifier.fillMaxWidth().testTag("message_${message.id}"),
-        contentPadding = PaddingValues(horizontal = 16.dp, vertical = if (process) 4.dp else 12.dp)) {
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = if (process) 6.dp else 12.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             when {
-                process -> OraculumIcon(when (message.role) { "reasoning" -> OraculumSymbol.Model; "commandExecution" -> OraculumSymbol.Terminal; else -> OraculumSymbol.Code }, tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                user -> UserAvatar(state.avatarFileName, state.userLabel, size = 28.dp)
-                else -> Surface(shape = CircleShape, color = MaterialTheme.colorScheme.primaryContainer) { OracleEyeMark(modifier = Modifier.padding(6.dp), tint = MaterialTheme.colorScheme.onPrimaryContainer, size = 20.dp) }
+                process -> OraculumIcon(when (message.role) { "reasoning" -> OraculumSymbol.Model; "commandExecution" -> OraculumSymbol.Terminal; else -> OraculumSymbol.Code }, tint = MaterialTheme.colorScheme.onSurfaceVariant, size = 18.dp)
+                user -> UserAvatar(state.avatarFileName, state.userLabel, size = 26.dp)
+                else -> Surface(shape = CircleShape, color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)) { OracleEyeMark(modifier = Modifier.padding(5.dp), tint = MaterialTheme.colorScheme.primary, size = 18.dp) }
             }
             Column(Modifier.weight(1f)) {
                 Text(when (message.role) { "user" -> state.userLabel; "assistant" -> state.assistantLabel; "reasoning" -> "思考过程"; "commandExecution" -> "命令执行"; "fileChange" -> "文件变更"; else -> message.role },
-                    style = if (process || user) MaterialTheme.typography.labelLarge else MaterialTheme.typography.titleSmall)
+                    style = if (process || user) MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold) else MaterialTheme.typography.titleSmall,
+                    color = if (user) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
                 if (message.status.isNotBlank()) Text(message.status, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                message.timestampMillis?.let { Text(DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(it)), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                message.timestampMillis?.let { Text(DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(it)), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)) }
             }
             if (process) IconButton({ expanded = !expanded }, Modifier.size(48.dp).semantics { stateDescription = if (expanded) "已展开" else "已收起" }) {
-                OraculumIcon(if (expanded) OraculumSymbol.ExpandLess else OraculumSymbol.ExpandMore, if (expanded) "收起执行内容" else "查看执行内容")
+                OraculumIcon(if (expanded) OraculumSymbol.ExpandLess else OraculumSymbol.ExpandMore, if (expanded) "收起执行内容" else "查看执行内容", size = 18.dp)
             } else if (!user) IconButton({ clipboard.setText(AnnotatedString(message.text)); copied = true }, Modifier.size(48.dp)) {
-                OraculumIcon(if (copied) OraculumSymbol.Check else OraculumSymbol.Copy, if (copied) "已复制答案" else "复制答案", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                OraculumIcon(if (copied) OraculumSymbol.Check else OraculumSymbol.Copy, if (copied) "已复制答案" else "复制答案", tint = if (copied) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, size = 18.dp)
             }
         }
         if (!process || expanded) MarkdownContent(message.text)
@@ -490,9 +500,13 @@ private fun MessageCard(message: ChatMessage, state: PocUiState, actions: PocAct
 private fun Composer(state: PocUiState, actions: PocActions, filesState: FilesUiState, filesActions: FilesActions,
     maximumHeight: Dp, compact: Boolean, onOptions: (String) -> Unit) {
     var addMenu by remember { mutableStateOf(false) }
+    var pickerMenu by remember { mutableStateOf<String?>(null) }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments(), filesActions.pick)
+    val hasText = state.draft.isNotBlank()
+    val canSubmit = state.canSend && state.online && hasText
+    val border = BorderStroke(1.dp, if (hasText) MaterialTheme.colorScheme.primary.copy(alpha = 0.4f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
     Column(Modifier.navigationBarsPadding().imePadding().padding(horizontal = 12.dp, vertical = 6.dp)) {
-        Surface(shape = OraculumTokens.PanelShape, color = MaterialTheme.colorScheme.surfaceContainerHigh, border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = .6f))) {
+        Surface(shape = OraculumTokens.PanelShape, color = MaterialTheme.colorScheme.surfaceContainerHigh, border = border) {
             Column(Modifier.heightIn(max = maximumHeight).padding(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 // Only the content area scrolls; send/stop remain outside it in a 48dp toolbar.
                 Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) {
@@ -504,16 +518,16 @@ private fun Composer(state: PocUiState, actions: PocActions, filesState: FilesUi
                     OutlinedTextField(state.draft, actions.onDraftChange,
                         placeholder = { Text(if (!state.online) "离线草稿 · 联网后手动发送" else if (filesState.attachments.isNotEmpty()) "为附件添加说明…" else "给 Codex 发送消息…") },
                         minLines = 1, maxLines = if (compact) 2 else 4,
-                        modifier = Modifier.fillMaxWidth().testTag("draft"), shape = RoundedCornerShape(20.dp),
+                        modifier = Modifier.fillMaxWidth().testTag("draft"), shape = RoundedCornerShape(16.dp),
                         colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Color.Transparent, unfocusedBorderColor = Color.Transparent))
                     if (filesState.attachments.isNotEmpty() || filesState.hasUnknown) {
                         AttachmentChips(filesState, filesActions, compact = true)
                     }
                 }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
                     Box {
                         IconButton({ addMenu = true }, modifier = Modifier.size(48.dp).testTag("composer-add").semantics { contentDescription = "添加内容与项目操作" }) {
-                            OraculumIcon(OraculumSymbol.Add, size = 24.dp)
+                            OraculumIcon(OraculumSymbol.Add, size = 22.dp, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         DropdownMenu(expanded = addMenu, onDismissRequest = { addMenu = false }) {
                             DropdownMenuItem(text = { Text("图片或文档") }, leadingIcon = { OraculumIcon(OraculumSymbol.AttachFile) },
@@ -526,17 +540,41 @@ private fun Composer(state: PocUiState, actions: PocActions, filesState: FilesUi
                                 modifier = Modifier.testTag("composer-navigation"), onClick = { addMenu = false; onOptions("navigation") })
                         }
                     }
-                    TextButton({ onOptions("permission") }, contentPadding = PaddingValues(horizontal = 8.dp), modifier = Modifier.heightIn(min = 48.dp).testTag("permission-picker").semantics { contentDescription = "选择执行权限" }) {
-                        OraculumIcon(OraculumSymbol.Shield, size = 18.dp); Spacer(Modifier.width(4.dp))
-                        Text(when (state.permissionPreset) { "full-access" -> "Full"; "auto" -> "Auto"; else -> "只读" }, maxLines = 1)
-                    }
-                    TextButton({ onOptions("model") }, contentPadding = PaddingValues(horizontal = 8.dp), modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("model-picker").semantics { contentDescription = "选择模型与思考强度" }) {
-                        OraculumIcon(OraculumSymbol.Model, size = 18.dp); Spacer(Modifier.width(4.dp))
-                        Text(listOfNotNull(state.models.firstOrNull { it.id == state.selectedModel }?.label ?: state.selectedModel ?: "模型", state.selectedEffort).joinToString(" · "), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Surface(modifier = Modifier.weight(1f), shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.45f),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box {
+                                TextButton({ pickerMenu = "permission"; addMenu = false }, contentPadding = PaddingValues(horizontal = 8.dp),
+                                    modifier = Modifier.heightIn(min = 48.dp).testTag("permission-picker").semantics { contentDescription = "选择执行权限" }) {
+                                    OraculumIcon(OraculumSymbol.Shield, size = 16.dp, tint = MaterialTheme.colorScheme.primary)
+                                    Spacer(Modifier.width(4.dp))
+                                    Text(when (state.permissionPreset) { "full-access" -> "Full"; "auto" -> "Auto"; else -> "只读" },
+                                        maxLines = 1, style = MaterialTheme.typography.labelMedium)
+                                }
+                                PermissionPickerMenu(state, actions, pickerMenu == "permission") { pickerMenu = null }
+                            }
+                            Box(Modifier.width(1.dp).height(16.dp).background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)))
+                            Box(Modifier.weight(1f)) {
+                                TextButton({ pickerMenu = "model"; addMenu = false }, contentPadding = PaddingValues(horizontal = 8.dp),
+                                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("model-picker").semantics { contentDescription = "选择模型与思考强度" }) {
+                                    OraculumIcon(OraculumSymbol.Tune, size = 16.dp, tint = MaterialTheme.colorScheme.primary)
+                                    Spacer(Modifier.width(4.dp))
+                                    Text(listOfNotNull(state.models.firstOrNull { it.id == state.selectedModel }?.label ?: state.selectedModel ?: "模型",
+                                        state.selectedEffort).joinToString(" · "), maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                        style = MaterialTheme.typography.labelMedium)
+                                }
+                                ModelPickerMenu(state, actions, pickerMenu == "model") { pickerMenu = null }
+                            }
+                        }
                     }
                     if (state.canResume) TextButton(actions.onResume, enabled = state.online && !state.busy, modifier = Modifier.heightIn(min = 48.dp).testTag("resume")) { OraculumIcon(OraculumSymbol.Refresh, "恢复会话") }
                     if (state.canStop) FilledTonalIconButton(actions.onStop, enabled = state.online, modifier = Modifier.size(48.dp).testTag("stop").semantics { contentDescription = "停止执行" }) { Glyph("stop", MaterialTheme.colorScheme.onSurface) }
-                    else FilledIconButton(actions.onSend, enabled = state.canSend && state.online && state.draft.isNotBlank(), modifier = Modifier.size(48.dp).testTag("send").semantics { contentDescription = "发送消息" }) { Glyph("send", MaterialTheme.colorScheme.onPrimary) }
+                    else FilledIconButton(actions.onSend, enabled = canSubmit,
+                        colors = IconButtonDefaults.filledIconButtonColors(
+                            containerColor = if (canSubmit) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest,
+                            contentColor = if (canSubmit) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)),
+                        modifier = Modifier.size(48.dp).testTag("send").semantics { contentDescription = "发送消息" }) { Glyph("send", LocalContentColor.current) }
                 }
             }
         }
