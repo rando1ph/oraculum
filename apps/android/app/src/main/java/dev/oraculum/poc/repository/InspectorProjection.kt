@@ -1,5 +1,6 @@
 package dev.oraculum.poc.repository
 
+import dev.oraculum.gateway.protocol.Effort
 import dev.oraculum.poc.ui.*
 import kotlinx.serialization.json.*
 import java.io.ByteArrayOutputStream
@@ -138,11 +139,18 @@ class ItemDetailAccumulator(private val expectedItem: String, private val expect
     }
 }
 
-fun modelOptions(page: JsonObject): List<ModelOption> = page.array("data").mapNotNull { raw -> (raw as? JsonObject)?.let { model ->
-    val id = model.string("model") ?: return@let null
-    val efforts = model.array("supportedReasoningEfforts").mapNotNull { (it as? JsonObject)?.string("reasoningEffort") }.filter { it in setOf("none", "minimal", "low", "medium", "high", "xhigh", "max") }.distinct()
-    ModelOption(id, model.string("displayName") ?: id, efforts, model.string("defaultReasoningEffort")?.takeIf { it in efforts }, model.string("description").orEmpty())
-} }
+/** A native catalog entry can be displayed before the Gateway write contract supports it. */
+fun isWritableEffort(effort: String): Boolean = Effort.entries.any { it.value == effort }
+
+fun modelOptions(page: JsonObject): List<ModelOption> {
+    val knownEfforts = Effort.entries.map { it.value }.toSet() + "ultra"
+    return page.array("data").mapNotNull { raw -> (raw as? JsonObject)?.let { model ->
+        val id = model.string("model") ?: return@let null
+        val efforts = model.array("supportedReasoningEfforts").mapNotNull { (it as? JsonObject)?.string("reasoningEffort") }
+            .filter { it in knownEfforts }.distinct()
+        ModelOption(id, model.string("displayName") ?: id, efforts, model.string("defaultReasoningEffort")?.takeIf { it in efforts }, model.string("description").orEmpty())
+    } }
+}
 
 /** Keeps very large native values out of a single UI/layout allocation. */
 private fun boundedJson(value: JsonElement, limit: Int = 128 * 1024): String = buildString {

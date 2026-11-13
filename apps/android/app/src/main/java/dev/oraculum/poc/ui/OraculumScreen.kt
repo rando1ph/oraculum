@@ -321,6 +321,12 @@ private fun ColumnScope.NavigationPanel(state: PocUiState, actions: PocActions, 
         item { TextButton(actions.onRefresh, enabled = state.online && !state.busy, modifier = Modifier.fillMaxWidth()) { OraculumIcon(OraculumSymbol.Refresh); Spacer(Modifier.width(8.dp)); Text("刷新列表") } }
     }
     HorizontalDivider()
+    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp).testTag("account-quota"),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        OraculumIcon(OraculumSymbol.DataUsage, tint = MaterialTheme.colorScheme.onSurfaceVariant, size = 18.dp)
+        Text("剩余额度", Modifier.weight(1f), style = MaterialTheme.typography.labelMedium)
+        Text("暂不可用", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
         UserAvatar(state.avatarFileName, state.userLabel, size = 28.dp)
         Column(Modifier.weight(1f).padding(start = 8.dp)) {
@@ -357,7 +363,6 @@ private fun EmptyConversation(state: PocUiState, modifier: Modifier = Modifier, 
             modifier = Modifier.padding(bottom = 24.dp)) {
             OracleEyeMark(contentDescription = "神谕之眼", modifier = Modifier.padding(20.dp), size = 88.dp, variant = OracleEyeVariant.Full)
         }
-        Box(Modifier.width(28.dp).height(2.dp).background(MaterialTheme.colorScheme.primary.copy(alpha = .7f)))
         Spacer(Modifier.height(20.dp))
         Text(when {
             state.selectedProjectId == null -> "万象无疆，诸界未名。"
@@ -417,11 +422,14 @@ private fun Conversation(state: PocUiState, actions: PocActions, modifier: Modif
         items(rows, key = { it.key }) { row ->
             if (row.message != null) MessageCard(row.message, state, actions)
             else OraculumCard(CardRole.Content, Modifier.fillMaxWidth(), PaddingValues(0.dp)) {
+                val answer = row.children.mapNotNull { it.message }.firstOrNull { it.role == "assistant" && !isProcessMessage(it) }
+                MessageHeader(answer ?: ChatMessage(row.key, "assistant", "", timestampMillis = row.turn?.startedAtMillis),
+                    state, modifier = Modifier.testTag("assistant-header-${row.turnId}").padding(start = 16.dp, end = 16.dp, top = 12.dp))
                 TurnSummary(row) {
                     expandedTurns = if (row.turnId in expandedTurns) expandedTurns - row.turnId else expandedTurns + row.turnId
                 }
                 row.children.forEach { child ->
-                    child.message?.let { MessageCard(it, state, actions, embedded = true) }
+                    child.message?.let { MessageCard(it, state, actions, embedded = true, showHeader = it.id != answer?.id) }
                 }
             }
         }
@@ -461,35 +469,43 @@ private fun TurnSummary(row: ConversationRow, toggle: () -> Unit) {
 }
 
 @Composable
-private fun MessageCard(message: ChatMessage, state: PocUiState, actions: PocActions, embedded: Boolean = false) {
+private fun MessageHeader(message: ChatMessage, state: PocUiState, expanded: Boolean = false,
+    onToggle: () -> Unit = {}, modifier: Modifier = Modifier) {
+    val process = isProcessMessage(message)
+    val user = message.role == "user"
+    var copied by remember(message.text) { mutableStateOf(false) }
+    val clipboard = LocalClipboardManager.current
+    Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        when {
+            process -> OraculumIcon(when (message.role) { "reasoning" -> OraculumSymbol.Model; "commandExecution" -> OraculumSymbol.Terminal; else -> OraculumSymbol.Code }, tint = MaterialTheme.colorScheme.onSurfaceVariant, size = 18.dp)
+            user -> UserAvatar(state.avatarFileName, state.userLabel, size = 26.dp)
+            else -> Surface(shape = CircleShape, color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)) { OracleEyeMark(modifier = Modifier.padding(5.dp), tint = MaterialTheme.colorScheme.primary, size = 18.dp) }
+        }
+        Column(Modifier.weight(1f)) {
+            Text(when (message.role) { "user" -> state.userLabel; "assistant" -> state.assistantLabel; "reasoning" -> "思考过程"; "commandExecution" -> "命令执行"; "fileChange" -> "文件变更"; else -> message.role },
+                style = if (process || user) MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold) else MaterialTheme.typography.titleSmall,
+                color = if (user) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
+            if (message.status.isNotBlank()) Text(message.status, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            message.timestampMillis?.let { Text(DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(it)), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)) }
+        }
+        if (process) IconButton(onToggle, Modifier.size(48.dp).semantics { stateDescription = if (expanded) "已展开" else "已收起" }) {
+            OraculumIcon(if (expanded) OraculumSymbol.ExpandLess else OraculumSymbol.ExpandMore, if (expanded) "收起执行内容" else "查看执行内容", size = 18.dp)
+        } else if (!user && message.text.isNotBlank()) IconButton({ clipboard.setText(AnnotatedString(message.text)); copied = true }, Modifier.size(48.dp)) {
+            OraculumIcon(if (copied) OraculumSymbol.Check else OraculumSymbol.Copy, if (copied) "已复制答案" else "复制答案", tint = if (copied) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, size = 18.dp)
+        }
+    }
+}
+
+@Composable
+private fun MessageCard(message: ChatMessage, state: PocUiState, actions: PocActions, embedded: Boolean = false, showHeader: Boolean = true) {
     val process = isProcessMessage(message)
     val user = message.role == "user"
     var expanded by rememberSaveable(message.id) { mutableStateOf(message.needsAttention || (process && message.turn?.status != "completed")) }
     LaunchedEffect(message.needsAttention) { if (message.needsAttention) expanded = true }
-    var copied by remember(message.text) { mutableStateOf(false) }
-    val clipboard = LocalClipboardManager.current
     MessageContainer(embedded = embedded, role = when { process -> CardRole.Process; user -> CardRole.User; else -> CardRole.Content },
         modifier = Modifier.fillMaxWidth().testTag("message_${message.id}"),
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = if (process) 6.dp else 12.dp)) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            when {
-                process -> OraculumIcon(when (message.role) { "reasoning" -> OraculumSymbol.Model; "commandExecution" -> OraculumSymbol.Terminal; else -> OraculumSymbol.Code }, tint = MaterialTheme.colorScheme.onSurfaceVariant, size = 18.dp)
-                user -> UserAvatar(state.avatarFileName, state.userLabel, size = 26.dp)
-                else -> Surface(shape = CircleShape, color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)) { OracleEyeMark(modifier = Modifier.padding(5.dp), tint = MaterialTheme.colorScheme.primary, size = 18.dp) }
-            }
-            Column(Modifier.weight(1f)) {
-                Text(when (message.role) { "user" -> state.userLabel; "assistant" -> state.assistantLabel; "reasoning" -> "思考过程"; "commandExecution" -> "命令执行"; "fileChange" -> "文件变更"; else -> message.role },
-                    style = if (process || user) MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold) else MaterialTheme.typography.titleSmall,
-                    color = if (user) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
-                if (message.status.isNotBlank()) Text(message.status, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                message.timestampMillis?.let { Text(DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(it)), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)) }
-            }
-            if (process) IconButton({ expanded = !expanded }, Modifier.size(48.dp).semantics { stateDescription = if (expanded) "已展开" else "已收起" }) {
-                OraculumIcon(if (expanded) OraculumSymbol.ExpandLess else OraculumSymbol.ExpandMore, if (expanded) "收起执行内容" else "查看执行内容", size = 18.dp)
-            } else if (!user) IconButton({ clipboard.setText(AnnotatedString(message.text)); copied = true }, Modifier.size(48.dp)) {
-                OraculumIcon(if (copied) OraculumSymbol.Check else OraculumSymbol.Copy, if (copied) "已复制答案" else "复制答案", tint = if (copied) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, size = 18.dp)
-            }
-        }
+        if (showHeader) MessageHeader(message, state, expanded, { expanded = !expanded })
         if (!process || expanded) MarkdownContent(message.text)
         if (message.detailsRequired) OutlinedButton({ actions.onLoadItemDetail(message.turnId, message.id) }, enabled = state.online && !state.busy,
             modifier = Modifier.fillMaxWidth().testTag("detail-${message.id}")) { OraculumIcon(OraculumSymbol.Description); Spacer(Modifier.width(8.dp)); Text("读取完整 Item 详情") }
@@ -540,32 +556,27 @@ private fun Composer(state: PocUiState, actions: PocActions, filesState: FilesUi
                                 modifier = Modifier.testTag("composer-navigation"), onClick = { addMenu = false; onOptions("navigation") })
                         }
                     }
-                    Surface(modifier = Modifier.weight(1f), shape = RoundedCornerShape(8.dp),
-                        color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.45f),
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box {
-                                TextButton({ pickerMenu = "permission"; addMenu = false }, contentPadding = PaddingValues(horizontal = 8.dp),
-                                    modifier = Modifier.heightIn(min = 48.dp).testTag("permission-picker").semantics { contentDescription = "选择执行权限" }) {
-                                    OraculumIcon(OraculumSymbol.Shield, size = 16.dp, tint = MaterialTheme.colorScheme.primary)
-                                    Spacer(Modifier.width(4.dp))
-                                    Text(when (state.permissionPreset) { "full-access" -> "Full"; "auto" -> "Auto"; else -> "只读" },
-                                        maxLines = 1, style = MaterialTheme.typography.labelMedium)
-                                }
-                                PermissionPickerMenu(state, actions, pickerMenu == "permission") { pickerMenu = null }
+                    Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                        Box {
+                            TextButton({ pickerMenu = "permission"; addMenu = false }, contentPadding = PaddingValues(horizontal = 8.dp),
+                                modifier = Modifier.heightIn(min = 48.dp).testTag("permission-picker").semantics { contentDescription = "选择执行权限" }) {
+                                OraculumIcon(OraculumSymbol.Shield, size = 16.dp, tint = MaterialTheme.colorScheme.primary)
+                                Spacer(Modifier.width(4.dp))
+                                Text(when (state.permissionPreset) { "full-access" -> "Full"; "auto" -> "Auto"; else -> "只读" },
+                                    maxLines = 1, style = MaterialTheme.typography.labelMedium)
                             }
-                            Box(Modifier.width(1.dp).height(16.dp).background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)))
-                            Box(Modifier.weight(1f)) {
-                                TextButton({ pickerMenu = "model"; addMenu = false }, contentPadding = PaddingValues(horizontal = 8.dp),
-                                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("model-picker").semantics { contentDescription = "选择模型与思考强度" }) {
-                                    OraculumIcon(OraculumSymbol.Tune, size = 16.dp, tint = MaterialTheme.colorScheme.primary)
-                                    Spacer(Modifier.width(4.dp))
-                                    Text(listOfNotNull(state.models.firstOrNull { it.id == state.selectedModel }?.label ?: state.selectedModel ?: "模型",
-                                        state.selectedEffort).joinToString(" · "), maxLines = 1, overflow = TextOverflow.Ellipsis,
-                                        style = MaterialTheme.typography.labelMedium)
-                                }
-                                ModelPickerMenu(state, actions, pickerMenu == "model") { pickerMenu = null }
+                            PermissionPickerMenu(state, actions, pickerMenu == "permission") { pickerMenu = null }
+                        }
+                        Box(Modifier.weight(1f)) {
+                            TextButton({ pickerMenu = "model"; addMenu = false }, contentPadding = PaddingValues(horizontal = 8.dp),
+                                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("model-picker").semantics { contentDescription = "选择模型与思考强度" }) {
+                                OraculumIcon(OraculumSymbol.Tune, size = 16.dp, tint = MaterialTheme.colorScheme.primary)
+                                Spacer(Modifier.width(4.dp))
+                                Text(listOfNotNull(state.models.firstOrNull { it.id == state.selectedModel }?.label ?: state.selectedModel ?: "原生默认",
+                                    state.selectedEffort).joinToString(" · "), maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                    style = MaterialTheme.typography.labelMedium)
                             }
+                            ModelPickerMenu(state, actions, pickerMenu == "model") { pickerMenu = null }
                         }
                     }
                     if (state.canResume) TextButton(actions.onResume, enabled = state.online && !state.busy, modifier = Modifier.heightIn(min = 48.dp).testTag("resume")) { OraculumIcon(OraculumSymbol.Refresh, "恢复会话") }

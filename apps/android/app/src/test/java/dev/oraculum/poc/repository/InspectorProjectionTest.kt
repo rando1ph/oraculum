@@ -42,11 +42,28 @@ class InspectorProjectionTest {
         val malformed = JsonObject(chunk(0, 7) + ("complete" to JsonPrimitive(true)))
         assertThrows(IllegalArgumentException::class.java) { ItemDetailAccumulator("item-1", epoch).append(malformed) }
     }
-    @Test fun modelEffortsAreIntersectionWithGatewayWritableContract() {
-        val models = modelOptions(Json.parseToJsonElement("""{"data":[{"id":"catalog-id","model":"actual-model","displayName":"Model","defaultReasoningEffort":"high","supportedReasoningEfforts":[{"reasoningEffort":"high"},{"reasoningEffort":"ultra"},{"reasoningEffort":"high"}]}]}""").jsonObject)
+    @Test fun modelCatalogPreservesUltraWithoutTreatingItAsGatewayWritable() {
+        val models = modelOptions(Json.parseToJsonElement("""{"data":[{"id":"catalog-id","model":"actual-model","displayName":"Model","defaultReasoningEffort":"high","supportedReasoningEfforts":[{"reasoningEffort":"high"},{"reasoningEffort":"ultra"},{"reasoningEffort":"high"},{"reasoningEffort":"unknown-effort"}]}]}""").jsonObject)
         assertEquals("actual-model", models.single().id)
-        assertEquals(listOf("high"), models.single().efforts)
+        assertEquals(listOf("high", "ultra"), models.single().efforts)
         assertEquals("high", models.single().defaultEffort)
+        assertTrue(isWritableEffort("high"))
+        assertFalse(isWritableEffort("ultra"))
+        assertFalse(isWritableEffort("unknown-effort"))
+    }
+
+    @Test fun nativeUltraDefaultRemainsCatalogFactWithoutBecomingAnExplicitOverride() {
+        val models = modelOptions(Json.parseToJsonElement("""{"data":[{"model":"actual-model","defaultReasoningEffort":"ultra","supportedReasoningEfforts":[{"reasoningEffort":"ultra"}]}]}""").jsonObject)
+        assertEquals(listOf("ultra"), models.single().efforts)
+        assertEquals("ultra", models.single().defaultEffort)
+        assertNull(models.single().defaultEffort?.takeIf(::isWritableEffort))
+    }
+
+    @Test fun unknownNativeEffortCannotBecomeCatalogDefault() {
+        val models = modelOptions(Json.parseToJsonElement("""{"data":[{"model":"actual-model","defaultReasoningEffort":"unknown-effort","supportedReasoningEfforts":[{"reasoningEffort":"low"},{"reasoningEffort":"unknown-effort"}]}]}""").jsonObject)
+        assertEquals(listOf("low"), models.single().efforts)
+        assertNull(models.single().defaultEffort)
+        assertTrue(isWritableEffort("low"))
     }
     @Test fun onlyObservedKnownNativeEventsProjectUsageAndPlan() {
         val projection = InspectorProjection()

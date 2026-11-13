@@ -112,8 +112,9 @@ internal fun ColumnScope.InspectorPanel(state: PocUiState, actions: PocActions, 
     filesState: FilesUiState, filesActions: FilesActions, onClose: (() -> Unit)?) {
     PanelHeading("Inspector", onClose)
     Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        listOf(Triple("extensions", "MCP", OraculumSymbol.Extension), Triple("diff", "Diff", OraculumSymbol.Difference), Triple("output", "输出", OraculumSymbol.Terminal),
-            Triple("files", "文件", OraculumSymbol.Folder), Triple("usage", "用量", OraculumSymbol.DataUsage)).forEach { (id, label, symbol) ->
+        listOf(Triple("diff", "Diff", OraculumSymbol.Difference), Triple("output", "输出", OraculumSymbol.Terminal),
+            Triple("files", "文件", OraculumSymbol.Folder), Triple("usage", "用量", OraculumSymbol.DataUsage),
+            Triple("extensions", "Skills", OraculumSymbol.Extension)).forEach { (id, label, symbol) ->
             FilterChip(selected = id == tab, onClick = { onTab(id) }, label = { Text(label) }, leadingIcon = { OraculumIcon(symbol) },
                 modifier = Modifier.heightIn(min = 48.dp).testTag("inspector-$id"))
         }
@@ -153,17 +154,16 @@ internal fun ColumnScope.InspectorPanel(state: PocUiState, actions: PocActions, 
                 SectionLabel("会话用量", OraculumSymbol.DataUsage)
                 state.inspector.tokenUsage?.let { TokenUsageCard(it) }
                     ?: PanelEmptyState(OraculumSymbol.DataUsage, "本次尚未取得用量。执行后如有返回，将在这里显示。")
-                MutedText("账户额度暂未提供。")
             }
             if (tab == "extensions") {
-                SectionLabel("MCP 与扩展", OraculumSymbol.Extension)
-                if (state.inspector.extensions.isEmpty()) PanelEmptyState(OraculumSymbol.Extension, "连接后刷新，查看可用的 MCP 与扩展。")
-                state.inspector.extensions.sortedBy { listOf("mcp", "skills", "apps", "plugins").indexOf(it.kind).let { index -> if (index < 0) Int.MAX_VALUE else index } }.forEach { section ->
+                SectionLabel("Skills", OraculumSymbol.Extension)
+                if (state.inspector.extensions.isEmpty()) PanelEmptyState(OraculumSymbol.Extension, "连接后刷新，查看可用的 Skills 与扩展。")
+                state.inspector.extensions.sortedBy { listOf("skills", "mcp", "apps", "plugins").indexOf(it.kind).let { index -> if (index < 0) Int.MAX_VALUE else index } }.forEach { section ->
                     OraculumCard {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             OraculumIcon(OraculumSymbol.Extension, tint = MaterialTheme.colorScheme.primary)
                             Text(extensionSectionTitle(section.kind), Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
-                            Text(if (section.status == "available") "${section.entries.size} 项" else "暂未开放", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(if (section.status == "available") "${section.entries.size} 项" else if (section.reason == "STABILITY_UNVERIFIED") "暂未开放" else "暂不可用", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         if (section.status != "available") MutedText(extensionUnavailableReason(section.kind, section.reason))
                         section.entries.forEach { entry ->

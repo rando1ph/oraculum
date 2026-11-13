@@ -160,13 +160,22 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun selectModel(id: String) {
-        if (state.value.models.none { it.id == id } || state.value.busy) return
-        val model = state.value.models.first { it.id == id }
-        mutableState.value = state.value.copy(selectedModel = id, selectedEffort = model.defaultEffort)
+        if (state.value.busy) return
+        if (id.isEmpty()) {
+            mutableState.value = state.value.copy(selectedModel = null, selectedEffort = null)
+            return
+        }
+        val model = state.value.models.firstOrNull { it.id == id } ?: return
+        mutableState.value = state.value.copy(selectedModel = id, selectedEffort = model.defaultEffort?.takeIf(::isWritableEffort))
     }
 
     fun selectEffort(effort: String) {
-        if (state.value.busy || state.value.models.firstOrNull { it.id == state.value.selectedModel }?.efforts?.contains(effort) != true) return
+        if (state.value.busy) return
+        if (effort.isEmpty()) {
+            mutableState.value = state.value.copy(selectedEffort = null)
+            return
+        }
+        if (!isWritableEffort(effort) || state.value.models.firstOrNull { it.id == state.value.selectedModel }?.efforts?.contains(effort) != true) return
         mutableState.value = state.value.copy(selectedEffort = effort)
     }
 
@@ -181,7 +190,7 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
         val models = modelOptions(page)
         mutableState.value = state.value.copy(models = models, modelsLimited = page.string("nextCursor") != null,
             selectedModel = state.value.selectedModel?.takeIf { selected -> models.any { it.id == selected } },
-            selectedEffort = state.value.selectedEffort?.takeIf { effort -> models.firstOrNull { it.id == state.value.selectedModel }?.efforts?.contains(effort) == true })
+            selectedEffort = state.value.selectedEffort?.takeIf { effort -> isWritableEffort(effort) && models.firstOrNull { it.id == state.value.selectedModel }?.efforts?.contains(effort) == true })
     }
 
     fun browseDirectory(rootId: String, path: String) = action {

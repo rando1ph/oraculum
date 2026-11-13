@@ -81,6 +81,9 @@ internal fun extensionSectionTitle(kind: String) = when (kind) {
 internal fun extensionUnavailableReason(kind: String, reason: String?) = when {
     kind == "plugins" -> "当前版本暂未开放插件目录。"
     reason == "STABILITY_UNVERIFIED" -> "当前版本暂未开放此目录。"
+    reason == "NATIVE_TIMEOUT" -> "读取超时，请稍后刷新。"
+    reason == "NATIVE_PROTOCOL" -> "目录数据格式暂不兼容。"
+    reason == "NATIVE_UNAVAILABLE" -> "主机连接暂不可用，请稍后刷新。"
     else -> "暂时无法读取，请刷新或检查主机连接。"
 }
 

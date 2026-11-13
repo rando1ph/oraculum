@@ -6,6 +6,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
+import dev.oraculum.poc.repository.isWritableEffort
 
 /** Each menu belongs to the button's Box, so it stays anchored to the composer. */
 @Composable
@@ -24,6 +25,9 @@ internal fun ModelPickerMenu(state: PocUiState, actions: PocActions, expanded: B
         }
         when (page) {
             "models" -> {
+                PickerChoice("原生默认", state.selectedModel == null, !state.busy, "model-native-default") {
+                    actions.onSelectModel(""); onDismiss()
+                }
                 state.models.forEach { option ->
                     PickerChoice(option.label, state.selectedModel == option.id, !state.busy, "model-${option.id}") {
                         actions.onSelectModel(option.id); onDismiss()
@@ -33,8 +37,12 @@ internal fun ModelPickerMenu(state: PocUiState, actions: PocActions, expanded: B
                 if (state.modelsLimited) DropdownMenuItem(text = { Text("仅显示已加载模型") }, enabled = false, onClick = {})
             }
             "efforts" -> {
+                if (model != null) PickerChoice("原生默认", state.selectedEffort == null, !state.busy, "effort-native-default") {
+                    actions.onSelectEffort(""); onDismiss()
+                }
                 model?.efforts.orEmpty().forEach { effort ->
-                    PickerChoice(effort, state.selectedEffort == effort, !state.busy, "effort-$effort") {
+                    PickerChoice(effort, state.selectedEffort == effort, !state.busy && isWritableEffort(effort), "effort-$effort",
+                        availability = if (isWritableEffort(effort)) null else "暂不可用") {
                         actions.onSelectEffort(effort); onDismiss()
                     }
                 }
@@ -42,10 +50,10 @@ internal fun ModelPickerMenu(state: PocUiState, actions: PocActions, expanded: B
             }
             else -> {
                 DropdownMenuItem(text = { Text("模型") }, trailingIcon = {
-                    Text(model?.label ?: state.selectedModel ?: "未选择", style = MaterialTheme.typography.labelMedium)
+                    Text(model?.label ?: state.selectedModel ?: "原生默认", style = MaterialTheme.typography.labelMedium)
                 }, onClick = { page = "models" }, modifier = Modifier.testTag("choose-model"))
                 DropdownMenuItem(text = { Text("思考强度") }, trailingIcon = {
-                    Text(state.selectedEffort ?: "默认", style = MaterialTheme.typography.labelMedium)
+                    Text(state.selectedEffort ?: "原生默认", style = MaterialTheme.typography.labelMedium)
                 }, onClick = { page = "efforts" }, modifier = Modifier.testTag("choose-effort"))
             }
         }
@@ -85,8 +93,11 @@ internal fun PermissionPickerMenu(state: PocUiState, actions: PocActions, expand
 }
 
 @Composable
-private fun PickerChoice(label: String, selected: Boolean, enabled: Boolean, tag: String, onClick: () -> Unit) {
+private fun PickerChoice(label: String, selected: Boolean, enabled: Boolean, tag: String, availability: String? = null, onClick: () -> Unit) {
     DropdownMenuItem(text = { Text(label) }, onClick = onClick, enabled = enabled,
-        trailingIcon = { if (selected) OraculumIcon(OraculumSymbol.Check, "已选择", tint = MaterialTheme.colorScheme.primary) },
+        trailingIcon = {
+            if (availability != null) Text(availability, style = MaterialTheme.typography.labelSmall)
+            else if (selected) OraculumIcon(OraculumSymbol.Check, "已选择", tint = MaterialTheme.colorScheme.primary)
+        },
         modifier = Modifier.testTag(tag))
 }
