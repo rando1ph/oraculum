@@ -75,4 +75,17 @@ export interface ContractTypes {
   ExtensionEntry: Dto.ExtensionEntry;
   ExtensionSection: Dto.ExtensionSection;
   ExtensionsSnapshot: Dto.ExtensionsSnapshot;
+  ThreadMutationRequest: Dto.ThreadMutationRequest;
+  ThreadNameRequest: Dto.ThreadNameRequest;
+  ThreadForkRequest: Dto.ThreadForkRequest;
+  ThreadRevertRequest: Dto.ThreadRevertRequest;
+  NativeDefaults: Dto.NativeDefaults;
+  RateLimitWindow: Dto.RateLimitWindow;
+  RateLimitCredits: Dto.RateLimitCredits;
+  RateLimitIndividual: Dto.RateLimitIndividual;
+  RateLimitSnapshot: Dto.RateLimitSnapshot;
+  AccountRateLimits: Dto.AccountRateLimits;
+  AccountUsageSummary: Dto.AccountUsageSummary;
+  AccountDailyUsageBucket: Dto.AccountDailyUsageBucket;
+  AccountUsage: Dto.AccountUsage;
 }

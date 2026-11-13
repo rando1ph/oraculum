@@ -8,7 +8,7 @@ export type * from '../generated/types.js';
 export type { ContractName, ContractTypes };
 export { contractNames };
 export type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
-export const PROTOCOL = Object.freeze({ major: 2, minor: 0, minClientMinor: 0 });
+export const PROTOCOL = Object.freeze({ major: 2, minor: 1, minClientMinor: 0 });
 export const API_PREFIX = '/api/v2';
 
 const ajv = new Ajv({ allErrors: false, strict: true, strictNumbers: true, removeAdditional: false, coerceTypes: false, useDefaults: false });

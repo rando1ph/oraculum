@@ -157,12 +157,12 @@
     }
   },
   {
-    "name": "thread-start-effort-unavailable",
+    "name": "thread-start-effort-empty",
     "contract": "ThreadStartRequest",
     "value": {
       "operationId": "12345678-1234-4123-8123-123456789abc",
       "expectedEpoch": "12345678-1234-4123-8123-123456789abc",
-      "effort": "high"
+      "effort": ""
     }
   },
   {
@@ -342,6 +342,166 @@
       },
       "complete": true,
       "completedAtMs": 1700000002345.5
+    }
+  },
+  {
+    "name": "thread-name-blank",
+    "contract": "ThreadNameRequest",
+    "value": {
+      "operationId": "12345678-1234-4123-8123-123456789abc",
+      "projectId": "12345678-1234-4123-8123-123456789abc",
+      "expectedEpoch": "12345678-1234-4123-8123-123456789abc",
+      "name": "  "
+    }
+  },
+  {
+    "name": "thread-name-control",
+    "contract": "ThreadNameRequest",
+    "value": {
+      "operationId": "12345678-1234-4123-8123-123456789abc",
+      "projectId": "12345678-1234-4123-8123-123456789abc",
+      "expectedEpoch": "12345678-1234-4123-8123-123456789abc",
+      "name": "title\nmore"
+    }
+  },
+  {
+    "name": "thread-revert-missing-target",
+    "contract": "ThreadRevertRequest",
+    "value": {
+      "operationId": "12345678-1234-4123-8123-123456789abc",
+      "projectId": "12345678-1234-4123-8123-123456789abc",
+      "expectedEpoch": "12345678-1234-4123-8123-123456789abc"
+    }
+  },
+  {
+    "name": "thread-fork-arbitrary-overrides",
+    "contract": "ThreadForkRequest",
+    "value": {
+      "operationId": "12345678-1234-4123-8123-123456789abc",
+      "projectId": "12345678-1234-4123-8123-123456789abc",
+      "expectedEpoch": "12345678-1234-4123-8123-123456789abc",
+      "config": {
+        "approval_policy": "never"
+      }
+    }
+  },
+  {
+    "name": "turn-effort-control",
+    "contract": "TurnStartRequest",
+    "value": {
+      "operationId": "12345678-1234-4123-8123-123456789abc",
+      "projectId": "12345678-1234-4123-8123-123456789abc",
+      "expectedEpoch": "12345678-1234-4123-8123-123456789abc",
+      "input": [
+        {
+          "type": "text",
+          "text": "你好，Oraculum 🌙\nline two"
+        }
+      ],
+      "effort": "ultra\n"
+    }
+  },
+  {
+    "name": "native-defaults-private-config",
+    "contract": "NativeDefaults",
+    "value": {
+      "source": "native-config",
+      "readAt": 1700000000000,
+      "model": "gpt-6.1-sol",
+      "effort": "ultra",
+      "approvalPolicy": "on-request",
+      "sandboxMode": "workspace-write",
+      "workspaceWriteNetworkAccess": false,
+      "origins": {
+        "model": "user",
+        "effort": "project",
+        "approvalPolicy": "system"
+      },
+      "config": {
+        "api_key": "test-only-secret"
+      }
+    }
+  },
+  {
+    "name": "native-defaults-private-origin",
+    "contract": "NativeDefaults",
+    "value": {
+      "source": "native-config",
+      "readAt": 1700000000000,
+      "model": "gpt-6.1-sol",
+      "effort": "ultra",
+      "approvalPolicy": "on-request",
+      "sandboxMode": "workspace-write",
+      "workspaceWriteNetworkAccess": false,
+      "origins": {
+        "model": "/private/config.toml"
+      }
+    }
+  },
+  {
+    "name": "account-usage-negative-tokens",
+    "contract": "AccountUsage",
+    "value": {
+      "source": "native-account-usage",
+      "readAt": 1700000000000,
+      "summary": {
+        "lifetimeTokens": -1,
+        "peakDailyTokens": 400,
+        "longestRunningTurnSec": 120,
+        "currentStreakDays": 2,
+        "longestStreakDays": 10
+      },
+      "dailyUsageBuckets": [
+        {
+          "startDate": "2026-11-14",
+          "tokens": 1000
+        }
+      ],
+      "limited": false
+    }
+  },
+  {
+    "name": "account-rate-limits-identity",
+    "contract": "AccountRateLimits",
+    "value": {
+      "source": "native-rate-limits",
+      "readAt": 1700000000000,
+      "rateLimits": {
+        "limitId": "codex",
+        "limitName": "Codex",
+        "planType": "plus",
+        "primary": {
+          "usedPercent": 12,
+          "windowDurationMins": 300,
+          "resetsAt": 1700000300
+        },
+        "secondary": null,
+        "credits": null,
+        "rateLimitReachedType": null,
+        "spendControlReached": null,
+        "individualLimit": null
+      },
+      "rateLimitsByLimitId": {
+        "codex": {
+          "limitId": "codex",
+          "limitName": "Codex",
+          "planType": "plus",
+          "primary": {
+            "usedPercent": 12,
+            "windowDurationMins": 300,
+            "resetsAt": 1700000300
+          },
+          "secondary": null,
+          "credits": null,
+          "rateLimitReachedType": null,
+          "spendControlReached": null,
+          "individualLimit": null
+        }
+      },
+      "ordinaryUsageAllowed": true,
+      "resetCreditsAvailable": null,
+      "limited": false,
+      "accountId": "private-account"
     }
   }
 ]

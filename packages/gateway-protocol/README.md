@@ -1,4 +1,4 @@
-# Oraculum Gateway 协议 2.0
+# Oraculum Gateway 协议 2.1
 
 `schema/v2.json` 是公共 DTO 的唯一字段来源。JSON Schema Draft-07 由 Ajv 8.20.0 在 HTTP 输入、输出及事件边界校验；`generated/` 中的 TypeScript 与 Kotlin 源码由锁定的 quicktype-core 24.0.0 生成。这里没有 Android 应用、Compose UI 或任意 Codex RPC 通道。
 
@@ -15,7 +15,10 @@
 | POST `/api/v2/auth/logout` | `LogoutRequest` | `OperationResponse` |
 | GET `/api/v2/capabilities` | 无 | `Capabilities` |
 | GET `/api/v2/models` | 无 | `ModelPage` |
+| GET `/api/v2/account/rate-limits` | 无 | `AccountRateLimits`（脱敏原生账户额度） |
+| GET `/api/v2/account/usage` | 无 | `AccountUsage`（脱敏原生累计用量） |
 | GET `/api/v2/projects` | 无 | `Projects` |
+| GET `/api/v2/projects/{projectId}/native-defaults` | 无 | `NativeDefaults`（项目有效原生配置） |
 | GET `/api/v2/projects/{projectId}/extensions` | 无 | `ExtensionsSnapshot`（只读、有界摘要） |
 | POST `/api/v2/project-directories/query` | `DirectoryQuery` | `DirectoryPage` |
 | POST `/api/v2/projects` | `ProjectRegisterRequest` | `OperationResponse` |
@@ -24,12 +27,19 @@
 | POST `/api/v2/projects/{projectId}/threads` | `ThreadStartRequest` | `OperationResponse` |
 | GET `/api/v2/projects/{projectId}/threads/{threadId}` | 无 | `Thread` |
 | POST `/api/v2/threads/{threadId}/resume` | `ThreadResumeRequest` | `OperationResponse` |
+| POST `/api/v2/threads/{threadId}/name` | `ThreadNameRequest` | `OperationResponse` |
+| POST `/api/v2/threads/{threadId}/archive` | `ThreadMutationRequest` | 409 `NATIVE_CASCADE_SCOPE_UNVERIFIABLE` |
+| POST `/api/v2/threads/{threadId}/unarchive` | `ThreadMutationRequest` | `OperationResponse` |
+| DELETE `/api/v2/threads/{threadId}` | `ThreadMutationRequest` | 409 `NATIVE_CASCADE_SCOPE_UNVERIFIABLE` |
+| POST `/api/v2/threads/{threadId}/fork` | `ThreadForkRequest` | `OperationResponse` |
+| POST `/api/v2/threads/{threadId}/revert` | `ThreadRevertRequest` | `OperationResponse` |
+| POST `/api/v2/threads/{threadId}/compact` | `ThreadMutationRequest` | `OperationResponse` |
 | POST `/api/v2/threads/{threadId}/snapshot` | `SnapshotRequest` | `Snapshot` |
 | POST `/api/v2/threads/{threadId}/history/query` | `HistoryQuery` | `HistoryPage` |
 | POST `/api/v2/threads/{threadId}/history/details` | `ItemDetailsRequest` | `ItemDetails` |
 | POST `/api/v2/threads/{threadId}/turns` | `TurnStartRequest` | `OperationResponse` |
 | POST `/api/v2/threads/{threadId}/turns/{turnId}/interrupt` | `TurnInterruptRequest` | `OperationResponse` |
-| POST `/api/v2/threads/{threadId}/turns/{turnId}/steer` | 保留 DTO，首版能力关闭 | 未开放 |
+| POST `/api/v2/threads/{threadId}/turns/{turnId}/steer` | `TurnSteerRequest` | `OperationResponse` |
 | POST `/api/v2/interactions/{interactionId}/response` | `InteractionResponseRequest` | `OperationResponse` |
 | GET `/api/v2/operations/{operationId}` | 无 | `OperationQueryResult` |
 | POST `/api/v2/projects/{projectId}/files/query` | `FilesQuery` | `FilePage` |
@@ -42,6 +52,16 @@
 附件以 `application/octet-stream` 上传，`Content-Length` 与 metadata.size 一致；metadata 的 JSON 使用 base64url 编码放 `X-Oraculum-Upload` 请求头（最多 8 KiB）。下载响应包含 `Content-Digest: sha-256=:BASE64:`，客户端须校验所选文件版本的摘要；不支持 Range。上传回执通过本设备 `GET /operations/{operationId}` 找到关联附件 ID。
 
 本表的路由能力还须以运行中 `Capabilities` 为准。Schema 中 DTO 的存在不会自动开放对应的原生能力。模型/扩展等只读信息必须经服务的白名单投影；客户端不能传任意 method、配置覆盖或主机路径来执行原生调用。
+
+协议 minor 为 1，最低客户端 minor 仍为 0：新增能力与字段是增量契约，已发布 Beta 1 的 API major 和资产不变。表中的原生能力仍受已安装 Codex 版本、会话存储类型和账户可用性约束。
+
+## 原生能力与设置
+
+- 省略 `model`、`effort`、`permissionPreset` 会保留原生继承语义，不由 Gateway 补写目录推荐值或权限 preset。`ThreadStartRequest.effort` 和 `TurnStartRequest.effort` 为有界字符串，接受 `ultra` 及未来原生目录声明的强度；运行时仍按选定模型的真实 `supportedReasoningEfforts` 校验。
+- `NativeDefaults` 来自项目 cwd 下的 `config/read`，只包含模型、强度、审批、sandbox、workspace-write 网络开关及来源类别。缺失值为 null；它是有效配置事实，不等于当前会话最近一次执行读回。来源不包含配置文件路径，接口不开放配置写入。当前命名权限 profile 无法从这组旧 sandbox 字段完整还原；null 不表示只读，省略权限覆盖仍由原生决定。
+- `AccountRateLimits` 保留真实额度窗口、原生重置时间、可用 credits 等字段；`AccountUsage` 为累计 token、运行时长、streak 与按日 token 桶，不是当前会话 token 用量。两者带读取时间、null 和 `limited`；不推算缺失额度，不返回账户身份或原始附加信息。额度窗口中的 `resetsAt` 保留原生 Unix 秒，`readAt` 为 Gateway UTC epoch milliseconds。
+- 会话管理、插话、分叉、回退与压缩均使用有限的原生方法，不接受任意 RPC。所有写请求保留 `operationId`、`expectedEpoch`、操作回执和 unknown 屏障；`accepted` 是请求交付确认，压缩触发后仍须等待原生 Turn/Item 事件完成。插话携带路径中的当前 Turn ID，以防输入落到后续 Turn。
+- `fork` 由原生继承会话历史，可用 `lastTurnId` 限定分叉点。`revert` 以 `beforeTurnId` 排除目标 Turn 及之后历史，仅适用于原生支持的已加载、持久化分页会话，不撤销工作区文件变更。原生归档和删除会级联后代会话，稳定接口无法提供原子性的项目范围约束；本版本将两者声明为不可用并返回 `NATIVE_CASCADE_SCOPE_UNVERIFIABLE`，不会发送上游调用。
 
 ## 类型与安全语义
 

@@ -1,5 +1,5 @@
 // Generated from schema/v2.json by quicktype-core 24.0.0; DO NOT EDIT.
-// Schema SHA-256: af14e5c70a986cedda4f6c3271b5f02246dc93fae0a2cee57871ce980a6339d1
+// Schema SHA-256: 90f64b3809976fa72e268094911d59ed35b99c0dd3bb96b50bb8a776d42aa483
 export interface ProtocolVersion {
     major:          number;
     minClientMinor: number;
@@ -257,6 +257,7 @@ export interface ProjectUnregisterRequest {
 }
 
 export interface ThreadStartRequest {
+    effort?:           string;
     expectedEpoch:     string;
     model?:            string;
     operationId:       string;
@@ -348,7 +349,7 @@ export interface TextInput {
 export interface TurnStartRequest {
     attachmentIds?:    string[];
     draftId?:          string;
-    effort?:           Effort;
+    effort?:           string;
     expectedEpoch:     string;
     input:             TurnStartRequestInput[];
     model?:            string;
@@ -356,8 +357,6 @@ export interface TurnStartRequest {
     permissionPreset?: Preset;
     projectId:         string;
 }
-
-export type Effort = "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
 
 export interface TurnStartRequestInput {
     text: string;
@@ -971,4 +970,181 @@ export interface SectionEntry {
     toolCount?:     number;
     version?:       string;
     [property: string]: unknown;
+}
+
+export interface ThreadMutationRequest {
+    expectedEpoch: string;
+    operationId:   string;
+    projectId:     string;
+}
+
+export interface ThreadNameRequest {
+    expectedEpoch: string;
+    name:          string;
+    operationId:   string;
+    projectId:     string;
+}
+
+export interface ThreadForkRequest {
+    expectedEpoch: string;
+    lastTurnId?:   string;
+    operationId:   string;
+    projectId:     string;
+}
+
+export interface ThreadRevertRequest {
+    beforeTurnId:  string;
+    expectedEpoch: string;
+    operationId:   string;
+    projectId:     string;
+}
+
+export interface NativeDefaults {
+    approvalPolicy:              ApprovalPolicy | null;
+    effort:                      null | string;
+    model:                       null | string;
+    origins:                     Origins;
+    readAt:                      number;
+    sandboxMode:                 SandboxMode | null;
+    source:                      "native-config";
+    workspaceWriteNetworkAccess: boolean | null;
+}
+
+export type ApprovalPolicy = "untrusted" | "on-request" | "never" | "on-failure" | "custom";
+
+export interface Origins {
+    approvalPolicy?:              EffortEnum;
+    effort?:                      EffortEnum;
+    model?:                       EffortEnum;
+    sandboxMode?:                 EffortEnum;
+    workspaceWriteNetworkAccess?: EffortEnum;
+}
+
+export type EffortEnum = "packagedDefaults" | "mdm" | "system" | "enterpriseManaged" | "user" | "project" | "sessionFlags" | "legacyManagedConfigTomlFromFile" | "legacyManagedConfigTomlFromMdm";
+
+export type SandboxMode = "read-only" | "workspace-write" | "danger-full-access";
+
+export interface RateLimitWindow {
+    resetsAt:           number | null;
+    usedPercent:        number;
+    windowDurationMins: number | null;
+}
+
+export interface RateLimitCredits {
+    balance:    null | string;
+    hasCredits: boolean;
+    unlimited:  boolean;
+}
+
+export interface RateLimitIndividual {
+    limit:            string;
+    remainingPercent: number;
+    resetsAt:         number;
+    used:             string;
+}
+
+export interface RateLimitSnapshot {
+    credits:              RateLimitSnapshotRateLimitCredits | null;
+    individualLimit:      RateLimitSnapshotRateLimitIndividual | null;
+    limitId:              null | string;
+    limitName:            null | string;
+    planType:             null | string;
+    primary:              RateLimitSnapshotRateLimitWindow | null;
+    rateLimitReachedType: null | string;
+    secondary:            RateLimitSnapshotRateLimitWindow | null;
+    spendControlReached:  boolean | null;
+}
+
+export interface RateLimitSnapshotRateLimitCredits {
+    balance:    null | string;
+    hasCredits: boolean;
+    unlimited:  boolean;
+}
+
+export interface RateLimitSnapshotRateLimitIndividual {
+    limit:            string;
+    remainingPercent: number;
+    resetsAt:         number;
+    used:             string;
+}
+
+export interface RateLimitSnapshotRateLimitWindow {
+    resetsAt:           number | null;
+    usedPercent:        number;
+    windowDurationMins: number | null;
+}
+
+export interface AccountRateLimits {
+    limited:               boolean;
+    ordinaryUsageAllowed:  boolean | null;
+    rateLimits:            RateLimitsClass;
+    rateLimitsByLimitId:   { [key: string]: RateLimitsClass } | null;
+    readAt:                number;
+    resetCreditsAvailable: number | null;
+    source:                "native-rate-limits";
+}
+
+export interface RateLimitsClass {
+    credits:              RateLimitsRateLimitCredits | null;
+    individualLimit:      RateLimitsRateLimitIndividual | null;
+    limitId:              null | string;
+    limitName:            null | string;
+    planType:             null | string;
+    primary:              RateLimitsRateLimitWindow | null;
+    rateLimitReachedType: null | string;
+    secondary:            RateLimitsRateLimitWindow | null;
+    spendControlReached:  boolean | null;
+}
+
+export interface RateLimitsRateLimitCredits {
+    balance:    null | string;
+    hasCredits: boolean;
+    unlimited:  boolean;
+}
+
+export interface RateLimitsRateLimitIndividual {
+    limit:            string;
+    remainingPercent: number;
+    resetsAt:         number;
+    used:             string;
+}
+
+export interface RateLimitsRateLimitWindow {
+    resetsAt:           number | null;
+    usedPercent:        number;
+    windowDurationMins: number | null;
+}
+
+export interface AccountUsageSummary {
+    currentStreakDays:     number | null;
+    lifetimeTokens:        number | null;
+    longestRunningTurnSec: number | null;
+    longestStreakDays:     number | null;
+    peakDailyTokens:       number | null;
+}
+
+export interface AccountDailyUsageBucket {
+    startDate: string;
+    tokens:    number;
+}
+
+export interface AccountUsage {
+    dailyUsageBuckets: DailyUsageBucketElement[] | null;
+    limited:           boolean;
+    readAt:            number;
+    source:            "native-account-usage";
+    summary:           SummaryClass;
+}
+
+export interface DailyUsageBucketElement {
+    startDate: string;
+    tokens:    number;
+}
+
+export interface SummaryClass {
+    currentStreakDays:     number | null;
+    lifetimeTokens:        number | null;
+    longestRunningTurnSec: number | null;
+    longestStreakDays:     number | null;
+    peakDailyTokens:       number | null;
 }

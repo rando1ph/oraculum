@@ -73,6 +73,19 @@ export const contractNames = [
   "PermissionReadback",
   "ExtensionEntry",
   "ExtensionSection",
-  "ExtensionsSnapshot"
+  "ExtensionsSnapshot",
+  "ThreadMutationRequest",
+  "ThreadNameRequest",
+  "ThreadForkRequest",
+  "ThreadRevertRequest",
+  "NativeDefaults",
+  "RateLimitWindow",
+  "RateLimitCredits",
+  "RateLimitIndividual",
+  "RateLimitSnapshot",
+  "AccountRateLimits",
+  "AccountUsageSummary",
+  "AccountDailyUsageBucket",
+  "AccountUsage"
 ] as const;
 export type ContractName = typeof contractNames[number];

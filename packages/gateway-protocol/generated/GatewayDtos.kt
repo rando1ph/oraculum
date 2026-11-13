@@ -1,5 +1,5 @@
 // Generated from schema/v2.json by quicktype-core 24.0.0; DO NOT EDIT.
-// Schema SHA-256: af14e5c70a986cedda4f6c3271b5f02246dc93fae0a2cee57871ce980a6339d1
+// Schema SHA-256: 90f64b3809976fa72e268094911d59ed35b99c0dd3bb96b50bb8a776d42aa483
 // Decode with Json { ignoreUnknownKeys = true; explicitNulls = true }.
 // Keep encodeDefaults = false. Validate requests against JSON Schema.
 
@@ -543,6 +543,8 @@ data class ProjectUnregisterRequest (
 
 @Serializable
 data class ThreadStartRequest (
+    val effort: String? = null,
+
     @Required
     val expectedEpoch: String,
 
@@ -723,7 +725,7 @@ data class TurnStartRequest (
     @SerialName("draftId")
     val draftID: String? = null,
 
-    val effort: Effort? = null,
+    val effort: String? = null,
 
     @Required
     val expectedEpoch: String,
@@ -743,17 +745,6 @@ data class TurnStartRequest (
     @SerialName("projectId")
     val projectID: String
 )
-
-@Serializable
-enum class Effort(val value: String) {
-    @SerialName("high") High("high"),
-    @SerialName("low") Low("low"),
-    @SerialName("max") Max("max"),
-    @SerialName("medium") Medium("medium"),
-    @SerialName("minimal") Minimal("minimal"),
-    @SerialName("none") None("none"),
-    @SerialName("xhigh") Xhigh("xhigh");
-}
 
 @Serializable
 data class TurnStartRequestInput (
@@ -1999,4 +1990,428 @@ data class SectionEntry (
     val status: String? = null,
     val toolCount: Long? = null,
     val version: String? = null
+)
+
+@Serializable
+data class ThreadMutationRequest (
+    @Required
+    val expectedEpoch: String,
+
+    @Required
+    @SerialName("operationId")
+    val operationID: String,
+
+    @Required
+    @SerialName("projectId")
+    val projectID: String
+)
+
+@Serializable
+data class ThreadNameRequest (
+    @Required
+    val expectedEpoch: String,
+
+    @Required
+    val name: String,
+
+    @Required
+    @SerialName("operationId")
+    val operationID: String,
+
+    @Required
+    @SerialName("projectId")
+    val projectID: String
+)
+
+@Serializable
+data class ThreadForkRequest (
+    @Required
+    val expectedEpoch: String,
+
+    @SerialName("lastTurnId")
+    val lastTurnID: String? = null,
+
+    @Required
+    @SerialName("operationId")
+    val operationID: String,
+
+    @Required
+    @SerialName("projectId")
+    val projectID: String
+)
+
+@Serializable
+data class ThreadRevertRequest (
+    @Required
+    @SerialName("beforeTurnId")
+    val beforeTurnID: String,
+
+    @Required
+    val expectedEpoch: String,
+
+    @Required
+    @SerialName("operationId")
+    val operationID: String,
+
+    @Required
+    @SerialName("projectId")
+    val projectID: String
+)
+
+@Serializable
+data class NativeDefaults (
+    @Required
+    val approvalPolicy: ApprovalPolicy? = null,
+
+    @Required
+    val effort: String? = null,
+
+    @Required
+    val model: String? = null,
+
+    @Required
+    val origins: Origins,
+
+    @Required
+    val readAt: Long,
+
+    @Required
+    val sandboxMode: SandboxMode? = null,
+
+    @Required
+    val source: NativeDefaultsSource,
+
+    @Required
+    val workspaceWriteNetworkAccess: Boolean? = null
+)
+
+@Serializable
+enum class ApprovalPolicy(val value: String) {
+    @SerialName("custom") Custom("custom"),
+    @SerialName("never") Never("never"),
+    @SerialName("on-failure") OnFailure("on-failure"),
+    @SerialName("on-request") OnRequest("on-request"),
+    @SerialName("untrusted") Untrusted("untrusted");
+}
+
+@Serializable
+data class Origins (
+    val approvalPolicy: EffortEnum? = null,
+    val effort: EffortEnum? = null,
+    val model: EffortEnum? = null,
+    val sandboxMode: EffortEnum? = null,
+    val workspaceWriteNetworkAccess: EffortEnum? = null
+)
+
+@Serializable
+enum class EffortEnum(val value: String) {
+    @SerialName("system") ApprovalPolicySystem("system"),
+    @SerialName("enterpriseManaged") EnterpriseManaged("enterpriseManaged"),
+    @SerialName("legacyManagedConfigTomlFromFile") LegacyManagedConfigTomlFromFile("legacyManagedConfigTomlFromFile"),
+    @SerialName("legacyManagedConfigTomlFromMdm") LegacyManagedConfigTomlFromMdm("legacyManagedConfigTomlFromMdm"),
+    @SerialName("mdm") Mdm("mdm"),
+    @SerialName("packagedDefaults") PackagedDefaults("packagedDefaults"),
+    @SerialName("project") Project("project"),
+    @SerialName("sessionFlags") SessionFlags("sessionFlags"),
+    @SerialName("user") User("user");
+}
+
+@Serializable
+enum class SandboxMode(val value: String) {
+    @SerialName("danger-full-access") DangerFullAccess("danger-full-access"),
+    @SerialName("read-only") ReadOnly("read-only"),
+    @SerialName("workspace-write") WorkspaceWrite("workspace-write");
+}
+
+@Serializable
+enum class NativeDefaultsSource(val value: String) {
+    @SerialName("native-config") NativeConfig("native-config");
+}
+
+@Serializable
+data class RateLimitWindow (
+    @Required
+    val resetsAt: Long? = null,
+
+    @Required
+    val usedPercent: Long,
+
+    @Required
+    val windowDurationMins: Long? = null
+)
+
+@Serializable
+data class RateLimitCredits (
+    @Required
+    val balance: String? = null,
+
+    @Required
+    val hasCredits: Boolean,
+
+    @Required
+    val unlimited: Boolean
+)
+
+@Serializable
+data class RateLimitIndividual (
+    @Required
+    val limit: String,
+
+    @Required
+    val remainingPercent: Long,
+
+    @Required
+    val resetsAt: Long,
+
+    @Required
+    val used: String
+)
+
+@Serializable
+data class RateLimitSnapshot (
+    @Required
+    val credits: RateLimitSnapshotRateLimitCredits? = null,
+
+    @Required
+    val individualLimit: RateLimitSnapshotRateLimitIndividual? = null,
+
+    @Required
+    @SerialName("limitId")
+    val limitID: String? = null,
+
+    @Required
+    val limitName: String? = null,
+
+    @Required
+    val planType: String? = null,
+
+    @Required
+    val primary: RateLimitSnapshotRateLimitWindow? = null,
+
+    @Required
+    val rateLimitReachedType: String? = null,
+
+    @Required
+    val secondary: RateLimitSnapshotRateLimitWindow? = null,
+
+    @Required
+    val spendControlReached: Boolean? = null
+)
+
+@Serializable
+data class RateLimitSnapshotRateLimitCredits (
+    @Required
+    val balance: String? = null,
+
+    @Required
+    val hasCredits: Boolean,
+
+    @Required
+    val unlimited: Boolean
+)
+
+@Serializable
+data class RateLimitSnapshotRateLimitIndividual (
+    @Required
+    val limit: String,
+
+    @Required
+    val remainingPercent: Long,
+
+    @Required
+    val resetsAt: Long,
+
+    @Required
+    val used: String
+)
+
+@Serializable
+data class RateLimitSnapshotRateLimitWindow (
+    @Required
+    val resetsAt: Long? = null,
+
+    @Required
+    val usedPercent: Long,
+
+    @Required
+    val windowDurationMins: Long? = null
+)
+
+@Serializable
+data class AccountRateLimits (
+    @Required
+    val limited: Boolean,
+
+    @Required
+    val ordinaryUsageAllowed: Boolean? = null,
+
+    @Required
+    val rateLimits: RateLimitsClass,
+
+    @Required
+    @SerialName("rateLimitsByLimitId")
+    val rateLimitsByLimitID: Map<String, RateLimitsClass>? = null,
+
+    @Required
+    val readAt: Long,
+
+    @Required
+    val resetCreditsAvailable: Long? = null,
+
+    @Required
+    val source: AccountRateLimitsSource
+)
+
+@Serializable
+data class RateLimitsClass (
+    @Required
+    val credits: RateLimitsRateLimitCredits? = null,
+
+    @Required
+    val individualLimit: RateLimitsRateLimitIndividual? = null,
+
+    @Required
+    @SerialName("limitId")
+    val limitID: String? = null,
+
+    @Required
+    val limitName: String? = null,
+
+    @Required
+    val planType: String? = null,
+
+    @Required
+    val primary: RateLimitsRateLimitWindow? = null,
+
+    @Required
+    val rateLimitReachedType: String? = null,
+
+    @Required
+    val secondary: RateLimitsRateLimitWindow? = null,
+
+    @Required
+    val spendControlReached: Boolean? = null
+)
+
+@Serializable
+data class RateLimitsRateLimitCredits (
+    @Required
+    val balance: String? = null,
+
+    @Required
+    val hasCredits: Boolean,
+
+    @Required
+    val unlimited: Boolean
+)
+
+@Serializable
+data class RateLimitsRateLimitIndividual (
+    @Required
+    val limit: String,
+
+    @Required
+    val remainingPercent: Long,
+
+    @Required
+    val resetsAt: Long,
+
+    @Required
+    val used: String
+)
+
+@Serializable
+data class RateLimitsRateLimitWindow (
+    @Required
+    val resetsAt: Long? = null,
+
+    @Required
+    val usedPercent: Long,
+
+    @Required
+    val windowDurationMins: Long? = null
+)
+
+@Serializable
+enum class AccountRateLimitsSource(val value: String) {
+    @SerialName("native-rate-limits") NativeRateLimits("native-rate-limits");
+}
+
+@Serializable
+data class AccountUsageSummary (
+    @Required
+    val currentStreakDays: Long? = null,
+
+    @Required
+    val lifetimeTokens: Long? = null,
+
+    @Required
+    @SerialName("longestRunningTurnSec")
+    val longestRunningTurnSEC: Long? = null,
+
+    @Required
+    val longestStreakDays: Long? = null,
+
+    @Required
+    val peakDailyTokens: Long? = null
+)
+
+@Serializable
+data class AccountDailyUsageBucket (
+    @Required
+    val startDate: String,
+
+    @Required
+    val tokens: Long
+)
+
+@Serializable
+data class AccountUsage (
+    @Required
+    val dailyUsageBuckets: List<DailyUsageBucketElement>? = null,
+
+    @Required
+    val limited: Boolean,
+
+    @Required
+    val readAt: Long,
+
+    @Required
+    val source: AccountUsageSource,
+
+    @Required
+    val summary: SummaryClass
+)
+
+@Serializable
+data class DailyUsageBucketElement (
+    @Required
+    val startDate: String,
+
+    @Required
+    val tokens: Long
+)
+
+@Serializable
+enum class AccountUsageSource(val value: String) {
+    @SerialName("native-account-usage") NativeAccountUsage("native-account-usage");
+}
+
+@Serializable
+data class SummaryClass (
+    @Required
+    val currentStreakDays: Long? = null,
+
+    @Required
+    val lifetimeTokens: Long? = null,
+
+    @Required
+    @SerialName("longestRunningTurnSec")
+    val longestRunningTurnSEC: Long? = null,
+
+    @Required
+    val longestStreakDays: Long? = null,
+
+    @Required
+    val peakDailyTokens: Long? = null
 )

@@ -1094,5 +1094,265 @@
       "complete": true,
       "completedAtMs": 1700000002345
     }
+  },
+  {
+    "name": "ThreadMutationRequest",
+    "contract": "ThreadMutationRequest",
+    "value": {
+      "operationId": "12345678-1234-4123-8123-123456789abc",
+      "projectId": "12345678-1234-4123-8123-123456789abc",
+      "expectedEpoch": "12345678-1234-4123-8123-123456789abc"
+    }
+  },
+  {
+    "name": "ThreadNameRequest",
+    "contract": "ThreadNameRequest",
+    "value": {
+      "operationId": "12345678-1234-4123-8123-123456789abc",
+      "projectId": "12345678-1234-4123-8123-123456789abc",
+      "expectedEpoch": "12345678-1234-4123-8123-123456789abc",
+      "name": "新会话 🌙"
+    }
+  },
+  {
+    "name": "ThreadForkRequest",
+    "contract": "ThreadForkRequest",
+    "value": {
+      "operationId": "12345678-1234-4123-8123-123456789abc",
+      "projectId": "12345678-1234-4123-8123-123456789abc",
+      "expectedEpoch": "12345678-1234-4123-8123-123456789abc",
+      "lastTurnId": "native-turn-opaque"
+    }
+  },
+  {
+    "name": "ThreadRevertRequest",
+    "contract": "ThreadRevertRequest",
+    "value": {
+      "operationId": "12345678-1234-4123-8123-123456789abc",
+      "projectId": "12345678-1234-4123-8123-123456789abc",
+      "expectedEpoch": "12345678-1234-4123-8123-123456789abc",
+      "beforeTurnId": "native-turn-opaque"
+    }
+  },
+  {
+    "name": "NativeDefaults",
+    "contract": "NativeDefaults",
+    "value": {
+      "source": "native-config",
+      "readAt": 1700000000000,
+      "model": "gpt-6.1-sol",
+      "effort": "ultra",
+      "approvalPolicy": "on-request",
+      "sandboxMode": "workspace-write",
+      "workspaceWriteNetworkAccess": false,
+      "origins": {
+        "model": "user",
+        "effort": "project",
+        "approvalPolicy": "system"
+      }
+    }
+  },
+  {
+    "name": "RateLimitWindow",
+    "contract": "RateLimitWindow",
+    "value": {
+      "usedPercent": 12,
+      "windowDurationMins": 300,
+      "resetsAt": 1700000300
+    }
+  },
+  {
+    "name": "RateLimitCredits",
+    "contract": "RateLimitCredits",
+    "value": {
+      "hasCredits": false,
+      "unlimited": false,
+      "balance": null
+    }
+  },
+  {
+    "name": "RateLimitIndividual",
+    "contract": "RateLimitIndividual",
+    "value": {
+      "limit": "100.5",
+      "used": "12",
+      "remainingPercent": 88,
+      "resetsAt": 1700000300
+    }
+  },
+  {
+    "name": "RateLimitSnapshot",
+    "contract": "RateLimitSnapshot",
+    "value": {
+      "limitId": "codex",
+      "limitName": "Codex",
+      "planType": "plus",
+      "primary": {
+        "usedPercent": 12,
+        "windowDurationMins": 300,
+        "resetsAt": 1700000300
+      },
+      "secondary": null,
+      "credits": null,
+      "rateLimitReachedType": null,
+      "spendControlReached": null,
+      "individualLimit": null
+    }
+  },
+  {
+    "name": "AccountUsageSummary",
+    "contract": "AccountUsageSummary",
+    "value": {
+      "lifetimeTokens": 1000,
+      "peakDailyTokens": 400,
+      "longestRunningTurnSec": 120,
+      "currentStreakDays": 2,
+      "longestStreakDays": 10
+    }
+  },
+  {
+    "name": "AccountDailyUsageBucket",
+    "contract": "AccountDailyUsageBucket",
+    "value": {
+      "startDate": "2026-11-14",
+      "tokens": 1000
+    }
+  },
+  {
+    "name": "AccountRateLimits",
+    "contract": "AccountRateLimits",
+    "value": {
+      "source": "native-rate-limits",
+      "readAt": 1700000000000,
+      "rateLimits": {
+        "limitId": "codex",
+        "limitName": "Codex",
+        "planType": "plus",
+        "primary": {
+          "usedPercent": 12,
+          "windowDurationMins": 300,
+          "resetsAt": 1700000300
+        },
+        "secondary": null,
+        "credits": null,
+        "rateLimitReachedType": null,
+        "spendControlReached": null,
+        "individualLimit": null
+      },
+      "rateLimitsByLimitId": {
+        "codex": {
+          "limitId": "codex",
+          "limitName": "Codex",
+          "planType": "plus",
+          "primary": {
+            "usedPercent": 12,
+            "windowDurationMins": 300,
+            "resetsAt": 1700000300
+          },
+          "secondary": null,
+          "credits": null,
+          "rateLimitReachedType": null,
+          "spendControlReached": null,
+          "individualLimit": null
+        }
+      },
+      "ordinaryUsageAllowed": true,
+      "resetCreditsAvailable": null,
+      "limited": false
+    }
+  },
+  {
+    "name": "AccountUsage",
+    "contract": "AccountUsage",
+    "value": {
+      "source": "native-account-usage",
+      "readAt": 1700000000000,
+      "summary": {
+        "lifetimeTokens": 1000,
+        "peakDailyTokens": 400,
+        "longestRunningTurnSec": 120,
+        "currentStreakDays": 2,
+        "longestStreakDays": 10
+      },
+      "dailyUsageBuckets": [
+        {
+          "startDate": "2026-11-14",
+          "tokens": 1000
+        }
+      ],
+      "limited": false
+    }
+  },
+  {
+    "name": "thread-start-ultra",
+    "contract": "ThreadStartRequest",
+    "value": {
+      "operationId": "12345678-1234-4123-8123-123456789abc",
+      "expectedEpoch": "12345678-1234-4123-8123-123456789abc",
+      "effort": "ultra"
+    }
+  },
+  {
+    "name": "turn-start-ultra",
+    "contract": "TurnStartRequest",
+    "value": {
+      "operationId": "12345678-1234-4123-8123-123456789abc",
+      "projectId": "12345678-1234-4123-8123-123456789abc",
+      "expectedEpoch": "12345678-1234-4123-8123-123456789abc",
+      "input": [
+        {
+          "type": "text",
+          "text": "你好，Oraculum 🌙\nline two"
+        }
+      ],
+      "effort": "ultra"
+    }
+  },
+  {
+    "name": "turn-start-future-native-effort",
+    "contract": "TurnStartRequest",
+    "value": {
+      "operationId": "12345678-1234-4123-8123-123456789abc",
+      "projectId": "12345678-1234-4123-8123-123456789abc",
+      "expectedEpoch": "12345678-1234-4123-8123-123456789abc",
+      "input": [
+        {
+          "type": "text",
+          "text": "你好，Oraculum 🌙\nline two"
+        }
+      ],
+      "effort": "future-effort"
+    }
+  },
+  {
+    "name": "native-defaults-unconfigured",
+    "contract": "NativeDefaults",
+    "value": {
+      "source": "native-config",
+      "readAt": 1700000000000,
+      "model": null,
+      "effort": null,
+      "approvalPolicy": null,
+      "sandboxMode": null,
+      "workspaceWriteNetworkAccess": null,
+      "origins": {}
+    }
+  },
+  {
+    "name": "account-usage-absent-buckets",
+    "contract": "AccountUsage",
+    "value": {
+      "source": "native-account-usage",
+      "readAt": 1700000000000,
+      "summary": {
+        "lifetimeTokens": 1000,
+        "peakDailyTokens": 400,
+        "longestRunningTurnSec": 120,
+        "currentStreakDays": 2,
+        "longestStreakDays": 10
+      },
+      "dailyUsageBuckets": null,
+      "limited": false
+    }
   }
 ]
