@@ -65,3 +65,11 @@ SHA-256：`c97aee06503d8c54f39db7de9850422ba8b7638f474695be13e40808b2b72cf7`。
 全部截图均为 OnePlus 6T 原始 1080×2340 PNG：`01-initial.png`、`e2e-02-completed.png`、`e2e-03-offline-readonly.png`、`e2e-04-reconnected.png`。接管现场与重连成功图已原字节上传到 [Notion 专项任务](https://app.notion.com/p/4175421e690b8165abb9ce58ccbc813d)，本机 `artifacts.json` 记录各图字节数、尺寸和 SHA。
 
 原始 Logcat、Gateway 日志、数据库快照、部署回执、网络对照和原始 Snapshot 仅保存在本机 `.local/evidence/gateway-incident-20261113/` 私有证据区；不提交或上传原始历史与敏感诊断。Beta 1 tag、Release、发布资产与校验值保持原样。正式 Gateway 已按用户批准修复并保持运行，最终 Debug 保留在成功的测试会话，等待用户复核。
+
+## 后续：将通用部署修正同步至仓库
+
+用户追问默认配置与 GitHub 同步后，补齐了 [打包 user unit](../../../packaging/gateway/oraculum-gateway.service) 的可选 `EnvironmentFile=-%E/oraculum-gateway/network.env` 入口，以及 [Gateway 部署说明](../../../gateway/README.md#systemd-服务的可选网络环境)。代理地址仍由部署主机提供，不提交私人值、不增加 JSON 配置字段；无需代理时不必创建环境文件。说明覆盖已发布 Beta 1 的 drop-in 用法、权限、环境文件语法和正式服务下的显式端到端验收。
+
+新增打包契约断言，并用模拟 stdio 子进程验证有/无八个 proxy 变量时的真实环境继承。旧模板使新断言失败（1 failed / 34 passed）；补齐后针对性测试 35/35 通过，Gateway/协议/打包回归共 274/274（13 文件）通过，`pnpm check` 和 `systemd-analyze --user verify packaging/gateway/oraculum-gateway.service` 均通过。该验证没有发起模型请求或重新执行真机写入旅程。
+
+本次只修改仓库模板、说明和测试，未再次修改或重启正在运行的 Gateway。模板会进入后续版本；本轮没有构建、覆盖或发布新的 Beta 1 DEB/Release，现有手机 APK 和已验证的私有部署继续保留。

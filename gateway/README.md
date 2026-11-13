@@ -22,6 +22,37 @@ pnpm gateway:cli devices revoke DEVICE_UUID --config /tmp/gateway-test/config/co
 
 `allowedRoots` 由主机私有配置明确给出，HTTP 只能浏览并注册其子目录。配置中的 `externalOrigin`、`basePath`、loopback 端口是实例参数：默认根路径 `/`；远程要求 HTTPS、严格 Host/Origin 与受控本地代理覆写的协议头。仓库没有私人 endpoint 或代理默认值。候选包没有安装或启动任何正式服务。
 
+## systemd 服务的可选网络环境
+
+Gateway 将自身环境传给官方 Codex 子进程。终端或桌面 Codex 已能联网，不表示 systemd 启动的 Gateway 也获得了相同代理变量；`config.json` 没有代理字段，不能向其中添加未知配置项。
+
+后续版本的打包 user unit 提供 `EnvironmentFile=-%E/oraculum-gateway/network.env`：`%E` 是 **user manager** 的 XDG 配置目录，通常为 `~/.config`，前缀 `-` 允许未配置环境文件的主机正常启动。不需要代理时无需创建文件；此入口不会主动设置代理或修改系统网络。路径与可选语义依据 [systemd.unit](https://www.freedesktop.org/software/systemd/man/latest/systemd.unit.html#Specifiers) 和 [systemd.exec](https://www.freedesktop.org/software/systemd/man/latest/systemd.exec.html#EnvironmentFile=)。
+
+需要代理时，在该目录创建或编辑私有 `oraculum-gateway/network.env`（目录 0700、文件 0600），保留已有内容。以下为示例，必须将 `.invalid` 占位地址替换为部署主机实际可用的代理：
+
+```ini
+HTTP_PROXY="http://proxy.example.invalid:8080"
+HTTPS_PROXY="http://proxy.example.invalid:8080"
+http_proxy="http://proxy.example.invalid:8080"
+https_proxy="http://proxy.example.invalid:8080"
+NO_PROXY="localhost,127.0.0.1,::1"
+no_proxy="localhost,127.0.0.1,::1"
+```
+
+如部署需要，也可显式设置 `ALL_PROXY` / `all_proxy`；大小写变量应保持一致，NO_PROXY 按部署需要补充本地服务。文件使用逐行 `KEY=value`，不写 `export`、命令替换或依赖 `$HTTP_PROXY` 之类的变量展开。这里只放网络参数，Codex 登录凭据与设备配对密钥仍由各自安全存储管理。`ORACULUM_GATEWAY_CONFIG` 只改变 JSON 配置路径，不会自动移动 systemd 的环境文件入口；非默认位置使用 user drop-in 明确指定。
+
+**已发布 Beta 1 的 unit 尚无此入口。** 对该版本，可在用户服务目录创建 drop-in（已有等效配置时保留，不重复添加）：
+
+```ini
+# ~/.config/systemd/user/oraculum-gateway.service.d/20-network-env.conf
+[Service]
+EnvironmentFile=%E/oraculum-gateway/network.env
+```
+
+此 drop-in 要求环境文件已存在。源模板的修改只会进入后续版本，不覆盖 Beta 1 的 Release、DEB 或校验资产。修改 unit/drop-in 后需 user daemon-reload；环境文件更新需重启对应 Gateway 才生效。正式服务变更应在确认活动 Turn、unknown 操作及回滚方案后获得部署授权；安装包本身仍不启用或重启任何服务。
+
+部署验收需要在**实际服务环境**下依次确认 HTTPS health、原身份认证、WSS、Snapshot，再在专用项目显式发送一次受控消息，核验流式、官方 Turn 终态和最终回复。health、绿色连接、model/list 或 accepted 回执均不能单独证明推理成功。不在启动或健康检查时自动发送消息；失败后查询原 operationId 与原生状态，不自动重发。可使用 [已配对真机回归测试及运行边界](../upgrade/phase3/gateway-incident-20261113/README.md#回归测试与安全运行方式) 复核。
+
 ## 接口与恢复
 
 公共字段、路由、TS/Kotlin DTO 与 fixture 见 [Gateway 协议](../packages/gateway-protocol/README.md)。所有 `/api/v2` 请求和 WS 握手携带 `X-Oraculum-Protocol: 2`；access 只放 Authorization。WS 只接收 resume/ping，业务写只走 HTTP。

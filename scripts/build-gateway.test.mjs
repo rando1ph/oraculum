@@ -93,6 +93,10 @@ test('candidate installers have only a read-only preflight and an inert user uni
   assert.doesNotMatch(preinst, /force-overwrite|force-remove|dpkg\s+--(?:remove|purge)/);
   const unit = await readFile(join(root, 'packaging/gateway/oraculum-gateway.service'), 'utf8');
   assert.match(unit, /^ExecStart=\/usr\/lib\/oraculum-gateway\/bin\/oraculum-gateway$/m);
+  // A fresh direct-network installation must not require this private file. Hosts
+  // needing a proxy can supply it without editing the packaged unit or JSON schema.
+  assert.deepEqual(unit.match(/^EnvironmentFile=.*$/gm), ['EnvironmentFile=-%E/oraculum-gateway/network.env']);
+  assert.doesNotMatch(unit, /^Environment=.*(?:https?_proxy|all_proxy|no_proxy)=/im);
   for (const expected of ['UMask=0077', 'Restart=on-failure', 'KillMode=control-group']) assert.ok(unit.includes(expected));
   assert.doesNotMatch(unit, /^Exec(?:StartPre|StartPost|StopPost)=/m);
 });

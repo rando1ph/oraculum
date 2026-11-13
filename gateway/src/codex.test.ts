@@ -37,6 +37,35 @@ createInterface({ input: process.stdin }).on('line', line => {
 afterEach(async () => { await Promise.all(adapters.splice(0).map(adapter => adapter.close())); await Promise.all(directories.splice(0).map(path => rm(path, { recursive: true, force: true }))); });
 
 describe('official Codex stdio boundary', () => {
+  it.each([false, true])('inherits the service networking environment without requiring a proxy (configured=%s)', async configured => {
+    const cwd = await mkdtemp(join(tmpdir(), 'oraculum-native-env-')); directories.push(cwd);
+    const executable = join(cwd, 'environment-peer.mjs');
+    const networking = {
+      HTTP_PROXY: 'http://proxy.example.invalid:18080', HTTPS_PROXY: 'http://proxy.example.invalid:18080',
+      ALL_PROXY: 'socks5://proxy.example.invalid:18081', NO_PROXY: 'localhost,127.0.0.1,::1',
+      http_proxy: 'http://proxy.example.invalid:18080', https_proxy: 'http://proxy.example.invalid:18080',
+      all_proxy: 'socks5://proxy.example.invalid:18081', no_proxy: 'localhost,127.0.0.1,::1',
+    };
+    const keys = Object.keys(networking);
+    // This peer reports only synthetic networking values, never the full environment.
+    await writeFile(executable, `#!/usr/bin/env node
+import { createInterface } from 'node:readline';
+createInterface({ input: process.stdin }).on('line', line => {
+  const request = JSON.parse(line);
+  if (request.method === 'initialize') process.stdout.write(JSON.stringify({ id: request.id, result: {
+    userAgent: 'network-environment-test',
+    networking: Object.fromEntries(${JSON.stringify(keys)}.map(key => [key, process.env[key] ?? null])),
+  } }) + '\\n');
+}).on('close', () => process.exit(0));
+`, { mode: 0o700 });
+    try {
+      for (const [key, value] of Object.entries(networking)) vi.stubEnv(key, configured ? value : undefined);
+      const adapter = new CodexAdapter({ cwd, executable }); adapters.push(adapter);
+      const result = await adapter.start();
+      expect(result.networking).toEqual(configured ? networking : Object.fromEntries(keys.map(key => [key, null])));
+      await adapter.close();
+    } finally { vi.unstubAllEnvs(); }
+  });
   it('handshakes once with experimental API off and projects only supported parameters', async () => {
     const { adapter, cwd, messages } = await setup();
     await adapter.readThread('thread-1');

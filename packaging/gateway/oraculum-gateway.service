@@ -7,6 +7,8 @@ StartLimitBurst=3
 Type=simple
 ExecStart=/usr/lib/oraculum-gateway/bin/oraculum-gateway
 WorkingDirectory=%h
+# Optional host networking environment, inherited by the official Codex child.
+EnvironmentFile=-%E/oraculum-gateway/network.env
 UMask=0077
 Restart=on-failure
 RestartSec=3
