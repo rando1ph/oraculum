@@ -1,9 +1,9 @@
 {
   "component": "gateway",
   "packageName": "oraculum-gateway",
-  "version": "2.0.0~beta.1",
+  "version": "2.0.0~beta.2",
   "architecture": "amd64",
-  "protocol": { "major": 2, "minor": 0, "minClientMinor": 0 },
+  "protocol": { "major": 2, "minor": 1, "minClientMinor": 0 },
   "stateSchema": { "version": 1, "readMin": 1, "readMax": 1 },
   "candidate": false,
   "releaseChannel": "beta"

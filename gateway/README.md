@@ -90,8 +90,8 @@ node scripts/verify-gateway-deb.mjs dist/gateway/SOURCE_SHA/oraculum-gateway_2.0
 
 真实验收只创建专用临时项目和原生线程。故障脚本明确使用模拟 Codex，加实际 SIGKILL；原生通信脚本使用真实官方 Codex、隔离 HTTPS/WSS 代理和每次生成的证书信任，不改系统证书或生产代理。单测夹具不替代真实验收。
 
-DEB 含私有 Node 24.21.0、CLI 和未启用的 user systemd 单元，程序/配置/状态分离。构建要求已提交的 main，仅排除用户未跟踪的 Stitch 原件；产物与清单在忽略的 `dist/gateway/`，不提交二进制。校验器在 bubblewrap 只读宿主与一次性 dpkg root 内测试，旧 Desktop 或未托管 `/usr/bin/oraculum` 会被明确拒绝，不覆盖或卸载。
+DEB 含私有 Node 24.21.0、CLI 和未启用的 user systemd 单元，程序/配置/状态分离。构建要求已提交的 main，仅排除明确列出的未跟踪 Stitch、Android Studio 和 Gradle wrapper 原件；其他未提交源码仍阻断。产物与清单在忽略的 `dist/gateway/`，不提交二进制。校验器在 bubblewrap 只读宿主与一次性 dpkg root 内测试，旧 Desktop 或未托管 `/usr/bin/oraculum` 会被明确拒绝，不覆盖或卸载。
 
-Beta 发行使用 Debian `2.0.0~beta.1`（低于后续 `2.0.0`）、`releaseChannel: beta` 和 `candidate: false`。这里 `candidate` 仅表示未发行的开发候选；false 表示按预发行契约准备的可分发包，不代表 Stable，也不代表已安装。实际发布状态以 GitHub Pre-release 为准。旧候选清单继续接受原 `candidate: true`、三段数字版本；所有清单和包内 `build.json` 必须一致。
+当前 Gateway Beta 2 使用 Debian `2.0.0~beta.2`（高于 Beta 1、低于后续 `2.0.0`）、`releaseChannel: beta` 和 `candidate: false`。这里 `candidate` 仅表示未发行的开发候选；false 表示按预发行契约准备的可分发包，不代表 Stable，也不代表已安装。实际发布状态以 GitHub Pre-release 为准，见 [Beta 2 发行说明](../docs/GATEWAY_BETA_2.md)。旧候选清单继续接受原 `candidate: true`、三段数字版本；所有清单和包内 `build.json` 必须一致。
 
 实验 API、Plan 模式、未验证的 Plugin 目录继续关闭；协议 2.1 已开放 Turn steer。被动原生 input/MCP form 适配有夹具验证，不能据此宣称真实模型已触发所有形态。`native-capabilities-live.ts` 使用独立 HTTP/WebSocket 回环实例验证新增原生能力，报告经过脱敏；它不等于公网 HTTPS/WSS 或 Android 验收。正式 APK、Android/Desktop UI、Stitch 修改、旧状态迁移、VPS/网络变更和正式部署均不在本阶段。

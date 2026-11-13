@@ -10,6 +10,11 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 export const root = fileURLToPath(new URL('../', import.meta.url));
 export const untrackedDesignInput = 'upgrade/stitch_oraculum_android_workspace/';
+// User-owned design and Android Studio inputs are outside the Gateway bundle.
+// File entries match exactly; this does not exempt uncommitted Android source.
+export const gatewayUntrackedInputs = Object.freeze([untrackedDesignInput, 'apps/android/.idea/',
+  'apps/android/gradle/wrapper/gradle-wrapper.jar', 'apps/android/gradle/wrapper/gradle-wrapper.properties',
+  'apps/android/gradlew', 'apps/android/gradlew.bat']);
 export const nodeRuntime = Object.freeze({ version: '24.21.0', sha256: 'fd8e59d5a511510f6a298afb548f18c7d2b1be404d8b4a27d94fbe49f56cb2d6' });
 export const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 const git = (directory, args) => execFileSync('git', args, { cwd: directory, encoding: 'utf8' });
@@ -50,11 +55,11 @@ export function assertCleanGatewaySource(directory = root) {
   assert.equal(git(directory, ['branch', '--show-current']).trim(), 'main', 'Gateway candidates must be built on main');
   assert.equal(git(directory, ['diff', '--name-only', 'HEAD']).trim(), '', 'Gateway candidates require all tracked source changes committed');
   const untracked = git(directory, ['ls-files', '--others', '--exclude-standard', '-z']).split('\0').filter(Boolean);
-  const unexpected = untracked.filter(name => !name.startsWith(untrackedDesignInput));
-  assert.deepEqual(unexpected, [], 'Gateway candidates require all source files committed; only the unchanged user Stitch design directory is excluded');
+  const unexpected = untracked.filter(name => !gatewayUntrackedInputs.some(input => input.endsWith('/') ? name.startsWith(input) : name === input));
+  assert.deepEqual(unexpected, [], 'Gateway candidates require all source files committed; only listed user design and Android Studio inputs are excluded');
   const sourceGit = git(directory, ['rev-parse', 'HEAD']).trim();
   assert.match(sourceGit, /^[a-f0-9]{40}$/);
-  return { sourceGit, sourceDirty: false, excludedUntrackedInputs: [untrackedDesignInput] };
+  return { sourceGit, sourceDirty: false, excludedUntrackedInputs: [...gatewayUntrackedInputs] };
 }
 
 // Use esbuild's actual input graph, not all workspace dependencies. The latter

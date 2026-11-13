@@ -4,7 +4,17 @@ import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promis
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'vitest';
-import { assertCleanGatewaySource, assertGatewayReleaseMetadata, hash, inventoryRuntime, root, untrackedDesignInput } from './build-gateway-runtime.mjs';
+import { assertCleanGatewaySource, assertGatewayReleaseMetadata, gatewayUntrackedInputs, hash, inventoryRuntime, root, untrackedDesignInput } from './build-gateway-runtime.mjs';
+import { PROTOCOL } from '../packages/gateway-protocol/src/index';
+
+test('Gateway package advertises the runtime protocol and matching SemVer identity', async () => {
+  const metadata = JSON.parse(await readFile(join(root, 'packaging/gateway/metadata.json'), 'utf8'));
+  const workspace = JSON.parse(await readFile(join(root, 'gateway/package.json'), 'utf8'));
+  assert.deepEqual(metadata.protocol, PROTOCOL);
+  assert.equal(workspace.version, metadata.version.replace('~', '-'));
+  execFileSync('dpkg', ['--compare-versions', '2.0.0~beta.1', 'lt', metadata.version]);
+  execFileSync('dpkg', ['--compare-versions', metadata.version, 'lt', '2.0.0']);
+});
 
 test('Gateway release contract accepts Debian Beta ordering and rejects inconsistent release metadata', () => {
   const beta = { component: 'gateway', packageName: 'oraculum-gateway', architecture: 'amd64',
@@ -19,7 +29,7 @@ test('Gateway release contract accepts Debian Beta ordering and rejects inconsis
   }
 });
 
-test('candidate source gate ignores only untracked design originals and rejects tracked or other new source changes', async () => {
+test('candidate source gate preserves explicit user inputs and rejects tracked or other new source changes', async () => {
   const scratch = await mkdtemp(join(tmpdir(), 'gateway-source-test-'));
   const git = args => execFileSync('git', args, { cwd: scratch, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
   try {
@@ -31,6 +41,18 @@ test('candidate source gate ignores only untracked design originals and rejects 
     await mkdir(join(scratch, untrackedDesignInput), { recursive: true });
     await writeFile(join(scratch, untrackedDesignInput, 'original.html'), '<p>unchanged design input</p>');
     assert.deepEqual(assertCleanGatewaySource(scratch), committed);
+    for (const input of gatewayUntrackedInputs.filter(name => name.startsWith('apps/android/'))) {
+      const file = input.endsWith('/') ? join(input, 'workspace.xml') : input;
+      await mkdir(join(scratch, file, '..'), { recursive: true });
+      await writeFile(join(scratch, file), 'protected Android Studio input');
+    }
+    assert.deepEqual(assertCleanGatewaySource(scratch), committed);
+    for (const file of ['apps/android/gradlew.extra', 'apps/android/gradle/wrapper/source.ts', 'apps/android/app/src/Untracked.kt']) {
+      await mkdir(join(scratch, file, '..'), { recursive: true });
+      await writeFile(join(scratch, file), 'must be committed');
+      assert.throws(() => assertCleanGatewaySource(scratch), /all source files committed/);
+      await rm(join(scratch, file));
+    }
     await writeFile(join(scratch, 'not-committed.ts'), 'new source');
     assert.throws(() => assertCleanGatewaySource(scratch), /all source files committed/);
     await rm(join(scratch, 'not-committed.ts'));

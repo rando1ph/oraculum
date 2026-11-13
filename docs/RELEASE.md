@@ -48,6 +48,21 @@ Phase 4 authorization and product decisions remain in the Notion Project/Task.
 Building does not authorize installation, service registration/start, migration,
 Android replacement, or changes to other services.
 
+## Gateway 2.0.0 Beta 2
+
+The reviewed Gateway native-capability work is independently released as
+`gateway-v2.0.0-beta.2`, a Gateway-only Pre-release with Latest disabled. Build
+`2.0.0~beta.2` amd64 / protocol 2.1 from committed main; Android stays unchanged.
+See [Beta 2 notes](GATEWAY_BETA_2.md). Publish the DEB, `gateway-release.json`,
+`RELEASE_NOTES.md` and `SHA256SUMS`, then verify unauthenticated public downloads.
+Preserve every Beta 1 tag and asset.
+
+The Gateway source gate now explicitly excludes the user's untracked Stitch
+originals, Android Studio `.idea/`, the two Gradle wrapper files and the two
+wrapper launchers. Those inputs are not bundled. Tracked changes and all other
+new source remain blocking; the release process verifies protected input hashes.
+The Android signing/build source gates are unchanged.
+
 The current R1-B8 `0.1.2` artifact identity, regression evidence, crash investigation,
 original signing command and upgrade guide are in [the release handoff](R1_B8_RELEASE.md).
 The automatic signing workflow below supersedes its historical manual-only policy.

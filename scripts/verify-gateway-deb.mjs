@@ -8,7 +8,7 @@ import { createServer as createPortProbe } from 'node:net';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { once } from 'node:events';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
-import { assertGatewayReleaseMetadata, hash, inventoryRuntime, root, untrackedDesignInput } from './build-gateway-runtime.mjs';
+import { assertGatewayReleaseMetadata, gatewayUntrackedInputs, hash, inventoryRuntime, root, untrackedDesignInput } from './build-gateway-runtime.mjs';
 
 const [input, expectedGit] = process.argv.slice(2);
 assert.ok(input && process.argv.length <= 4, 'Usage: node scripts/verify-gateway-deb.mjs DEB [EXPECTED_GIT]');
@@ -85,7 +85,7 @@ try {
   const runtime = join(extracted, 'usr/lib/oraculum-gateway');
   const build = JSON.parse(await readFile(join(runtime, 'build.json'), 'utf8'));
   for (const key of ['component', 'version', 'packageName', 'architecture', 'sourceGit', 'sourceDirty', 'candidate', 'releaseChannel', 'protocol', 'stateSchema', 'licenseManifestSha256']) assert.deepEqual(build[key], manifest[key], `Embedded identity mismatch: ${key}`);
-  assert.deepEqual(build.excludedUntrackedInputs, [untrackedDesignInput]);
+  assert.ok([JSON.stringify([untrackedDesignInput]), JSON.stringify(gatewayUntrackedInputs)].includes(JSON.stringify(build.excludedUntrackedInputs)), 'Unexpected source exclusions');
   assert.deepEqual(await inventoryRuntime(runtime), build.files);
   report.sourceGit = build.sourceGit; report.version = build.version; report.nodeVersion = build.nodeVersion;
   const launcher = join(extracted, 'usr/bin/oraculum');
@@ -210,7 +210,7 @@ try {
     const device={deviceId:randomUUID(),deviceCredential:randomBytes(32).toString('base64url'),installationId:health.installationId};
     const code=(await readFile(pairing.pairingFile,'utf8')).trim();const access=await request('/api/v2/auth/pair',{...device,code,label:'Isolated bundled Gateway fixture'});
     const catalog=await request('/api/v2/models',undefined,access.accessToken);assert.equal(catalog.data.data[0].model,'fixture');
-    const capabilities=await request('/api/v2/capabilities',undefined,access.accessToken);assert.equal(capabilities.data.protocol.major,2);
+    const capabilities=await request('/api/v2/capabilities',undefined,access.accessToken);assert.deepEqual(capabilities.data.protocol,manifest.protocol);
     assert.equal(capabilities.data.gatewayVersion, manifest.version, 'Running package must advertise its Beta version');
     report.isolation.temporaryGatewayProcess=true;
     pass('Bundled Gateway main starts from unrelated cwd, pairs a fresh device and serves authenticated HTTP with a simulated native peer');
