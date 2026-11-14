@@ -122,8 +122,9 @@ class RecoveryRulesTest {
         assertTrue(history.limited)
         history.snapshot(page(1, "大".repeat(30_000)), preserveTerminal = false)
         assertTrue(history.limited)
-        assertEquals("内容未完整显示", history.messages().single().status)
-        assertTrue(history.messages().single().text.length < 100)
+        assertTrue(history.messages().single().detailsRequired)
+        assertEquals("", history.messages().single().status)
+        assertEquals("", history.messages().single().text)
     }
 
     @Test fun `obviously invalid registration paths fail before operation reservation`() {

@@ -28,8 +28,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.oraculum.poc.repository.boundedContentPreview
 import dev.oraculum.poc.repository.CONTENT_PREVIEW_NOTICE
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
-internal data class MarkdownBlock(val kind: String, val lines: List<String>, val label: String = "", val depth: Int = 0)
+internal data class MarkdownBlock(val kind: String, val lines: List<String>, val label: String = "", val depth: Int = 0, val copyText: String? = null)
 
 internal const val MARKDOWN_PREVIEW_MAX_BLOCKS = 128
 internal const val MARKDOWN_PREVIEW_MAX_TABLE_COLUMNS = 8
@@ -108,13 +110,23 @@ internal fun markdownBlocks(text: String): List<MarkdownBlock> {
 }
 
 @Composable
-fun MarkdownContent(text: String, modifier: Modifier = Modifier) {
+fun MarkdownContent(text: String, modifier: Modifier = Modifier, complete: Boolean = false) {
+    val immediate = remember(text, complete) {
+        if (!complete) markdownBlocks(text) else if (text.length <= 64 * 1024) fullMarkdownBlocks(text) else null
+    }
+    val parsed by produceState(immediate, text, complete) {
+        value = immediate ?: withContext(Dispatchers.Default) { fullMarkdownBlocks(text) }
+    }
     ReadingContent {
-        val blocks = remember(text) { markdownBlocks(text) }
+        val blocks = parsed
+        if (blocks == null) {
+            LinearProgressIndicator(modifier.fillMaxWidth())
+            return@ReadingContent
+        }
         Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
             blocks.forEach { block ->
                 when (block.kind) {
-                    "code" -> CodeBlock(block.lines.joinToString("\n"), block.label)
+                    "code" -> CodeBlock(block.lines.joinToString("\n"), block.label, complete = complete, copyText = block.copyText)
                     "table" -> MarkdownTable(block.lines, block.label.split(','))
                     "rule" -> HorizontalDivider(Modifier.padding(vertical = 4.dp))
                     "notice" -> Text(block.lines.single(), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
@@ -125,7 +137,7 @@ fun MarkdownContent(text: String, modifier: Modifier = Modifier) {
                         "4" -> MaterialTheme.typography.titleMedium
                         else -> MaterialTheme.typography.titleSmall
                     }.copy(fontWeight = FontWeight.SemiBold))
-                    "quote" -> Row(Modifier.height(IntrinsicSize.Min).background(MaterialTheme.colorScheme.surfaceContainerHigh, RoundedCornerShape(8.dp)).padding(12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    "quote" -> Row(Modifier.height(IntrinsicSize.Min).background(if (LocalOledTheme.current) Color.Black else MaterialTheme.colorScheme.surfaceContainerHigh, RoundedCornerShape(8.dp)).padding(12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         Box(Modifier.width(3.dp).fillMaxHeight().background(MaterialTheme.colorScheme.primary, RoundedCornerShape(2.dp)))
                         InlineMarkdown(block.lines.first(), Modifier.weight(1f))
                     }
@@ -135,7 +147,7 @@ fun MarkdownContent(text: String, modifier: Modifier = Modifier) {
                         Text(block.label, color = MaterialTheme.colorScheme.primary)
                         InlineMarkdown(block.lines.first(), Modifier.weight(1f))
                     }
-                    else -> InlineMarkdown(block.lines.first())
+                    else -> InlineMarkdown(block.lines.joinToString("\n"))
                 }
             }
         }
@@ -148,7 +160,7 @@ private fun MarkdownTable(lines: List<String>, alignments: List<String>) {
         it.trim().removePrefix("|").removeSuffix("|").split(tableCellSeparator, MARKDOWN_PREVIEW_MAX_TABLE_COLUMNS + 1)
             .take(alignments.size.coerceAtMost(MARKDOWN_PREVIEW_MAX_TABLE_COLUMNS)).map { cell -> cell.trim().replace("\\|", "|") }
     } }
-    Surface(color = MaterialTheme.colorScheme.surfaceContainerLowest, shape = RoundedCornerShape(10.dp),
+    Surface(color = if (LocalOledTheme.current) Color.Black else MaterialTheme.colorScheme.surfaceContainerLowest, shape = RoundedCornerShape(10.dp),
         border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))) {
         Column(Modifier.horizontalScroll(rememberScrollState()).semantics { contentDescription = "表格，可横向滚动" }.padding(8.dp)) {
             rows.forEachIndexed { rowIndex, row ->
@@ -169,41 +181,43 @@ private fun MarkdownTable(lines: List<String>, alignments: List<String>) {
 }
 
 @Composable
-internal fun CodeBlock(text: String, language: String = "", modifier: Modifier = Modifier) {
+internal fun CodeBlock(text: String, language: String = "", modifier: Modifier = Modifier, complete: Boolean = false, copyText: String? = null) {
     val clipboard = LocalClipboardManager.current
-    val preview = remember(text) { boundedContentPreview(sequenceOf(text)) }
-    val lines = remember(preview.text) { preview.text.lines() }
+    val preview = remember(text, complete) { if (complete) null else boundedContentPreview(sequenceOf(text)) }
+    val content = preview?.text ?: text
+    val truncated = preview?.truncated == true
+    val lines = remember(content) { content.lines() }
     var expanded by rememberSaveable(text) { mutableStateOf(false) }
     val canExpand = lines.size > 12
-    val displayedText = if (canExpand && !expanded) lines.take(12).joinToString("\n") else preview.text
+    val displayedText = if (canExpand && !expanded) lines.take(12).joinToString("\n") else content
     var copied by remember(text) { mutableStateOf(false) }
     ReadingContent {
-        Surface(modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.surfaceContainerLowest,
+        Surface(modifier.fillMaxWidth(), color = if (LocalOledTheme.current) Color.Black else MaterialTheme.colorScheme.surfaceContainerLowest,
             shape = RoundedCornerShape(10.dp), border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))) {
             Column {
-                Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceContainerLow).padding(start = 12.dp, end = 4.dp),
+                Row(Modifier.fillMaxWidth().background(if (LocalOledTheme.current) Color.Black else MaterialTheme.colorScheme.surfaceContainerLow).padding(start = 12.dp, end = 4.dp),
                     verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OraculumIcon(OraculumSymbol.Code, tint = MaterialTheme.colorScheme.primary, size = 18.dp)
                     Column(Modifier.weight(1f).padding(vertical = 8.dp)) {
                         Text(language.ifBlank { "代码" }, style = MaterialTheme.typography.labelMedium.copy(fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold), maxLines = 1,
                             overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurface)
-                        if (canExpand) Text("${lines.size} 行${if (preview.truncated) "预览" else ""}", style = MaterialTheme.typography.labelSmall,
+                        if (canExpand) Text("${lines.size} 行${if (truncated) "预览" else ""}", style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    IconButton(onClick = { clipboard.setText(AnnotatedString(preview.text)); copied = true }, modifier = Modifier.size(48.dp)) {
+                    IconButton(onClick = { clipboard.setText(AnnotatedString(copyText ?: content)); copied = true }, modifier = Modifier.size(48.dp)) {
                         OraculumIcon(if (copied) OraculumSymbol.Check else OraculumSymbol.Copy,
-                            contentDescription = if (copied) "代码已复制" else if (preview.truncated) "复制代码预览" else "复制代码",
+                            contentDescription = if (copied) "代码已复制" else if (truncated) "复制代码预览" else "复制代码",
                             tint = if (copied) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, size = 18.dp)
                     }
                     if (canExpand) IconButton(onClick = { expanded = !expanded }, modifier = Modifier.size(48.dp).semantics {
                         stateDescription = if (expanded) "代码已展开" else "代码已折叠"
                     }) {
                         OraculumIcon(if (expanded) OraculumSymbol.ExpandLess else OraculumSymbol.ExpandMore,
-                            contentDescription = if (expanded) "收起代码" else "展开代码预览", size = 18.dp)
+                            contentDescription = if (expanded) "收起代码" else if (complete) "展开代码" else "展开代码预览", size = 18.dp)
                     }
                 }
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
-                if (preview.truncated) Text(CONTENT_PREVIEW_NOTICE, Modifier.padding(12.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (truncated) Text(CONTENT_PREVIEW_NOTICE, Modifier.padding(12.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 SelectionContainer {
                     Text(displayedText, Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(14.dp).semantics { contentDescription = "代码，可横向滚动" },
                         style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace, lineHeight = MaterialTheme.typography.bodySmall.lineHeight * 1.15f), softWrap = false)
@@ -211,7 +225,7 @@ internal fun CodeBlock(text: String, language: String = "", modifier: Modifier =
                 if (canExpand && !expanded) TextButton(onClick = { expanded = true }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
                     OraculumIcon(OraculumSymbol.ExpandMore, size = 18.dp)
                     Spacer(Modifier.width(8.dp))
-                    Text("展开其余 ${lines.size - 12} 行${if (preview.truncated) "预览" else ""}")
+                    Text("展开其余 ${lines.size - 12} 行${if (truncated) "预览" else ""}")
                 }
             }
         }

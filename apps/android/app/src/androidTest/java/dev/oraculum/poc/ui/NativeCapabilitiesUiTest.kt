@@ -1,8 +1,14 @@
+@file:Suppress("DEPRECATION")
+
 package dev.oraculum.poc.ui
 
 import androidx.activity.ComponentActivity
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.platform.ClipboardManager
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.*
@@ -45,14 +51,46 @@ class NativeCapabilitiesUiTest {
         compose.setContent { OraculumTheme(mode = "oled") { Surface { content() } } }
     }
 
-    @Test fun unsupportedThreadActionsAreAbsentFromConversationAndSidebar() {
-        render()
+    @Suppress("DEPRECATION")
+    @Test fun copyRemainsAvailableWithoutMutationCapabilities() {
+        var copied: AnnotatedString? = null
+        val clipboard = object : ClipboardManager {
+            override fun setText(annotatedString: AnnotatedString) { copied = annotatedString }
+            override fun getText(): AnnotatedString? = copied
+        }
+        renderContent { CompositionLocalProvider(LocalClipboardManager provides clipboard) {
+            OraculumScreen(fixture(), PocActions())
+        } }
         compose.onNodeWithTag("thread-tools").assertDoesNotExist()
-        compose.onNodeWithTag("turn-tools-$turnId").assertDoesNotExist()
+        compose.onNodeWithTag("conversation-bottom").assertDoesNotExist()
+        compose.onNodeWithTag("turn-tools-$turnId").performClick()
+        compose.onNodeWithTag("fork-turn-$turnId").assertDoesNotExist()
+        compose.onNodeWithTag("revert-turn-$turnId").assertDoesNotExist()
+        compose.onNodeWithTag("copy-turn-$turnId").assertIsEnabled().performClick()
+        compose.runOnIdle { assertEquals("Fixture answer", copied?.text) }
         compose.onNodeWithTag("navigation").performClick()
         compose.onNodeWithTag("thread-${thread.id}").assertIsDisplayed()
         compose.onNodeWithTag("thread-menu-${thread.id}").assertDoesNotExist()
         compose.onNodeWithTag("archived-threads-toggle").assertDoesNotExist()
+    }
+
+    @Test fun answerWithoutNativeTurnIdCanBeCopiedButCannotMutateHistory() {
+        var copied: AnnotatedString? = null
+        var mutations = 0
+        val clipboard = object : ClipboardManager {
+            override fun setText(annotatedString: AnnotatedString) { copied = annotatedString }
+            override fun getText(): AnnotatedString? = copied
+        }
+        val state = fixture(setOf("thread.fork", "thread.revert"))
+        val actions = PocActions(onForkThread = { mutations++ }, onRevertThread = { mutations++ })
+        renderContent { CompositionLocalProvider(LocalClipboardManager provides clipboard) {
+            TurnToolsMenu("", state, actions, copyText = "Fixture orphan answer", menuKey = "orphan-fixture")
+        } }
+        compose.onNodeWithTag("turn-tools-orphan-fixture").performClick()
+        compose.onNodeWithTag("fork-turn-orphan-fixture").assertDoesNotExist()
+        compose.onNodeWithTag("revert-turn-orphan-fixture").assertDoesNotExist()
+        compose.onNodeWithTag("copy-turn-orphan-fixture").assertIsEnabled().performClick()
+        compose.runOnIdle { assertEquals("Fixture orphan answer", copied?.text); assertEquals(0, mutations) }
     }
 
     @Test fun onlyAdvertisedLifecycleActionsAppear() {
@@ -147,6 +185,10 @@ class NativeCapabilitiesUiTest {
         compose.onNodeWithTag("fork-thread").performClick()
         compose.runOnIdle { assertEquals(listOf<String?>(null), forks) }
         compose.onNodeWithTag("turn-tools-$turnId").performClick()
+        val copy = compose.onNodeWithTag("copy-turn-$turnId").assertIsEnabled().fetchSemanticsNode().boundsInRoot
+        val fork = compose.onNodeWithTag("fork-turn-$turnId").assertIsEnabled().fetchSemanticsNode().boundsInRoot
+        val revert = compose.onNodeWithTag("revert-turn-$turnId").assertIsEnabled().fetchSemanticsNode().boundsInRoot
+        assertTrue("Copy leads the destructive history actions", copy.bottom <= fork.top && fork.bottom <= revert.top)
         compose.onNodeWithTag("fork-turn-$turnId").performClick()
         compose.runOnIdle { assertEquals(listOf(null, turnId), forks) }
         compose.onNodeWithTag("composer-add").performClick()
@@ -177,7 +219,7 @@ class NativeCapabilitiesUiTest {
         renderContent { when (pane.value) {
             0 -> NativeThreadRow(thread, state, actions) {}
             1 -> OraculumScreen(state, actions)
-            else -> TurnToolsMenu(turnId, state, actions)
+            else -> TurnToolsMenu(turnId, state, actions, copyText = "Fixture answer")
         } }
         compose.onNodeWithTag("thread-menu-${thread.id}").performClick()
         compose.onNodeWithTag("thread-rename-${thread.id}").assertIsNotEnabled()
@@ -190,6 +232,7 @@ class NativeCapabilitiesUiTest {
         compose.onNodeWithTag("compact-thread").assertIsNotEnabled()
         compose.runOnIdle { pane.value = 2 }
         compose.onNodeWithTag("turn-tools-$turnId").performClick()
+        compose.onNodeWithTag("copy-turn-$turnId").assertIsEnabled()
         compose.onNodeWithTag("fork-turn-$turnId").assertIsNotEnabled()
         compose.onNodeWithTag("revert-turn-$turnId").assertIsNotEnabled()
         compose.runOnIdle { assertEquals(0, mutations) }

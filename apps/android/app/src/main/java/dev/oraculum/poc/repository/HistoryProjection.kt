@@ -12,8 +12,12 @@ internal fun JsonObject.flag(key: String): Boolean = (get(key) as? JsonPrimitive
 internal fun JsonObject.number(key: String): Long? = (get(key) as? JsonPrimitive)?.longOrNull
 
 /** Bounded, replaceable history projection indexed by the unchanged native Item ID. */
-class HistoryProjection(private val maxItems: Int = 250) {
+class HistoryProjection(private val maxItems: Int = 250, private val maxVerifiedBytes: Int = 8 * 1024 * 1024) {
     private val items = linkedMapOf<String, ItemProjection>()
+    // Verified full text is a bounded, connection-local overlay; previews remain the cache format.
+    private val verifiedDetails = linkedMapOf<String, ItemProjection>()
+    private var verifiedBytes = 0
+    val remainingVerifiedBytes: Int get() = maxVerifiedBytes - verifiedBytes
     private val terminalTurns = mutableMapOf<String, Boolean>()
     private val turnStatuses = mutableMapOf<String, String>()
     private val turnMetadata = linkedMapOf<String, TurnMetadataUi>()
@@ -25,15 +29,18 @@ class HistoryProjection(private val maxItems: Int = 250) {
         private set
     fun isTerminal(itemId: String?): Boolean = itemId != null && items[itemId]?.terminal == true
 
-    fun clear() { items.clear(); terminalTurns.clear(); turnStatuses.clear(); turnMetadata.clear(); itemMetadata.clear(); observedUsage = null; limited = false; activeTurnId = null }
+    fun clear() { items.clear(); verifiedDetails.clear(); verifiedBytes = 0; terminalTurns.clear(); turnStatuses.clear(); turnMetadata.clear(); itemMetadata.clear(); observedUsage = null; limited = false; activeTurnId = null }
     fun cachedTokenUsage(): JsonObject? = observedUsage?.toJson()
     fun invalidate() {
+        verifiedDetails.clear()
+        verifiedBytes = 0
         items.replaceAll { _, item -> mergeItem(item, item.id, item.turnId, item.type, ItemUpdate.GAP) }
         activeTurnId = null
     }
 
     fun snapshot(history: JsonObject, preserveTerminal: Boolean = true) {
         val observed = if (preserveTerminal) items.toMap() else emptyMap()
+        val observedDetails = if (preserveTerminal) verifiedDetails.toMap() else emptyMap()
         val observedTurns = turnMetadata.toMap()
         val observedItems = itemMetadata.toMap()
         val usage = observedUsage
@@ -55,12 +62,34 @@ class HistoryProjection(private val maxItems: Int = 250) {
         // Only preserve a concurrent terminal for IDs present in this authoritative page.
         observed.forEach { (id, value) ->
             val current = items[id]
-            if (value.terminal && current != null && (!current.terminal || (current.detailsRequired && !value.detailsRequired))) items[id] = value
+            val sameItem = current?.turnId == value.turnId && current.type == value.type
+            if (value.terminal && sameItem && (!current.terminal || (current.detailsRequired && !value.detailsRequired))) items[id] = value
             // A complete started event followed by continuous deltas is already an independent,
             // appendable live projection. Keep that stream without appending any snapshot bytes.
-            if (value.appendable && !value.terminal && current?.terminal != true) items[id] = value
+            if (value.appendable && !value.terminal && current?.terminal != true && (current == null || sameItem)) items[id] = value
+        }
+        observedDetails.forEach { (id, detail) ->
+            val current = items[id]
+            if (detail.terminal && current?.terminal == true && current.turnId == detail.turnId && current.type == detail.type) {
+                verifiedDetails[id] = detail
+                verifiedBytes += detail.baseline.toByteArray(Charsets.UTF_8).size
+            }
         }
         bound()
+    }
+
+    /** Called only after the existing chunk assembler has verified the complete immutable Item. */
+    fun applyVerifiedDetail(item: JsonObject, turn: String): Boolean {
+        val id = item.string("id") ?: throw IllegalArgumentException("详情缺少记录标识")
+        val current = items[id] ?: return false
+        require(current.turnId == turn && current.type == item.string("type")) { "详情与当前消息不匹配" }
+        val text = nativeText(item)
+        val bytes = text.toByteArray(Charsets.UTF_8).size
+        val previousBytes = verifiedDetails[id]?.baseline?.toByteArray(Charsets.UTF_8)?.size ?: 0
+        require(bytes <= remainingVerifiedBytes + previousBytes) { "完整消息超过本次读取上限" }
+        verifiedDetails[id] = current.copy(baseline = text, stream = "", appendable = false, detailsRequired = false)
+        verifiedBytes += bytes - previousBytes
+        return true
     }
 
     fun applyHistory(history: JsonObject, turnId: String? = null, older: Boolean = false) {
@@ -131,6 +160,7 @@ class HistoryProjection(private val maxItems: Int = 250) {
         }
         val id = scope.string("itemId") ?: return
         val turn = scope.string("turnId") ?: return
+        verifiedDetails.remove(id)?.let { verifiedBytes -= it.baseline.toByteArray(Charsets.UTF_8).size }
         when (event.string("kind")) {
             "item.delta" -> {
                 val type = items[id]?.type ?: when (payload.string("nativeMethod")) {
@@ -151,10 +181,11 @@ class HistoryProjection(private val maxItems: Int = 250) {
         bound()
     }
 
-    fun messages(): List<ChatMessage> = items.values.map { item ->
+    fun messages(): List<ChatMessage> = items.values.map { preview ->
+        val item = verifiedDetails[preview.id] ?: preview
         ChatMessage(item.id, when (item.type) { "userMessage" -> "user"; "agentMessage" -> "assistant"; else -> item.type },
-            item.visibleText.ifBlank { if (item.detailsRequired) "此内容需要读取完整详情" else "…" },
-            when { item.detailsRequired -> "内容未完整显示"; item.terminal -> when (turnStatuses[item.turnId]) { "interrupted" -> "本轮已停止"; "failed" -> "本轮失败"; else -> "" }; item.appendable -> "正在接收"; else -> "正在同步" }, item.turnId, item.detailsRequired,
+            item.visibleText.ifBlank { if (item.detailsRequired) "" else "…" },
+            when { item.terminal -> when (turnStatuses[item.turnId]) { "interrupted" -> "本轮已停止"; "failed" -> "本轮失败"; else -> "" }; item.detailsRequired -> ""; item.appendable -> "正在接收"; else -> "正在同步" }, item.turnId, item.detailsRequired,
             phase = itemMetadata[item.id]?.string("phase"), needsAttention = itemMetadata[item.id]?.flag("needsAttention") == true,
             timestampMillis = itemMetadata[item.id]?.let { metadata ->
                 if (item.type == "userMessage") metadata.nativeMillis("startedAtMs") ?: metadata.nativeMillis("completedAtMs")
@@ -223,6 +254,9 @@ class HistoryProjection(private val maxItems: Int = 250) {
         if (items.values.any { it.detailsRequired }) limited = true
         while (items.size > maxItems) { items.remove(items.keys.first()); limited = true }
         itemMetadata.keys.retainAll(items.keys)
+        verifiedDetails.keys.filter { it !in items }.forEach { id ->
+            verifiedDetails.remove(id)?.let { verifiedBytes -= it.baseline.toByteArray(Charsets.UTF_8).size }
+        }
         // A metadata event may precede the first Item; bound it independently of content.
         while (turnMetadata.size > maxItems) turnMetadata.remove(turnMetadata.keys.first())
         turnStatuses.keys.retainAll(turnMetadata.keys)

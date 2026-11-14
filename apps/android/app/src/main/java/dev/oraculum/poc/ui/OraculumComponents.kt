@@ -16,6 +16,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -49,7 +50,7 @@ fun OraculumCard(
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val colors = MaterialTheme.colorScheme
-    val color = when (role) {
+    val color = if (LocalOledTheme.current) Color.Black else when (role) {
         CardRole.Content -> colors.surfaceContainer
         CardRole.User -> colors.surfaceContainerLow
         CardRole.Process -> colors.surfaceContainerLowest

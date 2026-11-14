@@ -13,7 +13,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import dev.oraculum.poc.R
 
-/** A small, bundled set of Google's Material Symbols Outlined (24px / weight 400). */
+/** Bundled 24dp outlined symbols matching the app's Material icon set. */
 enum class OraculumSymbol(@DrawableRes internal val drawable: Int) {
     Add(R.drawable.ms_add),
     Search(R.drawable.ms_search),
@@ -37,6 +37,9 @@ enum class OraculumSymbol(@DrawableRes internal val drawable: Int) {
     DataUsage(R.drawable.ms_data_usage),
     Extension(R.drawable.ms_extension),
     Copy(R.drawable.ms_content_copy),
+    Fork(R.drawable.ms_fork),
+    Compress(R.drawable.ms_compress),
+    ArrowDown(R.drawable.ms_arrow_downward),
     Share(R.drawable.ms_share),
     Download(R.drawable.ms_download),
     OpenInNew(R.drawable.ms_open_in_new),

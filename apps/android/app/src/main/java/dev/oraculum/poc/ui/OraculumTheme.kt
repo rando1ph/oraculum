@@ -93,6 +93,9 @@ private val MatchaShapes = Shapes(
 
 private val LocalReadingScale = staticCompositionLocalOf { 1f }
 
+/** Targeted OLED surfaces opt in without flattening the shared Material color scheme. */
+internal val LocalOledTheme = staticCompositionLocalOf { false }
+
 internal data class AccentOption(val key: String, val label: String, val light: Color, val dark: Color, val lightContainer: Color, val darkContainer: Color)
 
 /** Fixed accessible pairs keep every selected accent readable in all three modes. */
@@ -122,7 +125,10 @@ internal fun oraculumColorScheme(mode: String, accentColor: String): ColorScheme
 
 @Composable
 fun OraculumTheme(mode: String = "dark", readingScale: Float = 1f, accentColor: String = "matcha", content: @Composable () -> Unit) {
-    CompositionLocalProvider(LocalReadingScale provides readingScale.coerceIn(.85f, 1.4f)) {
+    CompositionLocalProvider(
+        LocalReadingScale provides readingScale.coerceIn(.85f, 1.4f),
+        LocalOledTheme provides (mode == "oled"),
+    ) {
         MaterialTheme(
             colorScheme = oraculumColorScheme(mode, accentColor),
             typography = MatchaTypography,

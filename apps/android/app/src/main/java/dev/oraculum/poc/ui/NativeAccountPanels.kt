@@ -10,10 +10,13 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import dev.oraculum.gateway.protocol.RateLimitsClass
@@ -167,7 +170,10 @@ private fun AccountFact(label: String, value: String) {
 @Composable
 internal fun NativeDefaultsDetails(state: PocUiState, actions: PocActions, onDismiss: () -> Unit) {
     val defaults = state.nativeDefaults
+    val oled = LocalOledTheme.current
     AlertDialog(onDismissRequest = onDismiss, modifier = Modifier.testTag("native-defaults"),
+        containerColor = if (oled) Color.Black else AlertDialogDefaults.containerColor,
+        tonalElevation = if (oled) 0.dp else AlertDialogDefaults.TonalElevation,
         title = { Text("执行设置") },
         text = {
             Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -267,22 +273,35 @@ internal fun NativeThreadRow(thread: ThreadOption, state: PocUiState, actions: P
 }
 
 @Composable
-internal fun TurnToolsMenu(turnId: String, state: PocUiState, actions: PocActions) {
-    var menu by remember { mutableStateOf(false) }
-    var revert by rememberSaveable(turnId) { mutableStateOf(false) }
-    val canWrite = state.canManageThread && state.online && !state.busy && state.unknownWarning == null && state.unresolvedOperations.isEmpty()
-    if (turnId.isNotBlank() && listOf("thread.fork", "thread.revert").any { it in state.capabilityNames }) Box {
-        IconButton({ menu = true }, Modifier.size(48.dp).testTag("turn-tools-$turnId")) {
-            Text("⋯", style = MaterialTheme.typography.titleLarge, modifier = Modifier.semantics { contentDescription = "此轮历史操作" })
+internal fun TurnToolsMenu(turnId: String, state: PocUiState, actions: PocActions, copyText: String, menuKey: String = turnId) {
+    var menu by remember(menuKey) { mutableStateOf(false) }
+    var revert by rememberSaveable(menuKey) { mutableStateOf(false) }
+    val clipboard = LocalClipboardManager.current
+    val oled = LocalOledTheme.current
+    val canWrite = turnId.isNotBlank() && state.canManageThread && state.online && !state.busy && state.unknownWarning == null && state.unresolvedOperations.isEmpty()
+    if (turnId.isNotBlank() || copyText.isNotBlank()) Box {
+        IconButton({ menu = true }, Modifier.size(48.dp).testTag("turn-tools-$menuKey")) {
+            Text("⋯", style = MaterialTheme.typography.titleLarge, modifier = Modifier.semantics { contentDescription = if (turnId.isBlank()) "回答操作" else "此轮历史操作" })
         }
-        DropdownMenu(menu, { menu = false }) {
-            if ("thread.fork" in state.capabilityNames) DropdownMenuItem(text = { Text("从此轮分叉") }, enabled = canWrite,
-                modifier = Modifier.testTag("fork-turn-$turnId"), onClick = { menu = false; actions.onForkThread(turnId) })
-            if ("thread.revert" in state.capabilityNames) DropdownMenuItem(text = { Text("撤回到此轮之前") }, enabled = canWrite,
-                modifier = Modifier.testTag("revert-turn-$turnId"), onClick = { menu = false; revert = true })
+        DropdownMenu(menu, { menu = false },
+            containerColor = if (oled) Color.Black else MaterialTheme.colorScheme.surfaceContainerHigh,
+            tonalElevation = if (oled) 0.dp else MenuDefaults.TonalElevation) {
+            DropdownMenuItem(text = { Text("复制") }, enabled = copyText.isNotEmpty(),
+                leadingIcon = { OraculumIcon(OraculumSymbol.Copy) },
+                colors = MenuDefaults.itemColors(textColor = MaterialTheme.colorScheme.primary, leadingIconColor = MaterialTheme.colorScheme.primary),
+                modifier = Modifier.testTag("copy-turn-$menuKey"),
+                onClick = { clipboard.setText(AnnotatedString(copyText)); menu = false })
+            if (turnId.isNotBlank() && "thread.fork" in state.capabilityNames) DropdownMenuItem(text = { Text("分叉") }, enabled = canWrite,
+                leadingIcon = { OraculumIcon(OraculumSymbol.Fork) },
+                modifier = Modifier.testTag("fork-turn-$menuKey"), onClick = { menu = false; actions.onForkThread(turnId) })
+            if (turnId.isNotBlank() && "thread.revert" in state.capabilityNames) DropdownMenuItem(text = { Text("撤回") }, enabled = canWrite,
+                leadingIcon = { OraculumIcon(OraculumSymbol.History) },
+                modifier = Modifier.testTag("revert-turn-$menuKey"), onClick = { menu = false; revert = true })
         }
     }
     if (revert) AlertDialog(onDismissRequest = { revert = false }, icon = { OraculumIcon(OraculumSymbol.History) },
+        containerColor = if (oled) Color.Black else AlertDialogDefaults.containerColor,
+        tonalElevation = if (oled) 0.dp else AlertDialogDefaults.TonalElevation,
         title = { Text("撤回此轮及后续历史？") },
         text = { Text("会话将回到此轮开始之前。此轮及之后的会话历史会被撤回；已经发生的工作区文件修改不会恢复。") },
         confirmButton = { TextButton({ actions.onRevertThread(turnId); revert = false }, enabled = canWrite,

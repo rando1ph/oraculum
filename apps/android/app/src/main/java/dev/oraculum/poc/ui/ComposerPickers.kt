@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import dev.oraculum.poc.repository.isWritableEffort
@@ -17,7 +18,8 @@ internal fun ModelPickerMenu(state: PocUiState, actions: PocActions, expanded: B
     var defaults by remember { mutableStateOf(false) }
     DropdownMenu(expanded = expanded, onDismissRequest = onDismiss,
         modifier = Modifier.width(280.dp).heightIn(max = 420.dp).testTag("model-sheet"),
-        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+        containerColor = if (LocalOledTheme.current) Color.Black else MaterialTheme.colorScheme.surfaceContainerHigh,
+        tonalElevation = if (LocalOledTheme.current) 0.dp else MenuDefaults.TonalElevation,
         shape = OraculumTokens.ContentShape) {
         if (page != "root") {
             DropdownMenuItem(text = { Text(if (page == "models") "模型" else "思考强度") },
@@ -77,7 +79,8 @@ internal fun PermissionPickerMenu(state: PocUiState, actions: PocActions, expand
     var defaults by remember { mutableStateOf(false) }
     DropdownMenu(expanded = expanded, onDismissRequest = onDismiss,
         modifier = Modifier.width(240.dp).testTag("permission-sheet"),
-        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+        containerColor = if (LocalOledTheme.current) Color.Black else MaterialTheme.colorScheme.surfaceContainerHigh,
+        tonalElevation = if (LocalOledTheme.current) 0.dp else MenuDefaults.TonalElevation,
         shape = OraculumTokens.ContentShape) {
         PickerChoice(defaultChoiceLabel(composerPermissionLabel(state.copy(permissionPreset = "native")), "权限"), state.permissionPreset == "native", !state.busy, "permission-native") {
             actions.onSelectPermission("native", false); onDismiss()
@@ -106,6 +109,8 @@ internal fun PermissionPickerMenu(state: PocUiState, actions: PocActions, expand
     }
     if (defaults) NativeDefaultsDetails(state, actions) { defaults = false }
     if (confirmFull) AlertDialog(onDismissRequest = { confirmFull = false },
+        containerColor = if (LocalOledTheme.current) Color.Black else AlertDialogDefaults.containerColor,
+        tonalElevation = if (LocalOledTheme.current) 0.dp else AlertDialogDefaults.TonalElevation,
         icon = { OraculumIcon(OraculumSymbol.Warning) }, title = { Text("启用 Full access？") },
         text = { Text("下一次执行将使用完整主机权限，且可能无需逐次审批。请仅对你信任的任务启用。") },
         confirmButton = { TextButton({

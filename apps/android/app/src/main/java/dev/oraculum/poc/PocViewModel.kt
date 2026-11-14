@@ -582,39 +582,98 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
         mutableState.value = state.value.copy(inspector = state.value.inspector.copy(extensions = sections))
     }
 
+    private data class VerifiedDetailRead(val item: JsonObject, val bytes: Int)
+
+    /** Shared read-only chunk path. No bytes are published before the full digest and identity pass. */
+    private suspend fun readVerifiedItemDetails(
+        project: String, thread: String, turn: String, item: String, readEpoch: String,
+        revision: String?, maxBytes: Int = 8 * 1024 * 1024, stillCurrent: () -> Boolean,
+        progress: (Int, Long?) -> Unit = { _, _ -> },
+    ): VerifiedDetailRead {
+        if (maxBytes <= 0) throw ClientStateException("完整消息超过本次读取上限")
+        val accumulator = ItemDetailAccumulator(item, readEpoch, maxBytes)
+        var cursor: String? = null
+        var pages = 0
+        do {
+            if (!stillCurrent()) throw ClientStateException("会话已更新，读取已停止，请再次刷新")
+            val data = resource(client.post("threads/${segment(thread)}/history/details", buildJsonObject {
+                put("projectId", project); put("turnId", turn); put("itemId", item); cursor?.let { put("cursor", it) }
+            }))
+            if (!stillCurrent()) throw ClientStateException("会话已更新，读取已停止，请再次刷新")
+            if (revision != null && data.string("historyRevision") != revision)
+                throw ClientStateException("会话历史已更新，读取已停止，请再次刷新")
+            val complete = try { withContext(Dispatchers.Default) { accumulator.append(data) } }
+            catch (error: IllegalArgumentException) { throw ClientStateException(error.message ?: "消息校验失败，请重新读取") }
+            catch (error: IllegalStateException) { throw ClientStateException(error.message ?: "消息校验失败，请重新读取") }
+            if (!stillCurrent()) throw ClientStateException("会话已更新，读取已停止，请再次刷新")
+            pages++
+            progress(accumulator.loadedBytes, data.number("totalBytes"))
+            if (complete != null) return VerifiedDetailRead(complete, accumulator.loadedBytes)
+            cursor = data.string("nextCursor")
+        } while (cursor != null && pages < 128)
+        throw ClientStateException("详情超过读取上限，尚未完整校验")
+    }
+
+    fun refreshConversation() = action {
+        requireOnline("history")
+        val project = state.value.selectedProjectId ?: return@action
+        val thread = state.value.selectedThreadId ?: return@action
+        mutableState.value = state.value.copy(conversationRefreshing = true)
+        try {
+            correctionAttempts = 0
+            syncThread(thread)
+            val scope = requireScope()
+            val generation = connectionGeneration
+            val readEpoch = epoch
+            val version = invalidationVersion
+            val revision = historyRevision ?: return@action
+            fun stillCurrent() = state.value.online && position != null && scopeKey == scope &&
+                state.value.selectedProjectId == project && state.value.selectedThreadId == thread &&
+                epoch == readEpoch && connectionGeneration == generation && invalidationVersion == version &&
+                historyRevision == revision
+            var remainingReadBytes = 8 * 1024 * 1024
+            val targets = projection.messages().filter { it.detailsRequired }
+            for (message in targets) {
+                val detail = readVerifiedItemDetails(project, thread, message.turnId, message.id, readEpoch, revision,
+                    maxBytes = minOf(remainingReadBytes, projection.remainingVerifiedBytes), stillCurrent = ::stillCurrent)
+                if (!stillCurrent()) throw ClientStateException("会话已更新，请再次刷新")
+                remainingReadBytes -= detail.bytes
+                projection.applyVerifiedDetail(detail.item, message.turnId)
+                inspectorProjection.item(detail.item, message.turnId)
+                showProjection()
+            }
+            if (!stillCurrent()) throw ClientStateException("会话已更新，请再次刷新")
+            saveProjection()
+        } finally { mutableState.value = state.value.copy(conversationRefreshing = false) }
+    }
+
     fun loadItemDetail(turnId: String, itemId: String) = action {
         requireOnline("history")
         val project = state.value.selectedProjectId ?: return@action
         val thread = state.value.selectedThreadId ?: return@action
+        val scope = requireScope()
         val generation = connectionGeneration
-        val accumulator = ItemDetailAccumulator(itemId, epoch)
-        var cursor: String? = null
-        var pages = 0
+        val readEpoch = epoch
+        val version = invalidationVersion
+        val revision = historyRevision
+        fun stillCurrent() = state.value.online && scopeKey == scope && connectionGeneration == generation &&
+            state.value.selectedProjectId == project && state.value.selectedThreadId == thread &&
+            epoch == readEpoch && invalidationVersion == version
         mutableState.value = state.value.copy(inspector = state.value.inspector.copy(detailTitle = itemId, detailText = null, detailProgress = "正在读取并校验完整详情…"))
         try {
-            do {
-                val data = resource(client.post("threads/${segment(thread)}/history/details", buildJsonObject {
-                    put("projectId", project); put("turnId", turnId); put("itemId", itemId); cursor?.let { put("cursor", it) }
-                }))
-                if (connectionGeneration != generation || state.value.selectedThreadId != thread) throw ClientStateException("连接或会话已改变，详情读取已停止")
-                val item = withContext(Dispatchers.Default) { accumulator.append(data) }
-                pages++
-                mutableState.value = state.value.copy(inspector = state.value.inspector.copy(detailProgress = "已读取 ${accumulator.loadedBytes} / ${data.number("totalBytes")} 字节"))
-                if (item != null) {
-                    inspectorProjection.item(item, turnId)
-                    val rendered = withContext(Dispatchers.Default) {
-                        val pretty = Json { prettyPrint = true }.encodeToString(JsonObject.serializer(), item)
-                        pretty.take(64 * 1024) to (pretty.length > 64 * 1024)
-                    }
-                    mutableState.value = state.value.copy(inspector = inspectorProjection.state(state.value.inspector).copy(detailText = rendered.first,
-                        detailProgress = if (rendered.second) "内容校验通过 · 当前仅显示前 64 Ki 字符" else "完整内容校验通过"))
-                }
-                cursor = data.string("nextCursor")
-            } while (cursor != null && pages < 128)
-            if (!accumulator.finished) throw ClientStateException("详情超过读取上限，尚未完整校验")
+            val detail = readVerifiedItemDetails(project, thread, turnId, itemId, readEpoch, revision, stillCurrent = ::stillCurrent) { loaded, total ->
+                mutableState.value = state.value.copy(inspector = state.value.inspector.copy(detailProgress = "已读取 $loaded / $total 字节"))
+            }
+            inspectorProjection.item(detail.item, turnId)
+            val rendered = withContext(Dispatchers.Default) {
+                val pretty = Json { prettyPrint = true }.encodeToString(JsonObject.serializer(), detail.item)
+                pretty.take(64 * 1024) to (pretty.length > 64 * 1024)
+            }
+            if (!stillCurrent()) throw ClientStateException("会话已更新，详情读取已停止")
+            mutableState.value = state.value.copy(inspector = inspectorProjection.state(state.value.inspector).copy(detailText = rendered.first,
+                detailProgress = if (rendered.second) "内容校验通过 · 当前仅显示前 64 Ki 字符" else "完整内容校验通过"))
         } catch (error: Exception) {
-            mutableState.value = state.value.copy(inspector = state.value.inspector.copy(detailText = null, detailProgress = "详情未通过完整校验；请重新读取"))
-            if (error is IllegalArgumentException || error is IllegalStateException) throw ClientStateException(error.message ?: "详情校验失败")
+            if (stillCurrent()) mutableState.value = state.value.copy(inspector = state.value.inspector.copy(detailText = null, detailProgress = "详情未通过完整校验；请重新读取"))
             throw error
         }
     }
@@ -1215,7 +1274,6 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
         saveProjection()
         val hasInteractions = data.array("interactions").isNotEmpty()
         mutableState.value = state.value.copy(historyWarning = when {
-            history.flag("truncated") || projection.limited -> "部分内容未完整加载，可在详情中继续读取并校验"
             hasInteractions -> "正在等待你的确认，请查看当前请求"
             nextHistoryCursor != null || itemCursors.isNotEmpty() -> "已加载最近历史，可继续加载更早内容"
             else -> null
@@ -1546,7 +1604,7 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
         mutableState.value = state.value.copy(inspector = inspectorProjection.state(state.value.inspector), messages = messages,
             readIndex = if (index >= 0) index else state.value.readIndex.coerceIn(0, messages.lastIndex.coerceAtLeast(0)),
             readOffset = if (index >= 0) anchor?.offset ?: 0 else 0,
-            historyWarning = if (projection.limited) "当前最多展示 250 条内容，部分历史尚未完整加载" else state.value.historyWarning)
+            historyWarning = state.value.historyWarning)
         updateControls()
     }
 
@@ -1593,7 +1651,7 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun showProjection() {
         mutableState.value = state.value.copy(inspector = inspectorProjection.state(state.value.inspector), messages = projection.messages(),
-            historyWarning = if (projection.limited) "当前最多展示 250 条内容，部分历史尚未完整加载" else state.value.historyWarning)
+            historyWarning = state.value.historyWarning)
         updateControls()
     }
 
@@ -1604,7 +1662,7 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
         nextHistoryCursor = null; itemCursors.clear(); historyRevision = null; historyPages = 0
         replaceTerminalOnSnapshot = true; projection.clear(); inspectorProjection.clear(); invalidationVersion++
         mutableState.value = state.value.copy(selectedThreadId = null, messages = emptyList(), draft = "", readIndex = 0, readOffset = 0,
-            executionLabel = "", historyWarning = null, operationStatusMessage = null, inspector = InspectorUiState(), interactions = emptyList(), actualPermissionPreset = null, permissionReadback = null, permissionPreset = "native", selectedModel = null, selectedEffort = null, actualModel = null, actualEffort = null)
+            executionLabel = "", conversationRefreshing = false, historyWarning = null, operationStatusMessage = null, inspector = InspectorUiState(), interactions = emptyList(), actualPermissionPreset = null, permissionReadback = null, permissionPreset = "native", selectedModel = null, selectedEffort = null, actualModel = null, actualEffort = null)
         updateControls()
     }
 
@@ -1747,7 +1805,7 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun disconnectTransport() {
         navigationSyncJob?.cancel()
-        mutableState.value = state.value.copy(nativeDefaults = null, nativeDefaultsError = null)
+        mutableState.value = state.value.copy(nativeDefaults = null, nativeDefaultsError = null, conversationRefreshing = false)
         revokeFileChangeContexts()
         invalidatePermissionReadback()
         connectionGeneration++

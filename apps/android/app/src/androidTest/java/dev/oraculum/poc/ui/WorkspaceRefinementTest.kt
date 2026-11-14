@@ -57,26 +57,32 @@ class WorkspaceRefinementTest {
         compose.onNodeWithTag("project-project").assertIsDisplayed()
         compose.onNodeWithTag("thread-thread").assertIsDisplayed()
         val projectBounds = projects.fetchSemanticsNode().boundsInRoot
+        val projectRefreshBounds = compose.onNodeWithTag("refresh-projects").assertIsEnabled().fetchSemanticsNode().boundsInRoot
         val registerBounds = compose.onNodeWithTag("register_project").assertIsEnabled().fetchSemanticsNode().boundsInRoot
         val threadBounds = threads.fetchSemanticsNode().boundsInRoot
         val newBounds = compose.onNodeWithTag("new-thread").assertIsEnabled().fetchSemanticsNode().boundsInRoot
         val refreshBounds = compose.onNodeWithTag("refresh-navigation").assertIsEnabled().fetchSemanticsNode().boundsInRoot
-        assertTrue("Fold controls lead their heading actions", projectBounds.left < registerBounds.left)
-        assertTrue(threadBounds.left < newBounds.left && threadBounds.left < refreshBounds.left)
-        compose.onNodeWithContentDescription("注册项目目录").assertIsDisplayed()
+        assertTrue("Projects place refresh before add", projectBounds.left < projectRefreshBounds.left &&
+            projectRefreshBounds.left < registerBounds.left)
+        assertTrue("Conversations place refresh before new", threadBounds.left < refreshBounds.left &&
+            refreshBounds.left < newBounds.left)
+        compose.onNodeWithContentDescription("刷新项目").assertIsDisplayed()
+        compose.onNodeWithContentDescription("添加项目").assertIsDisplayed()
         compose.onNodeWithContentDescription("新建会话").assertIsDisplayed()
-        compose.onNodeWithContentDescription("刷新项目与会话").assertIsDisplayed()
-        compose.onNodeWithText("注册项目目录").assertDoesNotExist()
+        compose.onNodeWithContentDescription("刷新会话").assertIsDisplayed()
+        compose.onNodeWithText("刷新项目").assertDoesNotExist()
+        compose.onNodeWithText("添加项目").assertDoesNotExist()
         compose.onNodeWithText("新建会话").assertDoesNotExist()
-        compose.onNodeWithText("刷新项目与会话").assertDoesNotExist()
+        compose.onNodeWithText("刷新会话").assertDoesNotExist()
         projects.performClick()
         compose.onNodeWithTag("project-project").assertDoesNotExist()
         compose.onNodeWithTag("register_project").assertIsDisplayed()
         threads.performClick()
         compose.onNodeWithTag("thread-thread").assertDoesNotExist()
         compose.onNodeWithTag("new-thread").assertIsDisplayed()
+        compose.onNodeWithTag("refresh-projects").performClick()
         compose.onNodeWithTag("refresh-navigation").performClick()
-        compose.runOnIdle { assertEquals(1, refreshes) }
+        compose.runOnIdle { assertEquals(2, refreshes) }
         compose.onNodeWithTag("new-thread").performClick()
         compose.runOnIdle { assertEquals(1, created) }
     }

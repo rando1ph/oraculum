@@ -66,6 +66,7 @@ class MainActivity : ComponentActivity() {
                     onPair = model::pair,
                     onReconnect = model::reconnect,
                     onRefresh = model::refresh,
+                    onRefreshConversation = model::refreshConversation,
                     onSelectProject = model::selectProject,
                     onRegisterProject = model::registerProject,
                     onSelectThread = model::selectThread,
