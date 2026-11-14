@@ -449,7 +449,8 @@ private fun Conversation(state: PocUiState, actions: PocActions, modifier: Modif
             }
             items(rows, key = { it.key }) { row ->
                 if (row.message != null) MessageCard(row.message, state, actions)
-                else OraculumCard(CardRole.Content, Modifier.fillMaxWidth(), PaddingValues(0.dp)) {
+                else OraculumCard(CardRole.Content, Modifier.fillMaxWidth(), PaddingValues(0.dp),
+                    border = if (LocalOledTheme.current) oledConversationBorder() else null) {
                     val answer = row.children.mapNotNull { it.message }.firstOrNull { it.role == "assistant" && !isProcessMessage(it) }
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         MessageHeader(answer ?: ChatMessage(row.key, "assistant", "", timestampMillis = row.turn?.startedAtMillis),
@@ -576,9 +577,11 @@ private fun Composer(state: PocUiState, actions: PocActions, filesState: FilesUi
     val hasText = state.draft.isNotBlank()
     val steering = state.activeTurnId != null && "turn.steer" in state.capabilityNames
     val canSubmit = state.online && hasText && if (steering) state.canSteer && filesState.attachments.isEmpty() && !filesState.hasUnknown else state.canSend
-    val border = BorderStroke(1.dp, if (hasText) MaterialTheme.colorScheme.primary.copy(alpha = 0.4f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+    val border = if (oled) oledConversationBorder() else BorderStroke(1.dp,
+        if (hasText) MaterialTheme.colorScheme.primary.copy(alpha = 0.4f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
     Column(Modifier.navigationBarsPadding().imePadding().padding(horizontal = 12.dp, vertical = 6.dp)) {
-        Surface(shape = OraculumTokens.PanelShape, color = if (oled) Color.Black else MaterialTheme.colorScheme.surfaceContainerHigh, border = border) {
+        Surface(shape = OraculumTokens.PanelShape, color = if (oled) Color.Black else MaterialTheme.colorScheme.surfaceContainerHigh,
+            border = border, tonalElevation = 0.dp, shadowElevation = 0.dp) {
             Column(Modifier.heightIn(max = maximumHeight).padding(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 // Only the content area scrolls; send/stop remain outside it in a 48dp toolbar.
                 Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) {

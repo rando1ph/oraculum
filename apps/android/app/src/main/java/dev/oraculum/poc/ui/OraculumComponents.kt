@@ -27,6 +27,7 @@ object OraculumTokens {
     val ContentSpacing = 12.dp
     val PageSpacing = 16.dp
     val MinimumTouchTarget = 48.dp
+    val OledConversationBorderWidth = 1.5.dp
     // Refined Monolith Geometry: architectural, precise, reduced bubble bloat
     val ContentShape = RoundedCornerShape(16.dp)
     val UserShape = RoundedCornerShape(topStart = 16.dp, topEnd = 4.dp, bottomEnd = 16.dp, bottomStart = 16.dp)
@@ -47,6 +48,7 @@ fun OraculumCard(
     role: CardRole = CardRole.Content,
     modifier: Modifier = Modifier,
     contentPadding: PaddingValues = PaddingValues(16.dp),
+    border: BorderStroke? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val colors = MaterialTheme.colorScheme
@@ -63,7 +65,7 @@ fun OraculumCard(
         CardRole.Process -> OraculumTokens.ProcessShape
         CardRole.Inset -> OraculumTokens.InsetShape
     }
-    val border = when (role) {
+    val outline = border ?: when (role) {
         CardRole.Inset -> BorderStroke(1.dp, colors.outlineVariant.copy(alpha = 0.5f))
         CardRole.Process -> BorderStroke(1.dp, colors.outlineVariant.copy(alpha = 0.35f))
         CardRole.User -> BorderStroke(1.dp, colors.outlineVariant.copy(alpha = 0.25f))
@@ -75,11 +77,18 @@ fun OraculumCard(
         shape = shape,
         color = color,
         contentColor = if (role == CardRole.Attention) colors.onSecondaryContainer else colors.onSurface,
-        border = border,
+        border = outline,
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp,
     ) {
         Column(Modifier.padding(contentPadding), verticalArrangement = Arrangement.spacedBy(OraculumTokens.CompactSpacing), content = content)
     }
 }
+
+/** A quiet, consistent outline shared only by the three OLED conversation surfaces. */
+@Composable
+internal fun oledConversationBorder(): BorderStroke =
+    BorderStroke(OraculumTokens.OledConversationBorderWidth, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f))
 
 @Composable
 internal fun MessageContainer(
@@ -91,7 +100,9 @@ internal fun MessageContainer(
 ) {
     if (embedded) Column(modifier.padding(contentPadding),
         verticalArrangement = Arrangement.spacedBy(OraculumTokens.CompactSpacing), content = content)
-    else OraculumCard(role, modifier, contentPadding, content)
+    else OraculumCard(role, modifier, contentPadding,
+        border = if (LocalOledTheme.current && (role == CardRole.User || role == CardRole.Content)) oledConversationBorder() else null,
+        content = content)
 }
 
 @Composable
