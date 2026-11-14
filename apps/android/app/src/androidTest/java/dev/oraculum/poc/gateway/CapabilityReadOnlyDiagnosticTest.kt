@@ -20,9 +20,9 @@ import org.junit.runner.RunWith
 
 /**
  * Opt-in reads against the already paired Gateway, without starting an Activity or ViewModel.
- * Only authentication/health and GET capabilities/models/extensions are used. No Turn, resume,
- * configuration, preference or credential writes are allowed. The report contains only counts,
- * known capability flags, section status/reason codes and whether any model advertises ultra.
+ * Only authentication/health and GET capabilities/models/extensions/native defaults/account reads
+ * are used. No Turn, resume, configuration, preference or credential writes are allowed. Reports
+ * contain only counts, known capability/status flags, missing-value booleans and safe reason codes.
  */
 @RunWith(AndroidJUnit4::class)
 class CapabilityReadOnlyDiagnosticTest {
@@ -37,6 +37,7 @@ class CapabilityReadOnlyDiagnosticTest {
         val before = preferences.snapshot()
         var client: GatewayClient? = null
         var credentialSaves = 0
+        var verifyPairedIdentity: (() -> Boolean)? = null
         var failed = false
 
         suspend fun read(name: String, work: suspend () -> JsonObject): JsonObject? {
@@ -59,6 +60,10 @@ class CapabilityReadOnlyDiagnosticTest {
             val vault = CredentialVault(context)
             val savedCredential = checkNotNull(vault.load(endpoint)) { "SAVED_PAIRED_IDENTITY_REQUIRED" }
             check(savedCredential.identity.paired) { "SAVED_PAIRED_IDENTITY_REQUIRED" }
+            verifyPairedIdentity = {
+                val after = vault.load(endpoint)
+                after != null && after.identity == savedCredential.identity && after.secret == savedCredential.secret
+            }
             val identity = savedCredential.identity
             val scope = CacheScope(identity.endpoint, identity.installationId, identity.deviceId).key
             check(before.scopeKey == scope) { "SAVED_SCOPE_MISMATCH" }
@@ -94,6 +99,48 @@ class CapabilityReadOnlyDiagnosticTest {
                         .put("modelsDefaultingToUltra", models.count { it.text("defaultReasoningEffort") == "ultra" })
                         .put("hasNextCursor", page["nextCursor"] != null && page["nextCursor"] != JsonNull))
                 }
+                read("nativeDefaults") {
+                    gateway.get("projects/${GatewayClient.segment(project)}/native-defaults").data()
+                }?.let { data ->
+                    val defaults = GatewayProtocol.nativeDefaults(data)
+                    report.put("nativeDefaults", JSONObject()
+                        .put("modelMissing", defaults.model == null)
+                        .put("effortMissing", defaults.effort == null)
+                        .put("approvalPolicyMissing", defaults.approvalPolicy == null)
+                        .put("sandboxModeMissing", defaults.sandboxMode == null)
+                        .put("networkAccessMissing", defaults.workspaceWriteNetworkAccess == null))
+                }
+                read("accountRateLimits") { gateway.get("account/rate-limits").data() }?.let { data ->
+                    val account = GatewayProtocol.accountRateLimits(data)
+                    val limits = listOf(account.rateLimits) + account.rateLimitsByLimitID?.values.orEmpty()
+                    report.put("accountRateLimits", JSONObject()
+                        .put("limited", account.limited)
+                        .put("limitBucketCount", limits.size)
+                        .put("windowCount", limits.sumOf { listOfNotNull(it.primary, it.secondary).size })
+                        .put("primaryMissing", account.rateLimits.primary == null)
+                        .put("secondaryMissing", account.rateLimits.secondary == null)
+                        .put("creditsMissing", account.rateLimits.credits == null)
+                        .put("creditBalanceMissing", account.rateLimits.credits?.balance == null)
+                        .put("individualLimitMissing", account.rateLimits.individualLimit == null)
+                        .put("ordinaryUsageAllowedMissing", account.ordinaryUsageAllowed == null)
+                        .put("resetCreditsAvailableMissing", account.resetCreditsAvailable == null)
+                        .put("limitsByIdMissing", account.rateLimitsByLimitID == null))
+                }
+                read("accountUsage") { gateway.get("account/usage").data() }?.let { data ->
+                    val account = GatewayProtocol.accountUsage(data)
+                    val summary = account.summary
+                    report.put("accountUsage", JSONObject()
+                        .put("limited", account.limited)
+                        .put("dailyBucketsMissing", account.dailyUsageBuckets == null)
+                        .put("dailyBucketCount", account.dailyUsageBuckets?.size ?: 0)
+                        .put("summaryValueCount", listOfNotNull(summary.lifetimeTokens, summary.peakDailyTokens,
+                            summary.currentStreakDays, summary.longestStreakDays, summary.longestRunningTurnSEC).size)
+                        .put("lifetimeTokensMissing", summary.lifetimeTokens == null)
+                        .put("peakDailyTokensMissing", summary.peakDailyTokens == null)
+                        .put("currentStreakDaysMissing", summary.currentStreakDays == null)
+                        .put("longestStreakDaysMissing", summary.longestStreakDays == null)
+                        .put("longestRunningTurnMissing", summary.longestRunningTurnSEC == null))
+                }
                 read("extensions") {
                     gateway.get("projects/${GatewayClient.segment(project)}/extensions").data()
                 }?.let { snapshot ->
@@ -115,8 +162,10 @@ class CapabilityReadOnlyDiagnosticTest {
         } finally {
             client?.disconnect()
             val unchanged = preferences.snapshot() == before
-            report.put("preferencesUnchanged", unchanged).put("credentialSaves", credentialSaves)
-            if (!unchanged || credentialSaves != 0) failed = true
+            val identityUnchanged = runCatching { verifyPairedIdentity?.invoke() == true }.getOrDefault(false)
+            report.put("preferencesUnchanged", unchanged).put("pairedIdentityUnchanged", identityUnchanged)
+                .put("credentialSaves", credentialSaves)
+            if (!unchanged || !identityUnchanged || credentialSaves != 0) failed = true
             report.put("success", !failed)
             InstrumentationRegistry.getInstrumentation().sendStatus(0, Bundle().apply {
                 putString("capabilityDiagnostic", report.toString())
@@ -139,7 +188,8 @@ class CapabilityReadOnlyDiagnosticTest {
         val SAFE_CODE = Regex("^[A-Z][A-Z0-9_]{1,64}$")
         val KINDS = setOf("skills", "mcp", "apps", "plugins")
         val STATUSES = setOf("available", "unavailable")
-        val CAPABILITIES = setOf("extensions.read", "thread.rename", "thread.archive", "thread.unarchive",
-            "thread.delete", "account.rateLimits.read", "account.usage.read")
+        val CAPABILITIES = setOf("extensions.read", "config.read", "thread.name.set", "thread.archive",
+            "thread.unarchive", "thread.delete", "thread.fork", "thread.revert", "thread.compact", "turn.steer",
+            "account.rateLimits.read", "account.usage.read")
     }
 }

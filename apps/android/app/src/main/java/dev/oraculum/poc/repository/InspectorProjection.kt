@@ -1,6 +1,5 @@
 package dev.oraculum.poc.repository
 
-import dev.oraculum.gateway.protocol.Effort
 import dev.oraculum.poc.ui.*
 import kotlinx.serialization.json.*
 import java.io.ByteArrayOutputStream
@@ -139,15 +138,16 @@ class ItemDetailAccumulator(private val expectedItem: String, private val expect
     }
 }
 
-/** A native catalog entry can be displayed before the Gateway write contract supports it. */
-fun isWritableEffort(effort: String): Boolean = Effort.entries.any { it.value == effort }
+/** Protocol 2.1 accepts bounded names; the selected native model catalog grants each value. */
+private val effortPattern = Regex("^[a-z][a-z0-9_-]{0,63}$")
+fun isWritableEffort(effort: String, protocolMinor: Long = 1): Boolean =
+    effortPattern.matches(effort) && (protocolMinor >= 1 || effort in setOf("none", "minimal", "low", "medium", "high", "xhigh", "max"))
 
 fun modelOptions(page: JsonObject): List<ModelOption> {
-    val knownEfforts = Effort.entries.map { it.value }.toSet() + "ultra"
     return page.array("data").mapNotNull { raw -> (raw as? JsonObject)?.let { model ->
         val id = model.string("model") ?: return@let null
         val efforts = model.array("supportedReasoningEfforts").mapNotNull { (it as? JsonObject)?.string("reasoningEffort") }
-            .filter { it in knownEfforts }.distinct()
+            .filter(::isWritableEffort).distinct()
         ModelOption(id, model.string("displayName") ?: id, efforts, model.string("defaultReasoningEffort")?.takeIf { it in efforts }, model.string("description").orEmpty())
     } }
 }

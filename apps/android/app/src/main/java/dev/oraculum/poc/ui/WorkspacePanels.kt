@@ -159,20 +159,26 @@ internal fun ColumnScope.InspectorPanel(state: PocUiState, actions: PocActions, 
                 SectionLabel("Skills", OraculumSymbol.Extension)
                 if (state.inspector.extensions.isEmpty()) PanelEmptyState(OraculumSymbol.Extension, "连接后刷新，查看可用的 Skills 与扩展。")
                 state.inspector.extensions.sortedBy { listOf("skills", "mcp", "apps", "plugins").indexOf(it.kind).let { index -> if (index < 0) Int.MAX_VALUE else index } }.forEach { section ->
+                    var expanded by rememberSaveable(section.kind) { mutableStateOf(false) }
                     OraculumCard {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable { expanded = !expanded }
+                            .testTag("extensions-${section.kind}-toggle").semantics {
+                                role = Role.Button
+                                stateDescription = if (expanded) "已展开" else "已收起"
+                            }, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             OraculumIcon(OraculumSymbol.Extension, tint = MaterialTheme.colorScheme.primary)
                             Text(extensionSectionTitle(section.kind), Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
                             Text(if (section.status == "available") "${section.entries.size} 项" else if (section.reason == "STABILITY_UNVERIFIED") "暂未开放" else "暂不可用", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            OraculumIcon(if (expanded) OraculumSymbol.ExpandLess else OraculumSymbol.ExpandMore)
                         }
                         if (section.status != "available") MutedText(extensionUnavailableReason(section.kind, section.reason))
-                        section.entries.forEach { entry ->
+                        if (section.entries.isEmpty() && section.status == "available") MutedText("尚无已配置的${extensionSectionTitle(section.kind)}。")
+                        if (section.limited) MutedText("显示已取得的结果，清单可能不完整。")
+                        if (expanded) section.entries.forEach { entry ->
                             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                             Text(entry.title, fontWeight = FontWeight.Medium, style = MaterialTheme.typography.bodyMedium)
                             extensionEntryDescription(entry.body).takeIf { it.isNotBlank() }?.let { MutedText(it) }
                         }
-                        if (section.entries.isEmpty() && section.status == "available") MutedText("尚无已配置的${extensionSectionTitle(section.kind)}。")
-                        if (section.limited) MutedText("显示已取得的结果，清单可能不完整。")
                     }
                 }
             }

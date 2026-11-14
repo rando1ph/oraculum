@@ -104,6 +104,7 @@ fun OraculumScreen(
                                             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     }
                                 }
+                                ThreadToolsMenu(state, actions)
                                 if (state.paired) GlyphButton("inspector", "打开 Inspector", "inspector", onClick = { panel = "inspector"; actions.onRefreshInspector() })
                             }
                             if (state.paired && !state.online) Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 12.dp)) {
@@ -125,6 +126,7 @@ fun OraculumScreen(
             ) { padding ->
                 Column(Modifier.fillMaxSize().padding(padding)) {
                     state.error?.let { Notice(it, true) }
+                    state.operationStatusMessage?.let { Notice(it) }
                     val pendingInteractions = state.interactions.count { it.status == "pending" }
                     if (pendingInteractions > 0) Surface(color = MaterialTheme.colorScheme.secondaryContainer) {
                         TextButton({ panel = "approval" }, Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("pending-interactions")) {
@@ -311,9 +313,19 @@ private fun ColumnScope.NavigationPanel(state: PocUiState, actions: PocActions, 
                 Button({ actions.onRegisterProject(rootId, relativePath); registerOpen = false }, enabled = canWrite && rootId.isNotBlank() && relativePath.isNotBlank(), modifier = Modifier.fillMaxWidth().testTag("confirm_register")) { Text("注册这个目录") }
             }
         }
-        item { HorizontalDivider(Modifier.padding(vertical = 8.dp)); SectionLabel("会话", OraculumSymbol.Chat) }
+        item {
+            HorizontalDivider(Modifier.padding(vertical = 8.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                SectionLabel(if (state.showArchivedThreads) "已归档会话" else "会话", OraculumSymbol.Chat, Modifier.weight(1f))
+                if ("thread.archive" in state.capabilityNames || "thread.unarchive" in state.capabilityNames)
+                    TextButton({ actions.onShowArchivedThreads(!state.showArchivedThreads) }, enabled = state.online && !state.busy,
+                        modifier = Modifier.testTag("archived-threads-toggle")) {
+                        Text(if (state.showArchivedThreads) "返回会话" else "已归档")
+                    }
+            }
+        }
         items(state.threads.filter { filter.isBlank() || it.label.contains(filter, true) || it.detail.contains(filter, true) }, key = { "thread-${it.id}" }) { thread ->
-            NavigationRow(thread.label, thread.detail, thread.id == state.selectedThreadId, "thread-${thread.id}", !state.busy, symbol = OraculumSymbol.Chat, detailMaxLines = 1) { actions.onSelectThread(thread.id); onDismiss() }
+            NativeThreadRow(thread, state, actions) { actions.onSelectThread(thread.id); onDismiss() }
         }
         if (state.threads.isEmpty()) item { MutedText(if (state.selectedProjectId == null) "选择项目后查看会话。" else "还没有可用会话。") }
         if (state.canLoadMoreThreads) item { OutlinedButton(actions.onLoadMoreThreads, enabled = state.online && !state.busy, modifier = Modifier.fillMaxWidth().testTag("load-more-threads")) { Text("加载更多会话") } }
@@ -321,12 +333,7 @@ private fun ColumnScope.NavigationPanel(state: PocUiState, actions: PocActions, 
         item { TextButton(actions.onRefresh, enabled = state.online && !state.busy, modifier = Modifier.fillMaxWidth()) { OraculumIcon(OraculumSymbol.Refresh); Spacer(Modifier.width(8.dp)); Text("刷新列表") } }
     }
     HorizontalDivider()
-    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp).testTag("account-quota"),
-        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        OraculumIcon(OraculumSymbol.DataUsage, tint = MaterialTheme.colorScheme.onSurfaceVariant, size = 18.dp)
-        Text("剩余额度", Modifier.weight(1f), style = MaterialTheme.typography.labelMedium)
-        Text("暂不可用", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    }
+    AccountQuotaFooter(state, actions)
     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
         UserAvatar(state.avatarFileName, state.userLabel, size = 28.dp)
         Column(Modifier.weight(1f).padding(start = 8.dp)) {
@@ -423,8 +430,11 @@ private fun Conversation(state: PocUiState, actions: PocActions, modifier: Modif
             if (row.message != null) MessageCard(row.message, state, actions)
             else OraculumCard(CardRole.Content, Modifier.fillMaxWidth(), PaddingValues(0.dp)) {
                 val answer = row.children.mapNotNull { it.message }.firstOrNull { it.role == "assistant" && !isProcessMessage(it) }
-                MessageHeader(answer ?: ChatMessage(row.key, "assistant", "", timestampMillis = row.turn?.startedAtMillis),
-                    state, modifier = Modifier.testTag("assistant-header-${row.turnId}").padding(start = 16.dp, end = 16.dp, top = 12.dp))
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    MessageHeader(answer ?: ChatMessage(row.key, "assistant", "", timestampMillis = row.turn?.startedAtMillis),
+                        state, modifier = Modifier.weight(1f).testTag("assistant-header-${row.turnId}").padding(start = 16.dp, end = 4.dp, top = 12.dp))
+                    TurnToolsMenu(row.turnId, state, actions)
+                }
                 TurnSummary(row) {
                     expandedTurns = if (row.turnId in expandedTurns) expandedTurns - row.turnId else expandedTurns + row.turnId
                 }
@@ -519,7 +529,8 @@ private fun Composer(state: PocUiState, actions: PocActions, filesState: FilesUi
     var pickerMenu by remember { mutableStateOf<String?>(null) }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments(), filesActions.pick)
     val hasText = state.draft.isNotBlank()
-    val canSubmit = state.canSend && state.online && hasText
+    val steering = state.activeTurnId != null && "turn.steer" in state.capabilityNames
+    val canSubmit = state.online && hasText && if (steering) state.canSteer && filesState.attachments.isEmpty() && !filesState.hasUnknown else state.canSend
     val border = BorderStroke(1.dp, if (hasText) MaterialTheme.colorScheme.primary.copy(alpha = 0.4f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
     Column(Modifier.navigationBarsPadding().imePadding().padding(horizontal = 12.dp, vertical = 6.dp)) {
         Surface(shape = OraculumTokens.PanelShape, color = MaterialTheme.colorScheme.surfaceContainerHigh, border = border) {
@@ -532,7 +543,7 @@ private fun Composer(state: PocUiState, actions: PocActions, filesState: FilesUi
                         Text(executionNotice, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
                     }
                     OutlinedTextField(state.draft, actions.onDraftChange,
-                        placeholder = { Text(if (!state.online) "离线草稿 · 联网后手动发送" else if (filesState.attachments.isNotEmpty()) "为附件添加说明…" else "给 Codex 发送消息…") },
+                        placeholder = { Text(if (!state.online) "离线草稿 · 联网后手动发送" else if (steering) "补充当前执行的指令…" else if (filesState.attachments.isNotEmpty()) "为附件添加说明…" else "给 Codex 发送消息…") },
                         minLines = 1, maxLines = if (compact) 2 else 4,
                         modifier = Modifier.fillMaxWidth().testTag("draft"), shape = RoundedCornerShape(16.dp),
                         colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Color.Transparent, unfocusedBorderColor = Color.Transparent))
@@ -562,7 +573,7 @@ private fun Composer(state: PocUiState, actions: PocActions, filesState: FilesUi
                                 modifier = Modifier.heightIn(min = 48.dp).testTag("permission-picker").semantics { contentDescription = "选择执行权限" }) {
                                 OraculumIcon(OraculumSymbol.Shield, size = 16.dp, tint = MaterialTheme.colorScheme.primary)
                                 Spacer(Modifier.width(4.dp))
-                                Text(when (state.permissionPreset) { "full-access" -> "Full"; "auto" -> "Auto"; else -> "只读" },
+                                Text(when (state.permissionPreset) { "native" -> "原生"; "full-access" -> "Full"; "auto" -> "Auto"; else -> "只读" },
                                     maxLines = 1, style = MaterialTheme.typography.labelMedium)
                             }
                             PermissionPickerMenu(state, actions, pickerMenu == "permission") { pickerMenu = null }
@@ -581,11 +592,11 @@ private fun Composer(state: PocUiState, actions: PocActions, filesState: FilesUi
                     }
                     if (state.canResume) TextButton(actions.onResume, enabled = state.online && !state.busy, modifier = Modifier.heightIn(min = 48.dp).testTag("resume")) { OraculumIcon(OraculumSymbol.Refresh, "恢复会话") }
                     if (state.canStop) FilledTonalIconButton(actions.onStop, enabled = state.online, modifier = Modifier.size(48.dp).testTag("stop").semantics { contentDescription = "停止执行" }) { Glyph("stop", MaterialTheme.colorScheme.onSurface) }
-                    else FilledIconButton(actions.onSend, enabled = canSubmit,
+                    if (!state.canStop || steering) FilledIconButton(if (steering) actions.onSteer else actions.onSend, enabled = canSubmit,
                         colors = IconButtonDefaults.filledIconButtonColors(
                             containerColor = if (canSubmit) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest,
                             contentColor = if (canSubmit) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)),
-                        modifier = Modifier.size(48.dp).testTag("send").semantics { contentDescription = "发送消息" }) { Glyph("send", LocalContentColor.current) }
+                        modifier = Modifier.size(48.dp).testTag(if (steering) "steer" else "send").semantics { contentDescription = if (steering) "补充本轮指令" else "发送消息" }) { Glyph("send", LocalContentColor.current) }
                 }
             }
         }

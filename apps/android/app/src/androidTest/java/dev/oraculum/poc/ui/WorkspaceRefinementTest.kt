@@ -14,7 +14,8 @@ class WorkspaceRefinementTest {
     private fun fixture(): PocUiState {
         val completed = TurnMetadataUi(status = "completed", durationMs = 1000)
         return PocUiState(
-            paired = true, online = true, selectedProjectId = "project", selectedThreadId = "thread",
+            paired = true, online = true, gatewayProtocolMinor = 0,
+            selectedProjectId = "project", selectedThreadId = "thread",
             projects = listOf(ProjectOption("project", "Fixture project")),
             threads = listOf(ThreadOption("thread", "Fixture thread")),
             userLabel = "Fixture user", assistantLabel = "Fixture assistant",
@@ -64,7 +65,7 @@ class WorkspaceRefinementTest {
         compose.onNodeWithText("账户额度暂未提供。").assertDoesNotExist()
     }
 
-    @Test fun reasoningOptionsAreVerticalAndUnsupportedUltraCannotBeSubmitted() {
+    @Test fun legacyProtocolReasoningOptionsAreVerticalAndUltraCannotBeSubmitted() {
         var chosenEffort: String? = null
         render(PocActions(onSelectEffort = { chosenEffort = it }))
         compose.onNodeWithTag("model-picker").performClick()

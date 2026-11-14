@@ -12,7 +12,9 @@ import dev.oraculum.poc.repository.isWritableEffort
 @Composable
 internal fun ModelPickerMenu(state: PocUiState, actions: PocActions, expanded: Boolean, onDismiss: () -> Unit) {
     var page by remember(expanded) { mutableStateOf("root") }
-    val model = state.models.firstOrNull { it.id == state.selectedModel }
+    val effectiveModel = state.selectedModel ?: state.actualModel ?: state.nativeDefaults?.model
+    val model = state.models.firstOrNull { it.id == effectiveModel }
+    var defaults by remember { mutableStateOf(false) }
     DropdownMenu(expanded = expanded, onDismissRequest = onDismiss,
         modifier = Modifier.width(280.dp).heightIn(max = 420.dp).testTag("model-sheet"),
         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
@@ -41,8 +43,8 @@ internal fun ModelPickerMenu(state: PocUiState, actions: PocActions, expanded: B
                     actions.onSelectEffort(""); onDismiss()
                 }
                 model?.efforts.orEmpty().forEach { effort ->
-                    PickerChoice(effort, state.selectedEffort == effort, !state.busy && isWritableEffort(effort), "effort-$effort",
-                        availability = if (isWritableEffort(effort)) null else "暂不可用") {
+                    PickerChoice(effort, state.selectedEffort == effort, !state.busy && isWritableEffort(effort, state.gatewayProtocolMinor), "effort-$effort",
+                        availability = if (isWritableEffort(effort, state.gatewayProtocolMinor)) null else "暂不可用") {
                         actions.onSelectEffort(effort); onDismiss()
                     }
                 }
@@ -50,23 +52,36 @@ internal fun ModelPickerMenu(state: PocUiState, actions: PocActions, expanded: B
             }
             else -> {
                 DropdownMenuItem(text = { Text("模型") }, trailingIcon = {
-                    Text(model?.label ?: state.selectedModel ?: "原生默认", style = MaterialTheme.typography.labelMedium)
+                    Text(if (state.selectedModel == null) "原生默认" else model?.label ?: state.selectedModel, style = MaterialTheme.typography.labelMedium)
                 }, onClick = { page = "models" }, modifier = Modifier.testTag("choose-model"))
                 DropdownMenuItem(text = { Text("思考强度") }, trailingIcon = {
                     Text(state.selectedEffort ?: "原生默认", style = MaterialTheme.typography.labelMedium)
                 }, onClick = { page = "efforts" }, modifier = Modifier.testTag("choose-effort"))
             }
         }
+        if ("config.read" in state.capabilityNames) {
+            HorizontalDivider()
+            DropdownMenuItem(text = { Text("查看原生设置") }, leadingIcon = { OraculumIcon(OraculumSymbol.Info) },
+                modifier = Modifier.testTag("model-native-settings"), onClick = {
+                    onDismiss(); defaults = true
+                    if (state.online && !state.busy) actions.onRefreshNativeDefaults()
+                })
+        }
     }
+    if (defaults) NativeDefaultsDetails(state, actions) { defaults = false }
 }
 
 @Composable
 internal fun PermissionPickerMenu(state: PocUiState, actions: PocActions, expanded: Boolean, onDismiss: () -> Unit) {
     var confirmFull by remember { mutableStateOf(false) }
+    var defaults by remember { mutableStateOf(false) }
     DropdownMenu(expanded = expanded, onDismissRequest = onDismiss,
         modifier = Modifier.width(240.dp).testTag("permission-sheet"),
         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
         shape = OraculumTokens.ContentShape) {
+        PickerChoice("跟随原生", state.permissionPreset == "native", !state.busy, "permission-native") {
+            actions.onSelectPermission("native", false); onDismiss()
+        }
         PickerChoice("只读", state.permissionPreset == "read-only", !state.busy, "permission-read-only") {
             actions.onSelectPermission("read-only", false); onDismiss()
         }
@@ -76,6 +91,14 @@ internal fun PermissionPickerMenu(state: PocUiState, actions: PocActions, expand
         PickerChoice("Full access", state.permissionPreset == "full-access", !state.busy, "permission-full-access") {
             onDismiss(); confirmFull = true
         }
+        if ("config.read" in state.capabilityNames) {
+            HorizontalDivider()
+            DropdownMenuItem(text = { Text("查看原生设置") }, leadingIcon = { OraculumIcon(OraculumSymbol.Info) },
+                modifier = Modifier.testTag("permission-native-settings"), onClick = {
+                    onDismiss(); defaults = true
+                    if (state.online && !state.busy) actions.onRefreshNativeDefaults()
+                })
+        }
         state.permissionReadback?.let { readback ->
             HorizontalDivider()
             DropdownMenuItem(text = { Text("最近确认：${when (readback.preset) {
@@ -83,6 +106,7 @@ internal fun PermissionPickerMenu(state: PocUiState, actions: PocActions, expand
             }}", style = MaterialTheme.typography.labelSmall) }, enabled = false, onClick = {})
         }
     }
+    if (defaults) NativeDefaultsDetails(state, actions) { defaults = false }
     if (confirmFull) AlertDialog(onDismissRequest = { confirmFull = false },
         icon = { OraculumIcon(OraculumSymbol.Warning) }, title = { Text("启用 Full access？") },
         text = { Text("下一次执行将使用完整主机权限，且可能无需逐次审批。请仅对你信任的任务启用。") },

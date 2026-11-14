@@ -67,6 +67,9 @@ object GatewayProtocol {
             path == "projects" -> decode<Projects>(data)
             path == "auth/session" -> decode<SessionResponse>(data)
             path == "models" -> decode<ModelPage>(data)
+            path == "account/rate-limits" -> accountRateLimits(data)
+            path == "account/usage" -> accountUsage(data)
+            Regex("^projects/[^/]+/native-defaults$").matches(path) -> nativeDefaults(data)
             Regex("^projects/[^/]+/extensions$").matches(path) -> decode<ExtensionsSnapshot>(data)
             path == "project-directories/query" -> decode<DirectoryPage>(data)
             Regex("^projects/[^/]+/files/query$").matches(path) -> decode<FilePage>(data)
@@ -80,6 +83,36 @@ object GatewayProtocol {
             path.endsWith("/snapshot") -> decode<Snapshot>(data)
             path.endsWith("/history/query") -> decode<HistoryPage>(data)
             path.endsWith("/history/details") -> decode<ItemDetails>(data)
+        }
+    }
+
+    internal fun nativeDefaults(value: JsonElement): NativeDefaults = decode<NativeDefaults>(value).also {
+        if (!sequence(it.readAt) || it.model?.let { model -> model.isBlank() || model.length > 200 } == true ||
+            it.effort?.let { effort -> !Regex("^[a-z][a-z0-9_-]{0,63}$").matches(effort) } == true) throw malformed()
+    }
+
+    internal fun accountRateLimits(value: JsonElement): AccountRateLimits = decode<AccountRateLimits>(value).also { account ->
+        if (!sequence(account.readAt) || account.resetCreditsAvailable?.let { !sequence(it) } == true) throw malformed()
+        fun validate(bucket: RateLimitsClass) {
+            listOfNotNull(bucket.primary, bucket.secondary).forEach { window ->
+                if (!sequence(window.usedPercent) || window.resetsAt?.let { !sequence(it) } == true ||
+                    window.windowDurationMins?.let { !sequence(it) } == true) throw malformed()
+            }
+            bucket.individualLimit?.let {
+                if (!sequence(it.remainingPercent) || !sequence(it.resetsAt)) throw malformed()
+            }
+        }
+        validate(account.rateLimits)
+        account.rateLimitsByLimitID?.values?.forEach(::validate)
+    }
+
+    internal fun accountUsage(value: JsonElement): AccountUsage = decode<AccountUsage>(value).also { account ->
+        val summary = account.summary
+        if (!sequence(account.readAt) || listOfNotNull(summary.lifetimeTokens, summary.peakDailyTokens,
+                summary.currentStreakDays, summary.longestStreakDays, summary.longestRunningTurnSEC).any { !sequence(it) })
+            throw malformed()
+        account.dailyUsageBuckets?.forEach {
+            if (!sequence(it.tokens) || runCatching { java.time.LocalDate.parse(it.startDate) }.isFailure) throw malformed()
         }
     }
 

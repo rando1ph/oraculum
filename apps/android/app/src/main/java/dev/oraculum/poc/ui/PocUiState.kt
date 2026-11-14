@@ -1,12 +1,15 @@
 package dev.oraculum.poc.ui
 
 import dev.oraculum.poc.repository.InteractionUi
+import dev.oraculum.gateway.protocol.NativeDefaults
+import dev.oraculum.gateway.protocol.AccountRateLimits
+import dev.oraculum.gateway.protocol.AccountUsage
 import kotlinx.serialization.json.JsonObject
 
 /** Display-only models. Native IDs remain opaque and are passed back unchanged. */
 data class RootOption(val id: String, val label: String)
 data class ProjectOption(val id: String, val label: String, val detail: String = "")
-data class ThreadOption(val id: String, val label: String, val detail: String = "")
+data class ThreadOption(val id: String, val label: String, val detail: String = "", val archived: Boolean = false)
 data class ChatMessage(
     val id: String,
     val role: String,
@@ -62,7 +65,7 @@ data class InspectorUiState(
     val detailTitle: String? = null,
     val detailText: String? = null,
     val detailProgress: String? = null,
-    val limitations: List<String> = listOf("Plan 模式、补充指令和插件安装未开放", "账户额度未由当前 Gateway 公开"),
+    val limitations: List<String> = listOf("Plan 模式和插件安装未开放"),
 )
 
 data class PocUiState(
@@ -101,7 +104,7 @@ data class PocUiState(
     val modelsLimited: Boolean = false,
     val selectedModel: String? = null,
     val selectedEffort: String? = null,
-    val permissionPreset: String = "read-only",
+    val permissionPreset: String = "native",
     val actualPermissionPreset: String? = null,
     val permissionReadback: PermissionReadbackUi? = null,
     val directory: DirectoryUiState = DirectoryUiState(),
@@ -111,7 +114,18 @@ data class PocUiState(
     val unresolvedOperations: List<UnknownOperationUi> = emptyList(),
     val operationStatusMessage: String? = null,
     val capabilityNames: Set<String> = emptySet(),
+    val gatewayProtocolMinor: Long = 0,
     val navigationRequest: String? = null,
+    val nativeDefaults: NativeDefaults? = null,
+    val nativeDefaultsError: String? = null,
+    val accountRateLimits: AccountRateLimits? = null,
+    val accountUsage: AccountUsage? = null,
+    val accountError: String? = null,
+    val accountRefreshing: Boolean = false,
+    val showArchivedThreads: Boolean = false,
+    val activeTurnId: String? = null,
+    val canSteer: Boolean = false,
+    val canManageThread: Boolean = false,
 )
 
 data class PocActions(
@@ -149,4 +163,15 @@ data class PocActions(
     val onLoadItemDetail: (String, String) -> Unit = { _, _ -> },
     val onQueryOperation: (String) -> Unit = {},
     val onRefreshOperationThread: (String) -> Unit = {},
+    val onRenameThread: (String, String) -> Unit = { _, _ -> },
+    val onArchiveThread: (String) -> Unit = {},
+    val onUnarchiveThread: (String) -> Unit = {},
+    val onDeleteThread: (String) -> Unit = {},
+    val onShowArchivedThreads: (Boolean) -> Unit = {},
+    val onForkThread: (String?) -> Unit = {},
+    val onRevertThread: (String) -> Unit = {},
+    val onCompactThread: () -> Unit = {},
+    val onSteer: () -> Unit = {},
+    val onRefreshAccount: () -> Unit = {},
+    val onRefreshNativeDefaults: () -> Unit = {},
 )
