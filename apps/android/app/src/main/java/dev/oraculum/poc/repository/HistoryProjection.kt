@@ -154,7 +154,7 @@ class HistoryProjection(private val maxItems: Int = 250) {
     fun messages(): List<ChatMessage> = items.values.map { item ->
         ChatMessage(item.id, when (item.type) { "userMessage" -> "user"; "agentMessage" -> "assistant"; else -> item.type },
             item.visibleText.ifBlank { if (item.detailsRequired) "此内容需要读取完整详情" else "…" },
-            when { item.detailsRequired -> "受限投影"; item.terminal -> when (turnStatuses[item.turnId]) { "interrupted" -> "本轮已停止"; "failed" -> "本轮失败"; else -> "" }; item.appendable -> "流式接收中"; else -> "正在校正原生状态" }, item.turnId, item.detailsRequired,
+            when { item.detailsRequired -> "内容未完整显示"; item.terminal -> when (turnStatuses[item.turnId]) { "interrupted" -> "本轮已停止"; "failed" -> "本轮失败"; else -> "" }; item.appendable -> "正在接收"; else -> "正在同步" }, item.turnId, item.detailsRequired,
             phase = itemMetadata[item.id]?.string("phase"), needsAttention = itemMetadata[item.id]?.flag("needsAttention") == true,
             timestampMillis = itemMetadata[item.id]?.let { metadata ->
                 if (item.type == "userMessage") metadata.nativeMillis("startedAtMs") ?: metadata.nativeMillis("completedAtMs")
@@ -240,7 +240,7 @@ private fun nativeText(item: JsonObject): String {
         "reasoning" -> textArray("summary").ifBlank { textArray("content") }.ifBlank { "思考过程" }
         "commandExecution" -> listOfNotNull(item.string("command"), item.string("aggregatedOutput")).joinToString("\n")
         "fileChange" -> item.array("changes").joinToString("\n") { (it as? JsonObject)?.string("path") ?: "文件变更" }
-        "plan" -> item.string("text") ?: "原生计划更新"
-        else -> item.string("text") ?: "原生事件：${item.string("type") ?: "unknown"}"
+        "plan" -> item.string("text") ?: "计划更新"
+        else -> item.string("text") ?: "执行记录"
     }
 }

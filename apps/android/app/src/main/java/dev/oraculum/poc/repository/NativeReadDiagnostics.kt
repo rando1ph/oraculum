@@ -3,7 +3,7 @@ package dev.oraculum.poc.repository
 import kotlinx.coroutines.CancellationException
 
 enum class NativeReadStage(val label: String) {
-    PROJECTS("读取项目目录"), MODELS("读取模型目录"), ACTIVE_THREADS("读取未归档会话列表"), SNAPSHOT("读取原生会话快照"),
+    PROJECTS("读取项目目录"), MODELS("读取模型目录"), ACTIVE_THREADS("读取未归档会话列表"), SNAPSHOT("读取会话内容"),
 }
 
 /** Contains only a fixed stage, elapsed time and the original exception, never request contents. */

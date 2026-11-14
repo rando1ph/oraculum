@@ -23,7 +23,7 @@ object GatewayProtocol {
         json.decodeFromString<T>(value.toString())
     } catch (_: Exception) { throw malformed() }
 
-    internal fun malformed(): GatewayException = GatewayException("INVALID_RESPONSE", "网关响应无法安全识别，请重新连接并校正原生状态。")
+    internal fun malformed(): GatewayException = GatewayException("INVALID_RESPONSE", "收到的数据异常，请重新连接并刷新会话。")
 
     internal fun health(value: JsonObject): HealthResponse {
         val result = decode<HealthResponse>(value)

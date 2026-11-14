@@ -85,8 +85,8 @@ internal fun ColumnScope.PermissionPanel(state: PocUiState, actions: PocActions,
     Column(Modifier.heightIn(max = 560.dp).verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("下一次执行", style = MaterialTheme.typography.titleSmall)
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            NavigationRow("Read only", "只读沙箱；写入和受限操作仍遵循原生审批。", state.permissionPreset == "read-only", "permission-read-only", !state.busy, symbol = OraculumSymbol.Shield, detailMaxLines = Int.MAX_VALUE) { actions.onSelectPermission("read-only", false) }
-            NavigationRow("Auto", "允许工作区内写入；提升权限仍需原生审批。", state.permissionPreset == "auto", "permission-auto", !state.busy, symbol = OraculumSymbol.Folder, detailMaxLines = Int.MAX_VALUE) { actions.onSelectPermission("auto", false) }
+            NavigationRow("Read only", "仅可读取文件，受限操作仍需审批。", state.permissionPreset == "read-only", "permission-read-only", !state.busy, symbol = OraculumSymbol.Shield, detailMaxLines = Int.MAX_VALUE) { actions.onSelectPermission("read-only", false) }
+            NavigationRow("Auto", "允许工作区内写入，提升权限仍需审批。", state.permissionPreset == "auto", "permission-auto", !state.busy, symbol = OraculumSymbol.Folder, detailMaxLines = Int.MAX_VALUE) { actions.onSelectPermission("auto", false) }
             NavigationRow("Full access", "取消沙箱限制，可修改工作区外文件并访问网络。", state.permissionPreset == "full-access", "permission-full-access", !state.busy, symbol = OraculumSymbol.Warning, detailMaxLines = Int.MAX_VALUE) { confirmFull = true }
         }
         HorizontalDivider()
@@ -125,13 +125,13 @@ internal fun ColumnScope.InspectorPanel(state: PocUiState, actions: PocActions, 
     } else {
         Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             if (tab == "diff") {
-                SectionLabel("当前原生 Diff", OraculumSymbol.Difference)
-                state.inspector.diff?.takeIf { it.isNotBlank() }?.let { DiffContent(it) } ?: PanelEmptyState(OraculumSymbol.Difference, "此会话尚无可用 Diff。")
+                SectionLabel("文件变更", OraculumSymbol.Difference)
+                state.inspector.diff?.takeIf { it.isNotBlank() }?.let { DiffContent(it) } ?: PanelEmptyState(OraculumSymbol.Difference, "此会话尚无文件变更。")
             }
             if (tab == "output") {
                 OraculumCard(CardRole.Inset) {
                     SectionLabel("执行状态", if (state.canStop) OraculumSymbol.Terminal else OraculumSymbol.Info)
-                    Text(state.executionLabel.ifBlank { "尚无正在执行的 Turn" }, style = MaterialTheme.typography.titleSmall)
+                    Text(state.executionLabel.ifBlank { "当前没有正在执行的任务" }, style = MaterialTheme.typography.titleSmall)
                 }
                 if (state.interactions.isNotEmpty()) {
                     SectionLabel("等待你的处理", OraculumSymbol.Shield)
@@ -139,7 +139,7 @@ internal fun ColumnScope.InspectorPanel(state: PocUiState, actions: PocActions, 
                         onApproveFileChange = { response, digest -> actions.onRespondFileChange(interaction.id, response, digest) }) { actions.onRespondInteraction(interaction.id, it) } }
                 }
                 if (state.inspector.plan.isNotEmpty()) {
-                    SectionLabel("原生 Plan 更新", OraculumSymbol.Description)
+                    SectionLabel("执行计划", OraculumSymbol.Description)
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) { state.inspector.plan.forEach { InspectorEntryCard(it, state, actions) } }
                 }
                 SectionLabel("执行记录", OraculumSymbol.Terminal)
@@ -183,10 +183,10 @@ internal fun ColumnScope.InspectorPanel(state: PocUiState, actions: PocActions, 
                 }
             }
             state.inspector.detailTitle?.let { title ->
-                SectionLabel("完整 Item 详情", OraculumSymbol.Code)
-                IdentifierRow("Item", title)
+                SectionLabel("执行详情", OraculumSymbol.Code)
+                IdentifierRow("记录编号", title)
                 state.inspector.detailProgress?.let { MutedText(it) }
-                state.inspector.detailText?.let { CodeBlock(it, "完整 Item") }
+                state.inspector.detailText?.let { CodeBlock(it, "执行详情") }
             }
             OutlinedButton(actions.onRefreshInspector, enabled = state.online && !state.busy, modifier = Modifier.fillMaxWidth().testTag("refresh-inspector")) {
                 ActionLabel(OraculumSymbol.Refresh, "刷新")
@@ -227,9 +227,8 @@ private fun InspectorEntryCard(entry: InspectorEntry, state: PocUiState, actions
         if (!expanded && entry.title == "commandExecution" && entry.body.isNotBlank()) Text(entry.body.lineSequence().first(), maxLines = 1, overflow = TextOverflow.Ellipsis,
             style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurfaceVariant)
         if (expanded) {
-            if (!isTurn && title != entry.title) MutedText("原生类型：${entry.title}")
-            if (entry.turnId.isNotBlank()) IdentifierRow("Turn", entry.turnId)
-            if (entry.itemId.isNotBlank()) IdentifierRow("Item", entry.itemId)
+            if (entry.turnId.isNotBlank()) IdentifierRow("执行编号", entry.turnId)
+            if (entry.itemId.isNotBlank()) IdentifierRow("记录编号", entry.itemId)
             if (entry.turnId.isBlank() && entry.itemId.isBlank()) IdentifierRow("记录", entry.id)
             if (entry.body.isNotBlank() && !isTurn) MarkdownContent(entry.body)
             if (entry.detailsRequired) OutlinedButton({ actions.onLoadItemDetail(entry.turnId, entry.itemId) }, enabled = state.online && !state.busy, modifier = Modifier.fillMaxWidth()) {
@@ -271,7 +270,11 @@ private fun NativeStatusLabel(status: String) {
     }
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         OraculumIcon(symbol, tint = if (status in listOf("failed", "error")) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant, size = 16.dp)
-        Text(status, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(when (status) {
+            "completed" -> "已完成"; "available" -> "可用"; "failed" -> "失败"; "error" -> "出错"
+            "inProgress", "in_progress", "running" -> "执行中"
+            "interrupted" -> "已停止"; "cancelled" -> "已取消"; else -> status
+        }, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
@@ -299,13 +302,13 @@ private fun DiffContent(diff: String) {
         OraculumCard(CardRole.Inset, contentPadding = PaddingValues(0.dp)) {
             Row(Modifier.fillMaxWidth().padding(start = 12.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OraculumIcon(OraculumSymbol.Difference, tint = MaterialTheme.colorScheme.primary)
-                Text("Unified Diff", Modifier.weight(1f), style = MaterialTheme.typography.labelMedium)
-                IconButton({ clipboard.setText(AnnotatedString(preview.text)) }, Modifier.size(48.dp)) { OraculumIcon(OraculumSymbol.Copy, "复制已显示 Diff") }
+                Text("文件差异", Modifier.weight(1f), style = MaterialTheme.typography.labelMedium)
+                IconButton({ clipboard.setText(AnnotatedString(preview.text)) }, Modifier.size(48.dp)) { OraculumIcon(OraculumSymbol.Copy, "复制已显示的差异") }
             }
             HorizontalDivider()
             if (preview.truncated) Text(CONTENT_PREVIEW_NOTICE, Modifier.padding(12.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             SelectionContainer {
-                Column(Modifier.horizontalScroll(rememberScrollState()).padding(12.dp).semantics { contentDescription = "Diff，可横向滚动；加号表示新增，减号表示删除" }) {
+                Column(Modifier.horizontalScroll(rememberScrollState()).padding(12.dp).semantics { contentDescription = "文件差异，可横向滚动；加号表示新增，减号表示删除" }) {
                     // The shared whole-view budget bounds this to 256 rows / 64 Ki characters.
                     preview.text.lineSequence().forEach { line ->
                         val added = line.startsWith('+') && !line.startsWith("+++")
@@ -325,6 +328,10 @@ internal fun ColumnScope.SettingsPanel(state: PocUiState, actions: PocActions, n
     var clearCacheOpen by remember { mutableStateOf(false) }
     var storageOpen by remember { mutableStateOf(false) }
     var notificationDetails by remember { mutableStateOf(false) }
+    var archivesOpen by rememberSaveable(state.selectedProjectId) { mutableStateOf(false) }
+    DisposableEffect(state.selectedProjectId) {
+        onDispose { actions.onShowArchivedThreads(false) }
+    }
     var userLabel by remember(state.userLabel) { mutableStateOf(state.userLabel) }
     var assistantLabel by remember(state.assistantLabel) { mutableStateOf(state.assistantLabel) }
     var readingScale by remember(state.readingScale) { mutableFloatStateOf(state.readingScale) }
@@ -409,9 +416,48 @@ internal fun ColumnScope.SettingsPanel(state: PocUiState, actions: PocActions, n
                 TextButton({ clearCacheOpen = true }, enabled = !state.busy, modifier = Modifier.fillMaxWidth().testTag("clear-cache")) { ActionLabel(OraculumSymbol.Delete, "清理历史缓存") }
             }
         }
+        Column(Modifier.fillMaxWidth()) {
+            Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable {
+                archivesOpen = !archivesOpen
+                if (!archivesOpen) actions.onShowArchivedThreads(false)
+                else if (state.selectedProjectId != null && state.online && !state.busy) actions.onShowArchivedThreads(true)
+            }.testTag("settings-archives-toggle").semantics {
+                role = Role.Button
+                stateDescription = if (archivesOpen) "已展开" else "已收起"
+            }, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                OraculumIcon(OraculumSymbol.History, tint = MaterialTheme.colorScheme.onSurfaceVariant, size = 18.dp)
+                Text("已归档会话", Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
+                OraculumIcon(if (archivesOpen) OraculumSymbol.ExpandLess else OraculumSymbol.ChevronRight,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant, size = 18.dp)
+            }
+            if (archivesOpen) Column(Modifier.fillMaxWidth().testTag("settings-archives"),
+                verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (state.selectedProjectId == null) MutedText("选择项目后可查看已归档会话。")
+                else {
+                    val project = state.projects.firstOrNull { it.id == state.selectedProjectId }
+                    project?.let { MutedText(it.label) }
+                    when {
+                        !state.archivedThreadsLoaded && state.busy -> MutedText("正在读取…")
+                        !state.archivedThreadsLoaded && !state.online -> MutedText("连接后可查看已归档会话。")
+                        !state.archivedThreadsLoaded -> MutedText("点击刷新，读取此项目的归档会话。")
+                        state.archivedThreads.isEmpty() -> MutedText("此项目暂无归档会话。")
+                    }
+                    state.archivedThreads.forEach { thread ->
+                        key(thread.id) { NativeThreadRow(thread, state, actions, onSelect = {}) }
+                    }
+                    if (state.canLoadMoreArchivedThreads) TextButton(actions.onLoadMoreArchivedThreads,
+                        enabled = state.online && !state.busy,
+                        modifier = Modifier.fillMaxWidth().testTag("load-more-archived-threads")) { Text("加载更多") }
+                    TextButton({ actions.onShowArchivedThreads(true) }, enabled = state.online && !state.busy,
+                        modifier = Modifier.fillMaxWidth().testTag("refresh-archived-threads")) {
+                        ActionLabel(OraculumSymbol.Refresh, "刷新归档会话")
+                    }
+                }
+            }
+        }
     }
     if (clearCacheOpen) AlertDialog(onDismissRequest = { clearCacheOpen = false }, icon = { OraculumIcon(OraculumSymbol.Delete) }, title = { Text("清理本机历史缓存？") },
-        text = { Text("清理本机保存的项目、会话列表与消息缓存，联网后重新读取。主机真实会话、未发送草稿、发送回执与未知操作记录都会保留。离线时将暂时无法查看已清理的历史。") },
+        text = { Text("清理本机保存的项目、会话列表与消息缓存，联网后重新读取。主机上的会话、未发送草稿、发送记录与结果待确认的操作都会保留。离线时将暂时无法查看已清理的历史。") },
         confirmButton = { TextButton({ actions.onClearCache(); clearCacheOpen = false }, Modifier.testTag("confirm-clear-cache")) { Text("清理缓存") } },
         dismissButton = { TextButton({ clearCacheOpen = false }) { Text("取消") } })
 }
@@ -448,35 +494,37 @@ internal fun ColumnScope.UnknownRecoveryPanel(state: PocUiState, actions: PocAct
     PanelHeading("操作结果待确认", onClose)
     Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         OraculumCard(CardRole.Attention) {
-            SectionLabel("发送屏障已保留", OraculumSymbol.Warning)
-            Text("请求可能已经到达 Codex。为避免重复执行，确认结果前会保留发送屏障。", style = MaterialTheme.typography.bodyMedium)
+            SectionLabel("暂不能重复发送", OraculumSymbol.Warning)
+            Text("请求可能已经到达 Codex。确认结果前会暂停发送，避免重复执行。", style = MaterialTheme.typography.bodyMedium)
             state.unknownWarning?.let { MutedText(it) }
         }
         state.operationStatusMessage?.let { Notice(it) }
-        if (state.unresolvedOperations.isEmpty()) MutedText("当前摘要未包含操作详情。请恢复连接并刷新原生状态。")
+        if (state.unresolvedOperations.isEmpty()) MutedText("暂未取得操作详情。请恢复连接并刷新状态。")
         state.unresolvedOperations.forEach { operation ->
             OraculumCard {
-                SectionLabel(operation.kind, OraculumSymbol.History)
+                SectionLabel("待确认操作", OraculumSymbol.History)
                 val project = state.projects.firstOrNull { it.id == operation.projectId }
                 val thread = state.threads.firstOrNull { it.id == operation.threadId }
                 Text("项目：${project?.label ?: operation.projectId}", style = MaterialTheme.typography.bodyMedium)
                 Text("会话：${thread?.label ?: operation.threadId ?: "尚未确认"}", style = MaterialTheme.typography.bodyMedium)
                 SelectionContainer {
-                    Text("最后状态：${operation.status}\n投递状态：${operation.delivery}\n创建时间：${DateFormat.getDateTimeInstance().format(Date(operation.createdAt))}", style = MaterialTheme.typography.bodySmall)
+                    val status = when (operation.status) { "accepted" -> "已受理"; "rejected" -> "未受理"; else -> "待确认" }
+                    val delivery = when (operation.delivery) { "sent" -> "已发送"; "notSent" -> "未发送"; else -> "待确认" }
+                    Text("处理状态：$status\n发送状态：$delivery\n创建时间：${DateFormat.getDateTimeInstance().format(Date(operation.createdAt))}", style = MaterialTheme.typography.bodySmall)
                 }
-                IdentifierRow("operationId", operation.operationId)
-                operation.nativeTurnId?.let { IdentifierRow("原生 Turn", it) }
+                IdentifierRow("操作编号", operation.operationId)
+                operation.nativeTurnId?.let { IdentifierRow("执行编号", it) }
                 Text("影响范围：${if (operation.threadId == null) "此项目及关联操作" else "此会话及关联操作"}", style = MaterialTheme.typography.bodySmall)
                 OutlinedButton({ actions.onQueryOperation(operation.operationId) }, enabled = state.online && !state.busy,
-                    modifier = Modifier.fillMaxWidth().testTag("query-operation-${operation.operationId}")) { ActionLabel(OraculumSymbol.Search, "查询原回执") }
+                    modifier = Modifier.fillMaxWidth().testTag("query-operation-${operation.operationId}")) { ActionLabel(OraculumSymbol.Search, "查询发送结果") }
                 OutlinedButton({ actions.onRefreshOperationThread(operation.operationId) }, enabled = state.online && !state.busy,
-                    modifier = Modifier.fillMaxWidth().testTag("refresh-operation-${operation.operationId}")) { ActionLabel(OraculumSymbol.Refresh, "只读刷新原生线程") }
+                    modifier = Modifier.fillMaxWidth().testTag("refresh-operation-${operation.operationId}")) { ActionLabel(OraculumSymbol.Refresh, "刷新会话状态") }
                 if (state.canStop && operation.threadId == state.selectedThreadId) OutlinedButton(actions.onStop, enabled = state.online,
-                    modifier = Modifier.fillMaxWidth().testTag("unknown-stop")) { ActionLabel(OraculumSymbol.Stop, "停止已确认的活动 Turn") }
+                    modifier = Modifier.fillMaxWidth().testTag("unknown-stop")) { ActionLabel(OraculumSymbol.Stop, "停止当前执行") }
             }
         }
-        MutedText("只有 Gateway / Codex 的事实能确认接受或拒绝。404、无回执、断网和清理缓存都不表示请求未发送。")
-        MutedText("若仍无法确认，请在主机侧检查对应原生线程、Turn 和 Gateway 回执；保留 operationId 供人工核查。不要重新配对、重新注册或换设备重发同一请求。")
-        OutlinedButton(actions.onRefresh, enabled = state.online && !state.busy, modifier = Modifier.fillMaxWidth()) { ActionLabel(OraculumSymbol.Refresh, "刷新可读状态") }
+        MutedText("只有服务器返回的状态才能确认请求是否已受理。找不到记录、没有回执、断网或清理缓存，都不表示请求未发送。")
+        MutedText("若仍无法确认，请在主机上检查对应会话、执行记录和服务器回执，并保留操作编号。不要通过重新配对、重新注册或更换设备来重发同一请求。")
+        OutlinedButton(actions.onRefresh, enabled = state.online && !state.busy, modifier = Modifier.fillMaxWidth()) { ActionLabel(OraculumSymbol.Refresh, "刷新状态") }
     }
 }

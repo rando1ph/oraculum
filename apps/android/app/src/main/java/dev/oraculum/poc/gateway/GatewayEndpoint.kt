@@ -53,12 +53,12 @@ class GatewayException(
             val message = when (safeCode) {
                 "DEVICE_REVOKED" -> "此设备已被主机撤销，无法继续认证；请在主机检查设备授权。"
                 "UNAUTHENTICATED" -> "认证已失效，或配对码无效。请检查主机授权后重新连接；写入不会自动重发。"
-                "PROTOCOL_INCOMPATIBLE" -> "Gateway 协议不兼容，请使用支持协议 2 的网关。"
-                "OPERATION_UNKNOWN", "OPERATION_ALREADY_EXISTS" -> "该操作结果尚未确认。请查询回执和原生状态，不要重复发送。"
+                "PROTOCOL_INCOMPATIBLE" -> "当前 Gateway 版本不兼容，请更新后重新连接。"
+                "OPERATION_UNKNOWN", "OPERATION_ALREADY_EXISTS" -> "操作结果尚未确认，请刷新查看，不要重复提交。"
                 "RATE_LIMITED" -> "请求过于频繁，请稍后手动重试连接。"
-                "CURSOR_RESET_REQUIRED", "HISTORY_STALE" -> "历史游标已失效，请重新读取原生状态。"
+                "CURSOR_RESET_REQUIRED", "HISTORY_STALE" -> "历史记录已更新，请刷新后继续查看。"
                 "PROJECT_UNAVAILABLE", "THREAD_UNAVAILABLE", "NOT_FOUND" -> "所选项目、会话或资源不可用，请刷新后重新选择。"
-                else -> "网关拒绝请求（$safeCode）。请刷新授权或原生状态；写入不会自动重发。"
+                else -> "操作未被接受（$safeCode）。请刷新后检查，应用不会重复提交。"
             }
             return GatewayException(safeCode, message, status)
         }

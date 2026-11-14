@@ -101,6 +101,7 @@ class MainActivity : ComponentActivity() {
                     onUnarchiveThread = model::unarchiveThread,
                     onDeleteThread = model::deleteThread,
                     onShowArchivedThreads = model::showArchivedThreads,
+                    onLoadMoreArchivedThreads = model::loadMoreArchivedThreads,
                     onForkThread = model::forkThread,
                     onRevertThread = model::revertThread,
                     onCompactThread = model::compactThread,

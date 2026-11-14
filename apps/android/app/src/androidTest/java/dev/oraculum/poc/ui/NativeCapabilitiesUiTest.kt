@@ -1,10 +1,10 @@
 package dev.oraculum.poc.ui
 
 import androidx.activity.ComponentActivity
-import androidx.compose.foundation.layout.Column
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import dev.oraculum.gateway.protocol.AccountRateLimits
@@ -101,20 +101,34 @@ class NativeCapabilitiesUiTest {
         compose.runOnIdle { assertEquals(listOf(thread.id), archived) }
     }
 
-    @Test fun archivedSidebarRestoresAnOpaqueThreadAndCanReturnToActiveList() {
+    @Test fun archivesRemainInCollapsedSettingsAndUseTheirIndependentList() {
+        val archived = ThreadOption("archived-fixture", "Archived fixture", archived = true)
         val restored = mutableListOf<String>()
-        var requestedArchived: Boolean? = null
+        val archiveRequests = mutableListOf<Boolean>()
+        var loadMore = 0
         val state = fixture(setOf("thread.unarchive")).copy(
-            showArchivedThreads = true, threads = listOf(thread.copy(archived = true)))
+            threads = listOf(thread, archived), archivedThreads = listOf(archived),
+            archivedThreadsLoaded = true, canLoadMoreArchivedThreads = true)
         render(state, PocActions(onUnarchiveThread = { restored += it },
-            onShowArchivedThreads = { requestedArchived = it }))
+            onShowArchivedThreads = { archiveRequests += it },
+            onLoadMoreArchivedThreads = { loadMore++ }))
         compose.onNodeWithTag("navigation").performClick()
-        compose.onNodeWithTag("archived-threads-toggle").assertIsDisplayed().performClick()
-        compose.runOnIdle { assertEquals(false, requestedArchived) }
-        compose.onNodeWithTag("thread-menu-${thread.id}").performClick()
-        compose.onNodeWithTag("thread-archive-${thread.id}").assertDoesNotExist()
-        compose.onNodeWithTag("thread-restore-${thread.id}").assertIsEnabled().performClick()
-        compose.runOnIdle { assertEquals(listOf(thread.id), restored) }
+        compose.onNodeWithTag("thread-${thread.id}").assertIsDisplayed()
+        compose.onNodeWithTag("thread-${archived.id}").assertDoesNotExist()
+        compose.onNodeWithTag("archived-threads-toggle").assertDoesNotExist()
+        compose.onNodeWithTag("settings").performClick()
+        compose.onNodeWithTag("settings-archives-toggle").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag("settings-archives").assertDoesNotExist()
+        compose.onNodeWithTag("thread-${archived.id}").assertDoesNotExist()
+        compose.onNodeWithTag("settings-archives-toggle").performClick()
+        compose.runOnIdle { assertEquals(listOf(true), archiveRequests) }
+        compose.onNodeWithTag("thread-${archived.id}").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag("load-more-archived-threads").performScrollTo().performClick()
+        compose.runOnIdle { assertEquals(1, loadMore) }
+        compose.onNodeWithTag("thread-menu-${archived.id}").performScrollTo().performClick()
+        compose.onNodeWithTag("thread-archive-${archived.id}").assertDoesNotExist()
+        compose.onNodeWithTag("thread-restore-${archived.id}").assertIsEnabled().performClick()
+        compose.runOnIdle { assertEquals(listOf(archived.id), restored) }
     }
 
     @Test fun threadAndTurnToolsPreserveIdsAndConfirmHistoryChanges() {
@@ -124,18 +138,20 @@ class NativeCapabilitiesUiTest {
         val state = fixture(setOf("thread.fork", "thread.compact", "thread.revert"))
         val actions = PocActions(onForkThread = { forks += it }, onCompactThread = { compactions++ },
             onRevertThread = { reverted += it })
-        renderContent { Column {
-            ThreadToolsMenu(state, actions)
-            TurnToolsMenu(turnId, state, actions)
-        } }
-        compose.onNodeWithTag("thread-tools").performClick()
+        render(state, actions)
+        compose.onNodeWithTag("thread-tools").assertDoesNotExist()
+        compose.onNodeWithTag("composer-add").performClick()
+        compose.onNodeWithTag("files_pick").assertExists()
+        compose.onNodeWithTag("composer-files").assertDoesNotExist()
+        compose.onNodeWithTag("composer-navigation").assertDoesNotExist()
         compose.onNodeWithTag("fork-thread").performClick()
         compose.runOnIdle { assertEquals(listOf<String?>(null), forks) }
         compose.onNodeWithTag("turn-tools-$turnId").performClick()
         compose.onNodeWithTag("fork-turn-$turnId").performClick()
         compose.runOnIdle { assertEquals(listOf(null, turnId), forks) }
-        compose.onNodeWithTag("thread-tools").performClick()
+        compose.onNodeWithTag("composer-add").performClick()
         compose.onNodeWithTag("compact-thread").performClick()
+        compose.onNodeWithTag("compact-thread").assertDoesNotExist()
         compose.runOnIdle { assertEquals(0, compactions) }
         compose.onNodeWithTag("confirm-compact-thread").performClick()
         compose.runOnIdle { assertEquals(1, compactions) }
@@ -160,7 +176,7 @@ class NativeCapabilitiesUiTest {
             onRevertThread = { mutations++ })
         renderContent { when (pane.value) {
             0 -> NativeThreadRow(thread, state, actions) {}
-            1 -> ThreadToolsMenu(state, actions)
+            1 -> OraculumScreen(state, actions)
             else -> TurnToolsMenu(turnId, state, actions)
         } }
         compose.onNodeWithTag("thread-menu-${thread.id}").performClick()
@@ -168,7 +184,8 @@ class NativeCapabilitiesUiTest {
         compose.onNodeWithTag("thread-archive-${thread.id}").assertIsNotEnabled()
         compose.onNodeWithTag("thread-delete-${thread.id}").assertIsNotEnabled()
         compose.runOnIdle { pane.value = 1 }
-        compose.onNodeWithTag("thread-tools").performClick()
+        compose.onNodeWithTag("thread-tools").assertDoesNotExist()
+        compose.onNodeWithTag("composer-add").performClick()
         compose.onNodeWithTag("fork-thread").assertIsNotEnabled()
         compose.onNodeWithTag("compact-thread").assertIsNotEnabled()
         compose.runOnIdle { pane.value = 2 }
@@ -184,6 +201,10 @@ class NativeCapabilitiesUiTest {
             readAt = 0, source = AccountRateLimitsSource.NativeRateLimits)
         renderContent { AccountQuotaFooter(fixture().copy(accountRateLimits = quota), PocActions()) }
         compose.onNodeWithText("5 小时 65%").assertIsDisplayed()
+        val progress = compose.onNodeWithTag("account-quota-progress-primary", useUnmergedTree = true)
+            .assertIsDisplayed().fetchSemanticsNode().config[SemanticsProperties.ProgressBarRangeInfo]
+        assertEquals("The bar represents remaining quota", .65f, progress.current, .0001f)
+        compose.onNodeWithTag("account-quota-progress-secondary", useUnmergedTree = true).assertDoesNotExist()
         compose.onNodeWithTag("account-quota").performClick()
         compose.onNodeWithTag("account-details").assertIsDisplayed()
         compose.onNodeWithText("剩余 65%").assertIsDisplayed()
@@ -192,8 +213,17 @@ class NativeCapabilitiesUiTest {
     }
 
     @Test fun missingQuotaRemainsUnknownWithoutInventingZero() {
-        renderContent { AccountQuotaFooter(fixture(), PocActions()) }
+        val state = mutableStateOf(fixture())
+        renderContent { AccountQuotaFooter(state.value, PocActions()) }
         compose.onNodeWithText("暂不可用").assertIsDisplayed()
+        compose.onNodeWithTag("account-quota-progress-primary", useUnmergedTree = true).assertDoesNotExist()
+        compose.runOnIdle { state.value = state.value.copy(accountRateLimits = AccountRateLimits(
+            limited = false, rateLimits = RateLimitsClass(primary = RateLimitsRateLimitWindow(
+                usedPercent = 101, windowDurationMins = 300)),
+            readAt = 0, source = AccountRateLimitsSource.NativeRateLimits)) }
+        compose.onNodeWithText("5 小时 未知").assertIsDisplayed()
+        compose.onNodeWithTag("account-quota-progress-primary", useUnmergedTree = true).assertDoesNotExist()
+        compose.runOnIdle { state.value = state.value.copy(accountRateLimits = null) }
         compose.onNodeWithTag("account-quota").performClick()
         compose.onNodeWithText("暂未取得账户额度。").assertIsDisplayed()
         compose.onNodeWithText("剩余 0%").assertDoesNotExist()
@@ -226,6 +256,21 @@ class NativeCapabilitiesUiTest {
         compose.onNodeWithTag("permission-native-settings").assertDoesNotExist()
         compose.onNodeWithTag("permission-native").assertIsEnabled().performClick()
         compose.runOnIdle { assertEquals("native" to false, selected); assertEquals(0, sends) }
+    }
+
+    @Test fun inheritedChipsShowKnownValuesWithoutCreatingOverrides() {
+        var overrides = 0
+        val defaults = NativeDefaults(approvalPolicy = ApprovalPolicy.OnRequest, effort = "ultra",
+            model = "model-fixture", origins = Origins(), readAt = 0,
+            sandboxMode = SandboxMode.WorkspaceWrite, source = NativeDefaultsSource.NativeConfig)
+        val state = fixture().copy(selectedModel = null, selectedEffort = null,
+            permissionPreset = "native", nativeDefaults = defaults)
+        render(state, PocActions(onSelectModel = { overrides++ }, onSelectEffort = { overrides++ },
+            onSelectPermission = { _, _ -> overrides++ }))
+        compose.onNodeWithTag("permission-picker").assertTextContains("工作区写入")
+        compose.onNodeWithTag("model-picker").assertTextContains("Fixture model · ultra")
+        compose.onNodeWithText("原生").assertDoesNotExist()
+        compose.runOnIdle { assertEquals(0, overrides) }
     }
 
     @Test fun nativeConfigurationIsAccessibleThroughTheAnchoredPicker() {

@@ -131,8 +131,8 @@ class ItemDetailAccumulator(private val expectedItem: String, private val expect
         val actual = MessageDigest.getInstance("SHA-256").digest(data).joinToString("") { "%02x".format(it) }
         require(actual == digest) { "详情摘要校验失败，内容未展示" }
         val text = StandardCharsets.UTF_8.newDecoder().onMalformedInput(CodingErrorAction.REPORT).onUnmappableCharacter(CodingErrorAction.REPORT).decode(java.nio.ByteBuffer.wrap(data)).toString()
-        val item = Json.parseToJsonElement(text) as? JsonObject ?: error("详情不是原生 Item")
-        require(item.string("id") == expectedItem && !item.string("type").isNullOrBlank()) { "详情原生身份不匹配" }
+        val item = Json.parseToJsonElement(text) as? JsonObject ?: error("详情格式异常")
+        require(item.string("id") == expectedItem && !item.string("type").isNullOrBlank()) { "详情与当前记录不匹配" }
         finished = true
         return item
     }

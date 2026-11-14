@@ -12,7 +12,7 @@ import dev.oraculum.poc.repository.isWritableEffort
 @Composable
 internal fun ModelPickerMenu(state: PocUiState, actions: PocActions, expanded: Boolean, onDismiss: () -> Unit) {
     var page by remember(expanded) { mutableStateOf("root") }
-    val effectiveModel = state.selectedModel ?: state.actualModel ?: state.nativeDefaults?.model
+    val effectiveModel = composerModelId(state)
     val model = state.models.firstOrNull { it.id == effectiveModel }
     var defaults by remember { mutableStateOf(false) }
     DropdownMenu(expanded = expanded, onDismissRequest = onDismiss,
@@ -27,7 +27,7 @@ internal fun ModelPickerMenu(state: PocUiState, actions: PocActions, expanded: B
         }
         when (page) {
             "models" -> {
-                PickerChoice("原生默认", state.selectedModel == null, !state.busy, "model-native-default") {
+                PickerChoice(defaultChoiceLabel(composerModelLabel(state.copy(selectedModel = null, selectedEffort = null)), "模型"), state.selectedModel == null, !state.busy, "model-native-default") {
                     actions.onSelectModel(""); onDismiss()
                 }
                 state.models.forEach { option ->
@@ -39,7 +39,7 @@ internal fun ModelPickerMenu(state: PocUiState, actions: PocActions, expanded: B
                 if (state.modelsLimited) DropdownMenuItem(text = { Text("仅显示已加载模型") }, enabled = false, onClick = {})
             }
             "efforts" -> {
-                if (model != null) PickerChoice("原生默认", state.selectedEffort == null, !state.busy, "effort-native-default") {
+                if (model != null) PickerChoice(defaultChoiceLabel(composerEffort(state.copy(selectedEffort = null))), state.selectedEffort == null, !state.busy, "effort-native-default") {
                     actions.onSelectEffort(""); onDismiss()
                 }
                 model?.efforts.orEmpty().forEach { effort ->
@@ -48,20 +48,20 @@ internal fun ModelPickerMenu(state: PocUiState, actions: PocActions, expanded: B
                         actions.onSelectEffort(effort); onDismiss()
                     }
                 }
-                if (model?.efforts.isNullOrEmpty()) DropdownMenuItem(text = { Text("默认") }, enabled = false, onClick = {})
+                if (model?.efforts.isNullOrEmpty()) DropdownMenuItem(text = { Text(composerEffort(state) ?: "思考强度") }, enabled = false, onClick = {})
             }
             else -> {
                 DropdownMenuItem(text = { Text("模型") }, trailingIcon = {
-                    Text(if (state.selectedModel == null) "原生默认" else model?.label ?: state.selectedModel, style = MaterialTheme.typography.labelMedium)
+                    Text(composerModelLabel(state), style = MaterialTheme.typography.labelMedium)
                 }, onClick = { page = "models" }, modifier = Modifier.testTag("choose-model"))
                 DropdownMenuItem(text = { Text("思考强度") }, trailingIcon = {
-                    Text(state.selectedEffort ?: "原生默认", style = MaterialTheme.typography.labelMedium)
+                    Text(composerEffort(state) ?: "思考强度", style = MaterialTheme.typography.labelMedium)
                 }, onClick = { page = "efforts" }, modifier = Modifier.testTag("choose-effort"))
             }
         }
         if ("config.read" in state.capabilityNames) {
             HorizontalDivider()
-            DropdownMenuItem(text = { Text("查看原生设置") }, leadingIcon = { OraculumIcon(OraculumSymbol.Info) },
+            DropdownMenuItem(text = { Text("设置详情") }, leadingIcon = { OraculumIcon(OraculumSymbol.Info) },
                 modifier = Modifier.testTag("model-native-settings"), onClick = {
                     onDismiss(); defaults = true
                     if (state.online && !state.busy) actions.onRefreshNativeDefaults()
@@ -79,7 +79,7 @@ internal fun PermissionPickerMenu(state: PocUiState, actions: PocActions, expand
         modifier = Modifier.width(240.dp).testTag("permission-sheet"),
         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
         shape = OraculumTokens.ContentShape) {
-        PickerChoice("跟随原生", state.permissionPreset == "native", !state.busy, "permission-native") {
+        PickerChoice(defaultChoiceLabel(composerPermissionLabel(state.copy(permissionPreset = "native")), "权限"), state.permissionPreset == "native", !state.busy, "permission-native") {
             actions.onSelectPermission("native", false); onDismiss()
         }
         PickerChoice("只读", state.permissionPreset == "read-only", !state.busy, "permission-read-only") {
@@ -93,7 +93,7 @@ internal fun PermissionPickerMenu(state: PocUiState, actions: PocActions, expand
         }
         if ("config.read" in state.capabilityNames) {
             HorizontalDivider()
-            DropdownMenuItem(text = { Text("查看原生设置") }, leadingIcon = { OraculumIcon(OraculumSymbol.Info) },
+            DropdownMenuItem(text = { Text("设置详情") }, leadingIcon = { OraculumIcon(OraculumSymbol.Info) },
                 modifier = Modifier.testTag("permission-native-settings"), onClick = {
                     onDismiss(); defaults = true
                     if (state.online && !state.busy) actions.onRefreshNativeDefaults()
@@ -101,9 +101,7 @@ internal fun PermissionPickerMenu(state: PocUiState, actions: PocActions, expand
         }
         state.permissionReadback?.let { readback ->
             HorizontalDivider()
-            DropdownMenuItem(text = { Text("最近确认：${when (readback.preset) {
-                "read-only" -> "只读"; "auto" -> "Auto"; "full-access" -> "Full access"; else -> "自定义权限"
-            }}", style = MaterialTheme.typography.labelSmall) }, enabled = false, onClick = {})
+            DropdownMenuItem(text = { Text("当前权限：${permissionReadbackLabel(readback)}", style = MaterialTheme.typography.labelSmall) }, enabled = false, onClick = {})
         }
     }
     if (defaults) NativeDefaultsDetails(state, actions) { defaults = false }
@@ -115,6 +113,9 @@ internal fun PermissionPickerMenu(state: PocUiState, actions: PocActions, expand
         }, Modifier.testTag("confirm-full-access")) { Text("确认启用") } },
         dismissButton = { TextButton({ confirmFull = false }) { Text("取消") } })
 }
+
+private fun defaultChoiceLabel(value: String?, unknown: String? = null): String =
+    value?.takeIf { it.isNotBlank() && it != unknown }?.let { "默认设置 · $it" } ?: "默认设置"
 
 @Composable
 private fun PickerChoice(label: String, selected: Boolean, enabled: Boolean, tag: String, availability: String? = null, onClick: () -> Unit) {

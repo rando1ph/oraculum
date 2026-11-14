@@ -41,8 +41,9 @@ internal fun quotaRemaining(usedPercent: Long): Long? = usedPercent.takeIf { it 
 internal fun AccountQuotaFooter(state: PocUiState, actions: PocActions) {
     var details by rememberSaveable { mutableStateOf(false) }
     val quota = state.accountRateLimits
-    val windows = listOfNotNull(quota?.rateLimits?.primary?.let { "主窗口" to it }, quota?.rateLimits?.secondary?.let { "次窗口" to it })
-    val summary = windows.map { (label, window) ->
+    val windows = listOfNotNull(quota?.rateLimits?.primary?.let { Triple("primary", "主窗口", it) },
+        quota?.rateLimits?.secondary?.let { Triple("secondary", "次窗口", it) })
+    val summary = windows.map { (_, label, window) ->
         "${quotaWindowLabel(window.windowDurationMins, label)} ${quotaRemaining(window.usedPercent)?.let { "$it%" } ?: "未知"}"
     }.joinToString(" · ")
     Column(Modifier.fillMaxWidth().clickable { details = true }.padding(horizontal = 16.dp, vertical = 12.dp)
@@ -60,6 +61,17 @@ internal fun AccountQuotaFooter(state: PocUiState, actions: PocActions) {
             }, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(2f))
             OraculumIcon(OraculumSymbol.ChevronRight, size = 16.dp, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        windows.forEach { (key, label, window) ->
+            quotaRemaining(window.usedPercent)?.let { remaining ->
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    if (windows.size > 1) Text(quotaWindowLabel(window.windowDurationMins, label), style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    LinearProgressIndicator(progress = { remaining / 100f },
+                        modifier = Modifier.weight(1f).height(3.dp).testTag("account-quota-progress-$key"))
+                }
+            }
         }
         quota?.let { Text("${when { !state.online -> "离线 · "; state.accountError != null -> "更新失败 · "; else -> "" }}读取于 ${readableTime(it.readAt)}",
             style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
@@ -156,29 +168,29 @@ private fun AccountFact(label: String, value: String) {
 internal fun NativeDefaultsDetails(state: PocUiState, actions: PocActions, onDismiss: () -> Unit) {
     val defaults = state.nativeDefaults
     AlertDialog(onDismissRequest = onDismiss, modifier = Modifier.testTag("native-defaults"),
-        title = { Text("项目原生设置") },
+        title = { Text("执行设置") },
         text = {
             Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                MutedText("跟随原生时不发送覆盖值。以下为项目配置；会话最近执行结果单独列出。")
+                Text("默认设置", style = MaterialTheme.typography.titleSmall)
                 state.nativeDefaultsError?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
-                AccountFact("模型", defaults?.model ?: "由原生决定")
-                AccountFact("思考强度", defaults?.effort ?: "由原生决定")
+                AccountFact("模型", defaults?.model ?: "尚未取得")
+                AccountFact("思考强度", defaults?.effort ?: "尚未取得")
                 AccountFact("沙箱", when (defaults?.sandboxMode?.value) {
-                    "read-only" -> "只读"; "workspace-write" -> "工作区写入"; "danger-full-access" -> "完整主机权限"; else -> "由原生决定"
+                    "read-only" -> "只读"; "workspace-write" -> "工作区写入"; "danger-full-access" -> "完整主机权限"; else -> "尚未取得"
                 })
                 AccountFact("审批", when (defaults?.approvalPolicy?.value) {
                     "never" -> "无需审批"; "on-request" -> "按需审批"; "untrusted" -> "不受信任操作需审批"
-                    "on-failure" -> "失败后审批"; "custom" -> "自定义审批"; else -> "由原生决定"
+                    "on-failure" -> "失败后审批"; "custom" -> "自定义审批"; else -> "尚未取得"
                 })
                 defaults?.workspaceWriteNetworkAccess?.let { AccountFact("工作区写入网络", if (it) "允许" else "不允许") }
                 defaults?.let { MutedText("读取于 ${readableTime(it.readAt)}") }
-                if (state.actualModel != null || state.actualEffort != null) {
+                if (state.actualModel != null || state.actualEffort != null || state.permissionReadback != null) {
                     HorizontalDivider()
-                    Text("会话最近执行", style = MaterialTheme.typography.titleSmall)
-                    AccountFact("模型", state.actualModel ?: "尚未返回")
-                    AccountFact("思考强度", state.actualEffort ?: "尚未返回")
+                    Text("当前会话", style = MaterialTheme.typography.titleSmall)
+                    AccountFact("模型", state.actualModel ?: "尚未取得")
+                    AccountFact("思考强度", state.actualEffort ?: "尚未取得")
+                    state.permissionReadback?.let { AccountFact("权限", permissionReadbackLabel(it)) }
                 }
-                state.permissionReadback?.let { AccountFact("最近权限回读", "${it.sandboxType} · ${it.approvalPolicy}") }
             }
         },
         confirmButton = { TextButton(onDismiss) { Text("关闭") } },
@@ -195,6 +207,11 @@ internal fun NativeThreadRow(thread: ThreadOption, state: PocUiState, actions: P
     var dialog by rememberSaveable { mutableStateOf<String?>(null) }
     var name by rememberSaveable(thread.id, thread.label) { mutableStateOf(thread.label) }
     val selected = thread.id == state.selectedThreadId
+    val detail = when (thread.detail) {
+        "idle", "active", "notLoaded" -> ""
+        "systemError" -> "会话异常"
+        else -> thread.detail
+    }
     val canWrite = threadWriteEnabled(state, thread.id)
     val capabilities = state.capabilityNames
     val hasMenu = listOf("thread.name.set", "thread.archive", "thread.unarchive", "thread.delete").any { it in capabilities }
@@ -207,7 +224,7 @@ internal fun NativeThreadRow(thread: ThreadOption, state: PocUiState, actions: P
                 OraculumIcon(if (thread.archived) OraculumSymbol.History else OraculumSymbol.Chat, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text(thread.label, maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleSmall)
-                    if (thread.detail.isNotBlank()) Text(thread.detail, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    if (detail.isNotBlank()) Text(detail, maxLines = 1, overflow = TextOverflow.Ellipsis,
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
@@ -237,8 +254,8 @@ internal fun NativeThreadRow(thread: ThreadOption, state: PocUiState, actions: P
         val deleting = dialog == "delete"
         AlertDialog(onDismissRequest = { dialog = null }, icon = { OraculumIcon(if (deleting) OraculumSymbol.Delete else OraculumSymbol.History) },
             title = { Text(if (deleting) "永久删除会话？" else "归档会话？") },
-            text = { Text(if (deleting) "将永久删除「${thread.label}」及原生关联的后代会话历史，无法恢复。工作区文件不会删除。"
-                else "「${thread.label}」及原生关联的后代会话将移入归档，可从已归档列表恢复。工作区文件不受影响。") },
+            text = { Text(if (deleting) "将永久删除「${thread.label}」及其关联的后代会话历史，无法恢复。工作区文件不会删除。"
+                else "「${thread.label}」及其关联的后代会话将移入归档，可从已归档列表恢复。工作区文件不受影响。") },
             confirmButton = { TextButton({
                 if (deleting) actions.onDeleteThread(thread.id) else actions.onArchiveThread(thread.id)
                 dialog = null
@@ -247,29 +264,6 @@ internal fun NativeThreadRow(thread: ThreadOption, state: PocUiState, actions: P
             } },
             dismissButton = { TextButton({ dialog = null }) { Text("取消") } })
     }
-}
-
-@Composable
-internal fun ThreadToolsMenu(state: PocUiState, actions: PocActions) {
-    var menu by remember { mutableStateOf(false) }
-    var compact by rememberSaveable { mutableStateOf(false) }
-    val canWrite = state.canManageThread && state.online && !state.busy && state.unknownWarning == null && state.unresolvedOperations.isEmpty()
-    if (state.selectedThreadId != null && listOf("thread.fork", "thread.compact").any { it in state.capabilityNames }) Box {
-        IconButton({ menu = true }, Modifier.size(48.dp).testTag("thread-tools")) {
-            Text("⋯", style = MaterialTheme.typography.titleLarge, modifier = Modifier.semantics { contentDescription = "当前会话操作" })
-        }
-        DropdownMenu(menu, { menu = false }) {
-            if ("thread.fork" in state.capabilityNames) DropdownMenuItem(text = { Text("分叉为新会话") }, enabled = canWrite,
-                modifier = Modifier.testTag("fork-thread"), onClick = { menu = false; actions.onForkThread(null) })
-            if ("thread.compact" in state.capabilityNames) DropdownMenuItem(text = { Text("压缩上下文") }, enabled = canWrite,
-                modifier = Modifier.testTag("compact-thread"), onClick = { menu = false; compact = true })
-        }
-    }
-    if (compact) AlertDialog(onDismissRequest = { compact = false }, title = { Text("压缩上下文？") },
-        text = { Text("由 Codex 整理当前会话上下文。触发后需等待原生压缩完成，工作区文件不受影响。") },
-        confirmButton = { TextButton({ actions.onCompactThread(); compact = false }, enabled = canWrite,
-            modifier = Modifier.testTag("confirm-compact-thread")) { Text("开始压缩") } },
-        dismissButton = { TextButton({ compact = false }) { Text("取消") } })
 }
 
 @Composable
@@ -290,7 +284,7 @@ internal fun TurnToolsMenu(turnId: String, state: PocUiState, actions: PocAction
     }
     if (revert) AlertDialog(onDismissRequest = { revert = false }, icon = { OraculumIcon(OraculumSymbol.History) },
         title = { Text("撤回此轮及后续历史？") },
-        text = { Text("会话将回到此轮开始之前。此轮及之后的原生历史会被撤回；已经发生的工作区文件修改不会恢复。") },
+        text = { Text("会话将回到此轮开始之前。此轮及之后的会话历史会被撤回；已经发生的工作区文件修改不会恢复。") },
         confirmButton = { TextButton({ actions.onRevertThread(turnId); revert = false }, enabled = canWrite,
             modifier = Modifier.testTag("confirm-revert-turn")) { Text("撤回历史") } },
         dismissButton = { TextButton({ revert = false }) { Text("取消") } })

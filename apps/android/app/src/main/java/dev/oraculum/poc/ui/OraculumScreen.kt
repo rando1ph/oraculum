@@ -104,7 +104,6 @@ fun OraculumScreen(
                                             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     }
                                 }
-                                ThreadToolsMenu(state, actions)
                                 if (state.paired) GlyphButton("inspector", "打开 Inspector", "inspector", onClick = { panel = "inspector"; actions.onRefreshInspector() })
                             }
                             if (state.paired && !state.online) Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 12.dp)) {
@@ -118,10 +117,7 @@ fun OraculumScreen(
                     }
                 },
                 bottomBar = {
-                    if (state.paired && state.selectedThreadId != null) Composer(state, actions, filesState, filesActions, composerHeight, compactViewport, onOptions = {
-                        if (it == "files") { inspectorTab = "files"; panel = "inspector"; filesActions.browse("") }
-                        else panel = it
-                    })
+                    if (state.paired && state.selectedThreadId != null) Composer(state, actions, filesState, filesActions, composerHeight, compactViewport)
                 },
             ) { padding ->
                 Column(Modifier.fillMaxSize().padding(padding)) {
@@ -259,6 +255,9 @@ private fun ColumnScope.NavigationPanel(state: PocUiState, actions: PocActions, 
     var rootId by remember(state.roots) { mutableStateOf(state.roots.firstOrNull()?.id.orEmpty()) }
     val canWrite = state.online && !state.busy && state.unknownWarning == null && state.unresolvedOperations.isEmpty()
     var searchOpen by rememberSaveable { mutableStateOf(false) }
+    var projectsExpanded by rememberSaveable { mutableStateOf(true) }
+    var threadsExpanded by rememberSaveable { mutableStateOf(true) }
+    val activeThreads = state.threads.filterNot { it.archived }
     Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp, top = 12.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
         OracleEyeMark(size = 28.dp)
         Column(Modifier.weight(1f).padding(start = 12.dp)) {
@@ -270,7 +269,6 @@ private fun ColumnScope.NavigationPanel(state: PocUiState, actions: PocActions, 
         }
         GlyphButton("close", "关闭面板", "close-panel", onDismiss)
     }
-    Button({ actions.onCreateThread(); onDismiss() }, enabled = state.canCreateThread, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).heightIn(min = 48.dp).testTag("new-thread")) { OraculumIcon(OraculumSymbol.Add); Spacer(Modifier.width(8.dp)); Text("新建会话") }
     if (searchOpen) {
         Surface(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
             Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(start = 12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -285,52 +283,59 @@ private fun ColumnScope.NavigationPanel(state: PocUiState, actions: PocActions, 
         }
     }
     LazyColumn(Modifier.weight(1f).fillMaxWidth().testTag("navigation-list"), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        item { SectionLabel("项目", OraculumSymbol.Folder) }
-        items(state.projects.filter { filter.isBlank() || it.label.contains(filter, true) || it.detail.contains(filter, true) }, key = { "project-${it.id}" }) { project ->
-            NavigationRow(project.label, project.detail, project.id == state.selectedProjectId, "project-${project.id}", !state.busy, symbol = OraculumSymbol.Folder, detailMaxLines = 1) { actions.onSelectProject(project.id) }
-        }
-        if (state.projects.isEmpty()) item { MutedText("还没有注册的项目。") }
-        item {
-            TextButton({ registerOpen = !registerOpen }, enabled = canWrite, modifier = Modifier.fillMaxWidth().testTag("register_project")) { OraculumIcon(if (registerOpen) OraculumSymbol.ExpandLess else OraculumSymbol.Add); Spacer(Modifier.width(8.dp)); Text(if (registerOpen) "收起目录浏览" else "注册项目目录") }
-        }
-        if (registerOpen) item {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                MutedText("仅浏览主机已授权的目录")
-                state.roots.forEach { root ->
-                    FilterChip(selected = rootId == root.id, onClick = { rootId = root.id; relativePath = ""; actions.onBrowseDirectory(root.id, "") }, label = { Text(root.label) }, modifier = Modifier.heightIn(min = 48.dp))
+        item(key = "projects-heading") {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                NavigationSectionToggle("项目", projectsExpanded, "navigation-projects-toggle", Modifier.weight(1f)) { projectsExpanded = !projectsExpanded }
+                IconButton({ projectsExpanded = true; registerOpen = !registerOpen }, enabled = canWrite,
+                    modifier = Modifier.size(48.dp).testTag("register_project")) {
+                    OraculumIcon(OraculumSymbol.Folder, if (registerOpen) "收起目录浏览" else "注册项目目录", size = 20.dp)
                 }
-                OutlinedTextField(relativePath, { relativePath = it }, label = { Text("根目录下的相对路径") }, singleLine = true, modifier = Modifier.fillMaxWidth().testTag("project_path"))
-                OutlinedButton({ actions.onBrowseDirectory(rootId, relativePath) }, enabled = state.online && !state.busy && rootId.isNotBlank(), modifier = Modifier.fillMaxWidth().testTag("browse-directories")) { Text("浏览目录") }
-                if (state.directory.rootId == rootId) {
-                    MutedText("当前目录：${state.directory.path.ifBlank { "/" }}")
-                    if (state.directory.path.isNotBlank()) TextButton({ val parent = state.directory.path.substringBeforeLast('/', ""); relativePath = parent; actions.onBrowseDirectory(rootId, parent) }) { Text("返回上级目录") }
-                    state.directory.entries.forEach { entry ->
-                        TextButton({ relativePath = entry.path; actions.onBrowseDirectory(rootId, entry.path) }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { OraculumIcon(OraculumSymbol.Folder); Spacer(Modifier.width(8.dp)); Text(entry.name, Modifier.weight(1f)); OraculumIcon(OraculumSymbol.ChevronRight) }
-                    }
-                    if (state.directory.canLoadMore) OutlinedButton(actions.onLoadMoreDirectories, enabled = !state.busy, modifier = Modifier.fillMaxWidth()) { Text("继续加载目录") }
-                    if (state.directory.limited) MutedText("目录列表受限，只展示当前已加载部分。")
-                }
-                Button({ actions.onRegisterProject(rootId, relativePath); registerOpen = false }, enabled = canWrite && rootId.isNotBlank() && relativePath.isNotBlank(), modifier = Modifier.fillMaxWidth().testTag("confirm_register")) { Text("注册这个目录") }
             }
         }
-        item {
+        if (projectsExpanded) {
+            items(state.projects.filter { filter.isBlank() || it.label.contains(filter, true) || it.detail.contains(filter, true) }, key = { "project-${it.id}" }) { project ->
+                NavigationRow(project.label, project.detail, project.id == state.selectedProjectId, "project-${project.id}", !state.busy, symbol = OraculumSymbol.Folder, detailMaxLines = 1) { actions.onSelectProject(project.id) }
+            }
+            if (state.projects.isEmpty()) item { MutedText("暂无项目") }
+            if (registerOpen) item(key = "register-project-form") {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    MutedText("浏览已授权目录")
+                    state.roots.forEach { root ->
+                        FilterChip(selected = rootId == root.id, onClick = { rootId = root.id; relativePath = ""; actions.onBrowseDirectory(root.id, "") }, label = { Text(root.label) }, modifier = Modifier.heightIn(min = 48.dp))
+                    }
+                    OutlinedTextField(relativePath, { relativePath = it }, label = { Text("相对路径") }, singleLine = true, modifier = Modifier.fillMaxWidth().testTag("project_path"))
+                    OutlinedButton({ actions.onBrowseDirectory(rootId, relativePath) }, enabled = state.online && !state.busy && rootId.isNotBlank(), modifier = Modifier.fillMaxWidth().testTag("browse-directories")) { Text("浏览目录") }
+                    if (state.directory.rootId == rootId) {
+                        MutedText("当前目录：${state.directory.path.ifBlank { "/" }}")
+                        if (state.directory.path.isNotBlank()) TextButton({ val parent = state.directory.path.substringBeforeLast('/', ""); relativePath = parent; actions.onBrowseDirectory(rootId, parent) }) { Text("返回上级") }
+                        state.directory.entries.forEach { entry ->
+                            TextButton({ relativePath = entry.path; actions.onBrowseDirectory(rootId, entry.path) }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { OraculumIcon(OraculumSymbol.Folder); Spacer(Modifier.width(8.dp)); Text(entry.name, Modifier.weight(1f)); OraculumIcon(OraculumSymbol.ChevronRight) }
+                        }
+                        if (state.directory.canLoadMore) OutlinedButton(actions.onLoadMoreDirectories, enabled = !state.busy, modifier = Modifier.fillMaxWidth()) { Text("加载更多") }
+                        if (state.directory.limited) MutedText("目录清单可能不完整")
+                    }
+                    Button({ actions.onRegisterProject(rootId, relativePath); registerOpen = false }, enabled = canWrite && rootId.isNotBlank() && relativePath.isNotBlank(), modifier = Modifier.fillMaxWidth().testTag("confirm_register")) { Text("注册目录") }
+                }
+            }
+        }
+        item(key = "threads-heading") {
             HorizontalDivider(Modifier.padding(vertical = 8.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                SectionLabel(if (state.showArchivedThreads) "已归档会话" else "会话", OraculumSymbol.Chat, Modifier.weight(1f))
-                if ("thread.archive" in state.capabilityNames || "thread.unarchive" in state.capabilityNames)
-                    TextButton({ actions.onShowArchivedThreads(!state.showArchivedThreads) }, enabled = state.online && !state.busy,
-                        modifier = Modifier.testTag("archived-threads-toggle")) {
-                        Text(if (state.showArchivedThreads) "返回会话" else "已归档")
-                    }
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                NavigationSectionToggle("会话", threadsExpanded, "navigation-threads-toggle", Modifier.weight(1f)) { threadsExpanded = !threadsExpanded }
+                IconButton({ actions.onCreateThread(); onDismiss() }, enabled = state.canCreateThread,
+                    modifier = Modifier.size(48.dp).testTag("new-thread")) { OraculumIcon(OraculumSymbol.Add, "新建会话", size = 20.dp) }
+                IconButton(actions.onRefresh, enabled = state.online && !state.busy,
+                    modifier = Modifier.size(48.dp).testTag("refresh-navigation")) { OraculumIcon(OraculumSymbol.Refresh, "刷新项目与会话", size = 20.dp) }
             }
         }
-        items(state.threads.filter { filter.isBlank() || it.label.contains(filter, true) || it.detail.contains(filter, true) }, key = { "thread-${it.id}" }) { thread ->
-            NativeThreadRow(thread, state, actions) { actions.onSelectThread(thread.id); onDismiss() }
+        if (threadsExpanded) {
+            items(activeThreads.filter { filter.isBlank() || it.label.contains(filter, true) || it.detail.contains(filter, true) }, key = { "thread-${it.id}" }) { thread ->
+                NativeThreadRow(thread, state, actions) { actions.onSelectThread(thread.id); onDismiss() }
+            }
+            if (activeThreads.isEmpty()) item { MutedText(if (state.selectedProjectId == null) "选择项目后查看会话" else "暂无会话") }
+            if (state.canLoadMoreThreads) item { OutlinedButton(actions.onLoadMoreThreads, enabled = state.online && !state.busy, modifier = Modifier.fillMaxWidth().testTag("load-more-threads")) { Text("加载更多会话") } }
         }
-        if (state.threads.isEmpty()) item { MutedText(if (state.selectedProjectId == null) "选择项目后查看会话。" else "还没有可用会话。") }
-        if (state.canLoadMoreThreads) item { OutlinedButton(actions.onLoadMoreThreads, enabled = state.online && !state.busy, modifier = Modifier.fillMaxWidth().testTag("load-more-threads")) { Text("加载更多会话") } }
-        item { MutedText("筛选仅覆盖当前已加载列表。") }
-        item { TextButton(actions.onRefresh, enabled = state.online && !state.busy, modifier = Modifier.fillMaxWidth()) { OraculumIcon(OraculumSymbol.Refresh); Spacer(Modifier.width(8.dp)); Text("刷新列表") } }
+        if (searchOpen) item { MutedText("仅筛选已加载内容") }
     }
     HorizontalDivider()
     AccountQuotaFooter(state, actions)
@@ -341,6 +346,19 @@ private fun ColumnScope.NavigationPanel(state: PocUiState, actions: PocActions, 
             Text(if (state.online) "已连接" else "离线缓存", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         TextButton(onSettings, modifier = Modifier.heightIn(min = 48.dp).testTag("settings")) { OraculumIcon(OraculumSymbol.Settings); Spacer(Modifier.width(8.dp)); Text("设置") }
+    }
+}
+
+@Composable
+private fun NavigationSectionToggle(title: String, expanded: Boolean, tag: String, modifier: Modifier = Modifier, onToggle: () -> Unit) {
+    Row(modifier.heightIn(min = 48.dp).clickable(onClick = onToggle).testTag(tag).semantics {
+        heading()
+        role = Role.Button
+        stateDescription = if (expanded) "已展开" else "已收起"
+    }, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        OraculumIcon(if (expanded) OraculumSymbol.ExpandMore else OraculumSymbol.ChevronRight,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant, size = 18.dp)
+        Text(title, style = MaterialTheme.typography.titleSmall)
     }
 }
 
@@ -518,14 +536,16 @@ private fun MessageCard(message: ChatMessage, state: PocUiState, actions: PocAct
         if (showHeader) MessageHeader(message, state, expanded, { expanded = !expanded })
         if (!process || expanded) MarkdownContent(message.text)
         if (message.detailsRequired) OutlinedButton({ actions.onLoadItemDetail(message.turnId, message.id) }, enabled = state.online && !state.busy,
-            modifier = Modifier.fillMaxWidth().testTag("detail-${message.id}")) { OraculumIcon(OraculumSymbol.Description); Spacer(Modifier.width(8.dp)); Text("读取完整 Item 详情") }
+            modifier = Modifier.fillMaxWidth().testTag("detail-${message.id}")) { OraculumIcon(OraculumSymbol.Description); Spacer(Modifier.width(8.dp)); Text("查看完整内容") }
     }
 }
 
 @Composable
 private fun Composer(state: PocUiState, actions: PocActions, filesState: FilesUiState, filesActions: FilesActions,
-    maximumHeight: Dp, compact: Boolean, onOptions: (String) -> Unit) {
+    maximumHeight: Dp, compact: Boolean) {
     var addMenu by remember { mutableStateOf(false) }
+    var compactConfirmation by rememberSaveable(state.selectedThreadId) { mutableStateOf(false) }
+    val canManageThread = state.selectedThreadId != null && state.canManageThread && state.online && !state.busy && state.unknownWarning == null && state.unresolvedOperations.isEmpty()
     var pickerMenu by remember { mutableStateOf<String?>(null) }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments(), filesActions.pick)
     val hasText = state.draft.isNotBlank()
@@ -553,18 +573,19 @@ private fun Composer(state: PocUiState, actions: PocActions, filesState: FilesUi
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
                     Box {
-                        IconButton({ addMenu = true }, modifier = Modifier.size(48.dp).testTag("composer-add").semantics { contentDescription = "添加内容与项目操作" }) {
+                        IconButton({ addMenu = true }, modifier = Modifier.size(48.dp).testTag("composer-add").semantics { contentDescription = "附件与会话操作" }) {
                             OraculumIcon(OraculumSymbol.Add, size = 22.dp, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         DropdownMenu(expanded = addMenu, onDismissRequest = { addMenu = false }) {
                             DropdownMenuItem(text = { Text("图片或文档") }, leadingIcon = { OraculumIcon(OraculumSymbol.AttachFile) },
                                 enabled = filesState.writable && !filesState.busy && !filesState.hasUnknown,
                                 modifier = Modifier.testTag("files_pick"), onClick = { addMenu = false; filesActions.beginPick(); picker.launch(FileTransferPolicy.types.values.distinct().toTypedArray()) })
-                            DropdownMenuItem(text = { Text("项目文件与成果") }, leadingIcon = { OraculumIcon(OraculumSymbol.Folder) },
-                                enabled = filesState.readable && !filesState.busy, modifier = Modifier.testTag("composer-files"),
-                                onClick = { addMenu = false; onOptions("files") })
-                            DropdownMenuItem(text = { Text("切换项目或会话") }, leadingIcon = { OraculumIcon(OraculumSymbol.Chat) },
-                                modifier = Modifier.testTag("composer-navigation"), onClick = { addMenu = false; onOptions("navigation") })
+                            if ("thread.fork" in state.capabilityNames) DropdownMenuItem(text = { Text("分叉为新会话") },
+                                enabled = canManageThread, modifier = Modifier.testTag("fork-thread"),
+                                onClick = { addMenu = false; actions.onForkThread(null) })
+                            if ("thread.compact" in state.capabilityNames) DropdownMenuItem(text = { Text("压缩上下文") },
+                                enabled = canManageThread, modifier = Modifier.testTag("compact-thread"),
+                                onClick = { addMenu = false; compactConfirmation = true })
                         }
                     }
                     Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
@@ -573,8 +594,7 @@ private fun Composer(state: PocUiState, actions: PocActions, filesState: FilesUi
                                 modifier = Modifier.heightIn(min = 48.dp).testTag("permission-picker").semantics { contentDescription = "选择执行权限" }) {
                                 OraculumIcon(OraculumSymbol.Shield, size = 16.dp, tint = MaterialTheme.colorScheme.primary)
                                 Spacer(Modifier.width(4.dp))
-                                Text(when (state.permissionPreset) { "native" -> "原生"; "full-access" -> "Full"; "auto" -> "Auto"; else -> "只读" },
-                                    maxLines = 1, style = MaterialTheme.typography.labelMedium)
+                                Text(composerPermissionLabel(state), maxLines = 1, style = MaterialTheme.typography.labelMedium)
                             }
                             PermissionPickerMenu(state, actions, pickerMenu == "permission") { pickerMenu = null }
                         }
@@ -583,8 +603,7 @@ private fun Composer(state: PocUiState, actions: PocActions, filesState: FilesUi
                                 modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("model-picker").semantics { contentDescription = "选择模型与思考强度" }) {
                                 OraculumIcon(OraculumSymbol.Tune, size = 16.dp, tint = MaterialTheme.colorScheme.primary)
                                 Spacer(Modifier.width(4.dp))
-                                Text(listOfNotNull(state.models.firstOrNull { it.id == state.selectedModel }?.label ?: state.selectedModel ?: "原生默认",
-                                    state.selectedEffort).joinToString(" · "), maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                Text(composerModelAndEffortLabel(state), maxLines = 1, overflow = TextOverflow.Ellipsis,
                                     style = MaterialTheme.typography.labelMedium)
                             }
                             ModelPickerMenu(state, actions, pickerMenu == "model") { pickerMenu = null }
@@ -601,6 +620,12 @@ private fun Composer(state: PocUiState, actions: PocActions, filesState: FilesUi
             }
         }
     }
+    if (compactConfirmation) AlertDialog(onDismissRequest = { compactConfirmation = false }, title = { Text("压缩上下文？") },
+        text = { Text("整理当前会话上下文，工作区文件不受影响。") },
+        confirmButton = { TextButton({ actions.onCompactThread(); compactConfirmation = false },
+            enabled = canManageThread && "thread.compact" in state.capabilityNames,
+            modifier = Modifier.testTag("confirm-compact-thread")) { Text("开始压缩") } },
+        dismissButton = { TextButton({ compactConfirmation = false }) { Text("取消") } })
 }
 
 @Composable

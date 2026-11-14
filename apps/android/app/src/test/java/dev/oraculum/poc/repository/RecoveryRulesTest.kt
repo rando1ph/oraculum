@@ -82,7 +82,7 @@ class RecoveryRulesTest {
         val history = HistoryProjection()
         history.snapshot(Json.parseToJsonElement("""{"items":[{"id":"turn","status":"inProgress","items":[]}],"truncated":false}""").jsonObject)
         history.applyHistory(Json.parseToJsonElement("""{"items":[{"id":"item","type":"agentMessage","text":"partial"}],"truncated":false}""").jsonObject, "turn")
-        assertEquals("正在校正原生状态", history.messages().single().status)
+        assertEquals("正在同步", history.messages().single().status)
     }
 
     @Test fun `older item page remains inside its native turn chronological position`() {
@@ -122,7 +122,7 @@ class RecoveryRulesTest {
         assertTrue(history.limited)
         history.snapshot(page(1, "大".repeat(30_000)), preserveTerminal = false)
         assertTrue(history.limited)
-        assertEquals("受限投影", history.messages().single().status)
+        assertEquals("内容未完整显示", history.messages().single().status)
         assertTrue(history.messages().single().text.length < 100)
     }
 

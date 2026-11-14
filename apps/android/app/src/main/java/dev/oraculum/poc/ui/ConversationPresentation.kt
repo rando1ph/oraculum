@@ -65,12 +65,12 @@ internal fun List<ConversationRow>.rowForSourceIndex(sourceIndex: Int): Int =
 internal fun isNormalEmptyHistoryNotice(text: String): Boolean = text == "新会话历史尚未生成，可发送首条消息"
 
 internal fun composerExecutionNotice(state: PocUiState): String? = when {
-    state.canStop || state.executionLabel == "原生 Turn 正在执行" -> "正在执行"
-    state.canResume -> "恢复会话后可继续发送"
-    state.executionLabel == "正在校正原生状态" -> "正在同步会话…"
-    state.executionLabel == "原生会话未加载 · 点击恢复后才能发送" -> "会话尚未加载"
+    state.canStop || state.activeTurnId != null || state.executionLabel in setOf("正在执行", "原生 Turn 正在执行") -> "正在执行"
+    state.canResume -> "继续会话后可发送"
+    state.executionLabel in setOf("正在同步会话", "正在校正原生状态") -> "正在同步会话…"
+    state.executionLabel in setOf("会话尚未加载，点击继续", "原生会话未加载 · 点击恢复后才能发送") -> "会话尚未加载"
     state.executionLabel.isBlank() || isNormalEmptyHistoryNotice(state.executionLabel) ||
-        state.executionLabel == "原生状态已校正" || state.executionLabel.startsWith("离线 ·") -> null
+        state.executionLabel in setOf("已同步", "原生状态已校正") || state.executionLabel.startsWith("离线 ·") -> null
     else -> state.executionLabel
 }
 

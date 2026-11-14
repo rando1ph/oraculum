@@ -87,7 +87,7 @@ class NativeCapabilitiesJourneyTest {
                 action { model.archiveThread(owned) }
                 val refusal = checkNotNull(model.state.value.error)
                 assertTrue("Unmaterialized history must fail closed",
-                    refusal.contains("原生历史尚未就绪") || refusal.contains("THREAD_LIFECYCLE_CHANGED"))
+                    refusal.contains("会话历史尚未就绪") || refusal.contains("THREAD_LIFECYCLE_CHANGED"))
                 assertEquals(owned, model.state.value.selectedThreadId)
                 assertTrue(model.state.value.unresolvedOperations.isEmpty())
                 report.put("unmaterializedArchiveRejected", true)
@@ -207,13 +207,13 @@ class NativeCapabilitiesJourneyTest {
                 assertFalse(model.state.value.threads.any { it.id == owned })
                 action { model.showArchivedThreads(true) }
                 clean(model)
-                assertTrue(model.state.value.threads.any { it.id == owned && it.archived })
+                assertTrue(model.state.value.archivedThreads.any { it.id == owned && it.archived })
                 report.put("archivePassed", true)
                 stage = "restore"
                 action { model.unarchiveThread(owned) }
                 clean(model)
                 assertEquals(owned, model.state.value.selectedThreadId)
-                assertFalse(model.state.value.showArchivedThreads)
+                assertFalse(model.state.value.threads.any { it.archived })
                 report.put("restorePassed", true)
                 stage = "delete-owned"
                 action { model.deleteThread(owned) }
@@ -302,7 +302,7 @@ class NativeCapabilitiesJourneyTest {
                     assertFalse(model.state.value.threads.any { it.id == owned })
                     action { model.showArchivedThreads(true) }
                     clean(model)
-                    assertTrue(model.state.value.threads.any { it.id == owned && it.archived })
+                    assertTrue(model.state.value.archivedThreads.any { it.id == owned && it.archived })
                     report.put("archivePassed", true)
                     stage = "restore-owned-v3"
                     action { model.unarchiveThread(owned) }

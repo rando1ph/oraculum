@@ -61,7 +61,7 @@ fun NativeInteractionPanel(interaction: InteractionUi, enabled: Boolean,
                         Text(when (interaction.status) {
                             "pending" -> "等待你的处理"
                             "unknown" -> "结果待确认"
-                            "submitted" -> "等待原生确认"
+                            "submitted" -> "等待确认"
                             "resolved" -> "已处理"
                             else -> interaction.status
                         }, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -69,11 +69,11 @@ fun NativeInteractionPanel(interaction: InteractionUi, enabled: Boolean,
                 }
                 if (interaction.description.isNotBlank()) SelectionContainer { Text(interaction.description, style = MaterialTheme.typography.bodyMedium) }
                 when {
-                    !interaction.supported -> Text("此原生请求含当前客户端无法安全处理的约束，请在宿主机检查。", color = MaterialTheme.colorScheme.error)
-                    interaction.status == "unknown" -> Text("响应送达结果未知。请刷新原生状态；不会重复提交。", color = MaterialTheme.colorScheme.error)
-                    interaction.status == "submitted" -> Text("响应已提交，等待原生状态确认。", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    !interaction.supported -> Text("此请求包含暂不支持的限制，请在主机上检查。", color = MaterialTheme.colorScheme.error)
+                    interaction.status == "unknown" -> Text("提交结果尚未确认。请刷新状态；不会重复提交。", color = MaterialTheme.colorScheme.error)
+                    interaction.status == "submitted" -> Text("已提交，正在确认结果。", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     interaction.status == "resolved" -> Text("该请求已处理或取消。", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    !enabled -> Text("当前不可响应。连接和原生状态恢复后再操作。", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    !enabled -> Text("暂不能处理，请等待连接与会话恢复。", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 NativeRequestDetails(interaction)
                 if (interaction.supported) {
@@ -108,12 +108,12 @@ private fun NativeRequestDetails(interaction: InteractionUi) {
     if (interaction.kind == "fileChange") {
         val context = interaction.fileChangeContext
         if (context == null) {
-            Text("尚无与此原生 Item 精确绑定的完整文件路径和 Diff，或请求超出可安全展示范围（20 个文件 / 16 KiB / 256 行 Diff）。当前不能批准；可使用原生允许的拒绝或取消，或在宿主机核对处理。",
+            Text("尚未取得与此请求对应的完整文件路径和差异，或内容超出可显示范围（最多 20 个文件 / 16 KiB / 256 行差异）。暂不能批准；仍可按请求提供的选项拒绝或取消，或在主机上处理。",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             if (request["grantRoot"] != null && request["grantRoot"] != JsonNull)
-                Text("此请求包含尚未确认为稳定能力的会话写入授权范围，当前客户端不批准该扩展授权。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                Text("请求额外授予会话写入权限，当前客户端暂不支持，不能在此批准。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
         } else {
-            Text("以下为当前原生 Item 的全部文件修改。批准前将只读刷新，并核对请求代次与完整内容摘要；内容变化时需重新查看。", style = MaterialTheme.typography.bodySmall)
+            Text("以下为这次请求的全部文件修改。批准前会重新读取并核对请求与完整内容；若发生变化，需重新查看。", style = MaterialTheme.typography.bodySmall)
             for ((index, change) in context.changes.withIndex()) {
                 SelectionContainer {
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.testTag("interaction_${interaction.id}_change_$index")) {
@@ -122,24 +122,24 @@ private fun NativeRequestDetails(interaction: InteractionUi) {
                         change.movePath?.let { Text("移动至：$it", fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodyMedium) }
                         // The approval budget is enforced before evidence is created. Never truncate a
                         // patch here while leaving its approval button active.
-                        Text(change.diff.ifEmpty { "（原生 Diff 为空）" }, Modifier.fillMaxWidth()
+                        Text(change.diff.ifEmpty { "（差异内容为空）" }, Modifier.fillMaxWidth()
                             .background(MaterialTheme.colorScheme.surfaceContainerLowest, RoundedCornerShape(8.dp))
                             .horizontalScroll(rememberScrollState()).padding(12.dp),
                             fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
                     }
                 }
             }
-            SelectionContainer { Text("SHA-256：${context.digest}", style = MaterialTheme.typography.labelSmall, fontFamily = FontFamily.Monospace) }
+            SelectionContainer { Text("内容校验：${context.digest}", style = MaterialTheme.typography.labelSmall, fontFamily = FontFamily.Monospace) }
         }
         SelectionContainer {
-            Text("Thread：${interaction.threadId}\nTurn：${(request["turnId"] as? JsonPrimitive)?.content.orEmpty()}\nItem：${(request["itemId"] as? JsonPrimitive)?.content.orEmpty()}",
+            Text("会话编号：${interaction.threadId}\n执行编号：${(request["turnId"] as? JsonPrimitive)?.content.orEmpty()}\n记录编号：${(request["itemId"] as? JsonPrimitive)?.content.orEmpty()}",
                 style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
         }
     }
     if (interaction.kind == "command") {
         val details = NativeInteractionForms.commandApprovalDetails(request)
         if (details != null) {
-            Text(if (details.networkHost != null) "操作：允许此原生请求访问网络目标" else "操作：执行命令", style = MaterialTheme.typography.bodyMedium)
+            Text(if (details.networkHost != null) "操作：允许此请求访问网络目标" else "操作：执行命令", style = MaterialTheme.typography.bodyMedium)
             if (details.networkHost != null) SelectionContainer {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text("目标主机：${details.networkHost}", style = MaterialTheme.typography.bodyMedium, fontFamily = FontFamily.Monospace)
@@ -147,8 +147,7 @@ private fun NativeRequestDetails(interaction: InteractionUi) {
                 }
             }
         } else {
-            val nativeKind = (request["kind"] as? JsonPrimitive)?.content ?: "command"
-            Text("原生操作类型：$nativeKind；请求语义尚无法完整呈现，不能在此授权。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+            Text("暂无法完整展示此操作，不能在此授权。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
         }
     }
     for ((label, key) in listOf("命令" to "command", "工作目录" to "cwd", "运行环境" to "environmentId", "授权范围" to "grantRoot")) {
@@ -167,7 +166,7 @@ private fun NativeRequestDetails(interaction: InteractionUi) {
         }
     }
     if (interaction.kind == "permissions") {
-        Text("接受仅授予这次原生请求列出的权限，作用域为当前轮次。", style = MaterialTheme.typography.bodySmall)
+        Text("仅授权这次请求列出的权限，且只在本轮执行中有效。", style = MaterialTheme.typography.bodySmall)
         val permissions = request["permissions"] as? JsonObject
         val network = permissions?.get("network") as? JsonObject
         val enabled = (network?.get("enabled") as? JsonPrimitive)?.booleanOrNull
@@ -223,7 +222,7 @@ private fun NativeInputQuestions(interaction: InteractionUi, enabled: Boolean, o
         }
     }
     val valid = NativeInteractionForms.validate(interaction, payload)
-    if (enabled && !valid) Text("回答超出原生限制：每题至多 20 项、每项至多 16,000 个字符，总量至多 128 KiB。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+    if (enabled && !valid) Text("回答超出长度限制：每题至多 20 项、每项至多 16,000 个字符，总量至多 128 KiB。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
     Button(onClick = { onRespond(payload) }, enabled = enabled && valid,
         modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("interaction_${interaction.id}_submit")) {
         OraculumIcon(OraculumSymbol.Send); Spacer(Modifier.width(8.dp)); Text("提交回答")
@@ -253,7 +252,7 @@ private fun NativeElicitation(interaction: InteractionUi, enabled: Boolean, onRe
             modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
             OraculumIcon(OraculumSymbol.OpenInNew); Spacer(Modifier.width(8.dp)); Text("在浏览器打开请求链接")
         }
-        if (openError) Text("没有可用浏览器，请在宿主机处理此请求。", color = MaterialTheme.colorScheme.error)
+        if (openError) Text("没有可用浏览器，请在主机上处理此请求。", color = MaterialTheme.colorScheme.error)
         Text("在外部完成请求后，再提交确认。", style = MaterialTheme.typography.bodySmall)
     } else {
         interaction.fields.forEach { field ->
@@ -323,7 +322,7 @@ private fun NativeElicitationField(field: ElicitationFieldUi, value: JsonElement
             field.format?.let { add("格式 $it") }
         }
         if (constraints.isNotEmpty()) Text(constraints.joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        if (value != null && !NativeInteractionForms.validFieldValue(field, value)) Text("请按字段约束填写。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+        if (value != null && !NativeInteractionForms.validFieldValue(field, value)) Text("请按要求填写。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
     }
 }
 

@@ -29,13 +29,13 @@ class GatewayNotifications(context: Context, private val ledger: NotificationLed
     init {
         manager.createNotificationChannels(listOf(
             NotificationChannel(TURNS_CHANNEL, "执行结果", NotificationManager.IMPORTANCE_DEFAULT).apply {
-                description = "Codex 原生执行完成或停止"
+                description = "Codex 执行完成或停止"
             },
             NotificationChannel(ATTENTION_CHANNEL, "审批与回复", NotificationManager.IMPORTANCE_HIGH).apply {
-                description = "需要在应用内核对的原生审批和交互请求"
+                description = "需要确认的审批和回复请求"
             },
             NotificationChannel(ERRORS_CHANNEL, "执行错误", NotificationManager.IMPORTANCE_HIGH).apply {
-                description = "Codex 原生执行失败"
+                description = "Codex 执行失败"
             },
         ))
     }

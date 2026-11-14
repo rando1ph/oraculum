@@ -1,6 +1,7 @@
 package dev.oraculum.poc.ui
 
 import androidx.activity.ComponentActivity
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import org.junit.Assert.*
@@ -14,7 +15,7 @@ class WorkspaceRefinementTest {
     private fun fixture(): PocUiState {
         val completed = TurnMetadataUi(status = "completed", durationMs = 1000)
         return PocUiState(
-            paired = true, online = true, gatewayProtocolMinor = 0,
+            paired = true, online = true, gatewayProtocolMinor = 0, canCreateThread = true,
             selectedProjectId = "project", selectedThreadId = "thread",
             projects = listOf(ProjectOption("project", "Fixture project")),
             threads = listOf(ThreadOption("thread", "Fixture thread")),
@@ -42,6 +43,42 @@ class WorkspaceRefinementTest {
         assertTrue("Answer belongs below its execution summary", summary.bottom <= answer.top)
         compose.onAllNodesWithText("Fixture assistant", useUnmergedTree = true).assertCountEquals(1)
         compose.onNodeWithText("Fixture execution").assertDoesNotExist()
+    }
+
+    @Test fun navigationHeadingsFoldTheirRowsAndKeepIconActionsAvailable() {
+        var refreshes = 0
+        var created = 0
+        render(PocActions(onRefresh = { refreshes++ }, onCreateThread = { created++ }))
+        compose.onNodeWithTag("navigation").performClick()
+        val projects = compose.onNodeWithTag("navigation-projects-toggle").assertIsDisplayed()
+        val threads = compose.onNodeWithTag("navigation-threads-toggle").assertIsDisplayed()
+        projects.assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "已展开"))
+        threads.assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "已展开"))
+        compose.onNodeWithTag("project-project").assertIsDisplayed()
+        compose.onNodeWithTag("thread-thread").assertIsDisplayed()
+        val projectBounds = projects.fetchSemanticsNode().boundsInRoot
+        val registerBounds = compose.onNodeWithTag("register_project").assertIsEnabled().fetchSemanticsNode().boundsInRoot
+        val threadBounds = threads.fetchSemanticsNode().boundsInRoot
+        val newBounds = compose.onNodeWithTag("new-thread").assertIsEnabled().fetchSemanticsNode().boundsInRoot
+        val refreshBounds = compose.onNodeWithTag("refresh-navigation").assertIsEnabled().fetchSemanticsNode().boundsInRoot
+        assertTrue("Fold controls lead their heading actions", projectBounds.left < registerBounds.left)
+        assertTrue(threadBounds.left < newBounds.left && threadBounds.left < refreshBounds.left)
+        compose.onNodeWithContentDescription("注册项目目录").assertIsDisplayed()
+        compose.onNodeWithContentDescription("新建会话").assertIsDisplayed()
+        compose.onNodeWithContentDescription("刷新项目与会话").assertIsDisplayed()
+        compose.onNodeWithText("注册项目目录").assertDoesNotExist()
+        compose.onNodeWithText("新建会话").assertDoesNotExist()
+        compose.onNodeWithText("刷新项目与会话").assertDoesNotExist()
+        projects.performClick()
+        compose.onNodeWithTag("project-project").assertDoesNotExist()
+        compose.onNodeWithTag("register_project").assertIsDisplayed()
+        threads.performClick()
+        compose.onNodeWithTag("thread-thread").assertDoesNotExist()
+        compose.onNodeWithTag("new-thread").assertIsDisplayed()
+        compose.onNodeWithTag("refresh-navigation").performClick()
+        compose.runOnIdle { assertEquals(1, refreshes) }
+        compose.onNodeWithTag("new-thread").performClick()
+        compose.runOnIdle { assertEquals(1, created) }
     }
 
     @Test fun sidebarQuotaSitsImmediatelyAboveAccountSettings() {

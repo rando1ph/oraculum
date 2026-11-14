@@ -122,7 +122,7 @@ class EventConnectionHandle internal constructor(
             webSocket.close(code, null)
             if (!finished.get()) {
                 if (code == 1008) invalidateAccess()
-                fail(GatewayException("EVENT_CONNECTION_CLOSED", "实时连接已关闭，请重新连接以校正认证和原生状态。"))
+                fail(GatewayException("EVENT_CONNECTION_CLOSED", "实时连接已断开，请重新连接并刷新会话。"))
             }
         }
         override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
@@ -143,5 +143,5 @@ class EventConnectionHandle internal constructor(
         runCatching { callbacks.onFailure(error) }
     }
 
-    private fun resetRequired() = GatewayException("EVENT_RESET_REQUIRED", "事件序号或网关代次已改变，请重新同步原生状态；写入不会自动重发。")
+    private fun resetRequired() = GatewayException("EVENT_RESET_REQUIRED", "连接状态已更新，请刷新会话；应用不会重复提交操作。")
 }

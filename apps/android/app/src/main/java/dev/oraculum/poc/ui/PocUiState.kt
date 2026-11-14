@@ -10,6 +10,24 @@ import kotlinx.serialization.json.JsonObject
 data class RootOption(val id: String, val label: String)
 data class ProjectOption(val id: String, val label: String, val detail: String = "")
 data class ThreadOption(val id: String, val label: String, val detail: String = "", val archived: Boolean = false)
+
+/** Native name writes are capped without splitting a Unicode character. */
+internal fun branchThreadTitle(sourceTitle: String): String {
+    val source = sourceTitle.replace(Regex("[\\u0000-\\u001f\\u007f]+"), " ").trim().ifBlank { "新会话" }
+    val title = StringBuilder("Branch · ")
+    var offset = 0
+    var count = title.codePointCount(0, title.length)
+    while (offset < source.length && count < 200) {
+        val point = source.codePointAt(offset)
+        val width = Character.charCount(point)
+        // The adapter also caps UTF-16 length, so both native bounds are respected.
+        if (title.length + width > 200) break
+        title.appendCodePoint(point)
+        offset += width
+        count++
+    }
+    return title.toString()
+}
 data class ChatMessage(
     val id: String,
     val role: String,
@@ -123,6 +141,9 @@ data class PocUiState(
     val accountError: String? = null,
     val accountRefreshing: Boolean = false,
     val showArchivedThreads: Boolean = false,
+    val archivedThreads: List<ThreadOption> = emptyList(),
+    val archivedThreadsLoaded: Boolean = false,
+    val canLoadMoreArchivedThreads: Boolean = false,
     val activeTurnId: String? = null,
     val canSteer: Boolean = false,
     val canManageThread: Boolean = false,
@@ -168,6 +189,7 @@ data class PocActions(
     val onUnarchiveThread: (String) -> Unit = {},
     val onDeleteThread: (String) -> Unit = {},
     val onShowArchivedThreads: (Boolean) -> Unit = {},
+    val onLoadMoreArchivedThreads: () -> Unit = {},
     val onForkThread: (String?) -> Unit = {},
     val onRevertThread: (String) -> Unit = {},
     val onCompactThread: () -> Unit = {},
