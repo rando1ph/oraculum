@@ -68,6 +68,8 @@ class MainActivity : ComponentActivity() {
                     onRefresh = model::refresh,
                     onRefreshConversation = model::refreshConversation,
                     onSelectProject = model::selectProject,
+                    onProjectSortChange = model::projectSortChange,
+                    onThreadSortChange = model::threadSortChange,
                     onRegisterProject = model::registerProject,
                     onSelectThread = model::selectThread,
                     onCreateThread = model::createThread,

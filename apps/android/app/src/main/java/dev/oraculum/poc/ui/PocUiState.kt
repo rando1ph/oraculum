@@ -8,8 +8,11 @@ import kotlinx.serialization.json.JsonObject
 
 /** Display-only models. Native IDs remain opaque and are passed back unchanged. */
 data class RootOption(val id: String, val label: String)
-data class ProjectOption(val id: String, val label: String, val detail: String = "")
-data class ThreadOption(val id: String, val label: String, val detail: String = "", val archived: Boolean = false)
+enum class NavigationSort { CreatedNewest, UpdatedNewest, NameAscending, NameDescending }
+
+// Optional producer timestamps are compared in their original units; missing dates stay unknown.
+data class ProjectOption(val id: String, val label: String, val detail: String = "", val createdAt: Long? = null, val updatedAt: Long? = null)
+data class ThreadOption(val id: String, val label: String, val detail: String = "", val archived: Boolean = false, val createdAt: Long? = null, val updatedAt: Long? = null)
 
 /** Native name writes are capped without splitting a Unicode character. */
 internal fun branchThreadTitle(sourceTitle: String): String {
@@ -97,6 +100,8 @@ data class PocUiState(
     val roots: List<RootOption> = emptyList(),
     val projects: List<ProjectOption> = emptyList(),
     val threads: List<ThreadOption> = emptyList(),
+    val projectSort: NavigationSort = NavigationSort.NameAscending,
+    val threadSort: NavigationSort = NavigationSort.CreatedNewest,
     val selectedProjectId: String? = null,
     val selectedThreadId: String? = null,
     val messages: List<ChatMessage> = emptyList(),
@@ -157,6 +162,8 @@ data class PocActions(
     val onRefresh: () -> Unit = {},
     val onRefreshConversation: () -> Unit = {},
     val onSelectProject: (String) -> Unit = {},
+    val onProjectSortChange: (NavigationSort) -> Unit = {},
+    val onThreadSortChange: (NavigationSort) -> Unit = {},
     val onRegisterProject: (String, String) -> Unit = { _, _ -> },
     val onSelectThread: (String) -> Unit = {},
     val onCreateThread: () -> Unit = {},

@@ -15,9 +15,10 @@ class ComposerSelectionTest {
         readAt = 1, sandboxMode = sandbox, source = NativeDefaultsSource.NativeConfig, workspaceWriteNetworkAccess = true,
     )
 
-    @Test fun missingFactsStayNeutralRatherThanImplyReadOnlyOrCatalogDefaults() {
+    @Test fun missingPermissionDefaultsSelectAutoWithoutInventingModelDefaults() {
         val state = PocUiState(models = listOf(ModelOption("catalog", "Catalog", listOf("low"), defaultEffort = "low")))
-        assertEquals("权限", composerPermissionLabel(state))
+        assertEquals("auto", composerPermissionPreset(state))
+        assertEquals("Auto", composerPermissionLabel(state))
         assertEquals("模型", composerModelAndEffortLabel(state))
         assertNull(composerEffort(state))
     }
@@ -26,7 +27,8 @@ class ComposerSelectionTest {
         val state = PocUiState(actualModel = "thread", actualEffort = "high", nativeDefaults = defaults(),
             models = listOf(ModelOption("thread", "Thread model", listOf("low", "high"), defaultEffort = "low")))
         assertEquals("Thread model · high", composerModelAndEffortLabel(state))
-        assertEquals("工作区写入", composerPermissionLabel(state))
+        assertEquals("auto", composerPermissionPreset(state))
+        assertEquals("Auto", composerPermissionLabel(state))
     }
 
     @Test fun explicitModelNeverBorrowEffortFromDifferentThreadOrProjectModel() {
@@ -42,14 +44,42 @@ class ComposerSelectionTest {
         assertEquals("configured · ultra", composerModelAndEffortLabel(state.copy(actualModel = "configured", actualEffort = null)))
     }
 
-    @Test fun permissionUsesExplicitChoiceThenConfirmedReadbackAndNeverInventsAuto() {
+    @Test fun nextRequestDefaultsDoNotBorrowThePreviousTurnsPermission() {
         val readback = PermissionReadbackUi("dangerFullAccess", "never", "full-access", 1, "thread.resume")
-        val state = PocUiState(permissionReadback = readback, actualPermissionPreset = "full-access", nativeDefaults = defaults())
-        assertEquals("Full access", composerPermissionLabel(state))
-        assertEquals("只读", composerPermissionLabel(state.copy(permissionPreset = "read-only")))
-        assertEquals("Auto", composerPermissionLabel(state.copy(permissionPreset = "auto")))
-        assertEquals("自定义权限", composerPermissionLabel(state.copy(actualPermissionPreset = null,
-            permissionReadback = readback.copy(sandboxType = "customSandbox", preset = null))))
+        val state = PocUiState(permissionReadback = readback, actualPermissionPreset = "full-access",
+            nativeDefaults = defaults(sandbox = SandboxMode.ReadOnly))
+        assertEquals("read-only", composerPermissionPreset(state))
+        assertEquals("只读", composerPermissionLabel(state))
+        assertEquals("auto", composerPermissionPreset(state.copy(nativeDefaults = null)))
+        assertEquals("Auto", composerPermissionLabel(state.copy(nativeDefaults = null)))
+        assertEquals("full-access", state.permissionReadback?.preset)
+    }
+
+    @Test fun explicitPermissionsOverrideEveryDefaultIncludingUnknownSettings() {
+        for ((preset, label) in listOf("read-only" to "只读", "auto" to "Auto", "full-access" to "Full access")) {
+            val state = PocUiState(permissionPreset = preset, nativeDefaults = defaults())
+            assertEquals(preset, composerPermissionPreset(state))
+            assertEquals(label, composerPermissionLabel(state))
+        }
+    }
+
+    @Test fun onlyClassifiedDefaultsCanProduceFullAccessOrReadOnly() {
+        val full = defaults(sandbox = SandboxMode.DangerFullAccess).copy(approvalPolicy = ApprovalPolicy.Never)
+        assertEquals("full-access", composerPermissionPreset(PocUiState(nativeDefaults = full)))
+        assertEquals("Full access", composerPermissionLabel(PocUiState(nativeDefaults = full)))
+        assertEquals("read-only", composerPermissionPreset(PocUiState(nativeDefaults = defaults(sandbox = SandboxMode.ReadOnly))))
+        assertEquals("auto", composerPermissionPreset(PocUiState(nativeDefaults = full.copy(approvalPolicy = ApprovalPolicy.OnRequest))))
+        assertEquals("auto", composerPermissionPreset(PocUiState(permissionPreset = "unknown", nativeDefaults = full)))
+        assertEquals("auto", composerPermissionPreset(PocUiState(nativeDefaults = defaults().copy(sandboxMode = null))))
+    }
+
+    @Test fun customReadbackFactsRemainAvailableWithoutBecomingTheSelectedPermission() {
+        val custom = PermissionReadbackUi("customSandbox", "custom", null, 1, "thread.resume")
+        val state = PocUiState(permissionReadback = custom, actualPermissionPreset = "full-access")
+        assertEquals("auto", composerPermissionPreset(state))
+        assertEquals("Auto", composerPermissionLabel(state))
+        assertEquals("自定义权限", permissionReadbackLabel(custom))
+        assertSame(custom, state.permissionReadback)
     }
 
     @Test fun configurationEffortWithoutKnownModelDoesNotAttachToUnrelatedThread() {

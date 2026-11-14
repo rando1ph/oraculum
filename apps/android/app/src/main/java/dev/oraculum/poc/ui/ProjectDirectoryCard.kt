@@ -1,6 +1,5 @@
 package dev.oraculum.poc.ui
 
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -10,17 +9,26 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.Button
-import androidx.compose.material3.FilterChip
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.MenuDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
@@ -40,6 +48,7 @@ internal fun ProjectDirectoryCard(
     onRegister: (String, String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    var rootMenu by remember { mutableStateOf(false) }
     val directory = state.directory
     val root = state.roots.firstOrNull { it.id == directory.rootId }
     val canBrowse = state.online && !state.busy
@@ -47,25 +56,34 @@ internal fun ProjectDirectoryCard(
     val directoryRegistrable = root != null && directory.path.isNotBlank() && directory.canRegister
     val canRegister = canBrowse && !hasWriteBarrier && directoryRegistrable
     val currentPath = when {
-        root == null -> "选择项目目录"
+        root == null -> "尚未选择"
         directory.path.isBlank() -> root.label
-        else -> "${root.label} / ${directory.path}"
+        else -> "${root.label.trimEnd('/')}/${directory.path}"
     }
 
     Surface(modifier.fillMaxSize().testTag("project-directory-card"),
         color = if (LocalOledTheme.current) Color.Black else MaterialTheme.colorScheme.surfaceContainerLow) {
         Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("当前目录", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            SelectionContainer {
-                Text(currentPath, Modifier.fillMaxWidth().testTag("project-directory-current").semantics { heading() },
-                    style = MaterialTheme.typography.titleMedium)
-            }
-            if (state.roots.isNotEmpty()) Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                state.roots.forEach { option ->
-                    FilterChip(selected = option.id == directory.rootId, enabled = canBrowse,
-                        onClick = { actions.onBrowseDirectory(option.id, "") }, label = { Text(option.label) },
-                        modifier = Modifier.heightIn(min = 48.dp).testTag("project-directory-root-${option.id}"))
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                SelectionContainer(Modifier.weight(1f)) {
+                    Text("当前目录: $currentPath" + if (root != null) "（相对路径）" else "",
+                        Modifier.fillMaxWidth().testTag("project-directory-current").semantics { heading() },
+                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace))
+                }
+                if (state.roots.size > 1) Box {
+                    IconButton({ rootMenu = true }, enabled = canBrowse,
+                        modifier = Modifier.size(48.dp).testTag("project-directory-roots")) {
+                        OraculumIcon(OraculumSymbol.Folder, "切换授权目录")
+                    }
+                    DropdownMenu(rootMenu, { rootMenu = false },
+                        containerColor = if (LocalOledTheme.current) Color.Black else MaterialTheme.colorScheme.surfaceContainer,
+                        tonalElevation = if (LocalOledTheme.current) 0.dp else MenuDefaults.TonalElevation) {
+                        state.roots.forEach { option ->
+                            DropdownMenuItem(text = { Text(option.label) }, enabled = canBrowse,
+                                modifier = Modifier.testTag("project-directory-root-${option.id}"),
+                                onClick = { rootMenu = false; actions.onBrowseDirectory(option.id, "") })
+                        }
+                    }
                 }
             }
             if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())

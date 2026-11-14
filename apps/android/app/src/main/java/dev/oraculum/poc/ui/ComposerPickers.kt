@@ -15,7 +15,6 @@ internal fun ModelPickerMenu(state: PocUiState, actions: PocActions, expanded: B
     var page by remember(expanded) { mutableStateOf("root") }
     val effectiveModel = composerModelId(state)
     val model = state.models.firstOrNull { it.id == effectiveModel }
-    var defaults by remember { mutableStateOf(false) }
     DropdownMenu(expanded = expanded, onDismissRequest = onDismiss,
         modifier = Modifier.width(280.dp).heightIn(max = 420.dp).testTag("model-sheet"),
         containerColor = if (LocalOledTheme.current) Color.Black else MaterialTheme.colorScheme.surfaceContainerHigh,
@@ -61,53 +60,28 @@ internal fun ModelPickerMenu(state: PocUiState, actions: PocActions, expanded: B
                 }, onClick = { page = "efforts" }, modifier = Modifier.testTag("choose-effort"))
             }
         }
-        if ("config.read" in state.capabilityNames) {
-            HorizontalDivider()
-            DropdownMenuItem(text = { Text("设置详情") }, leadingIcon = { OraculumIcon(OraculumSymbol.Info) },
-                modifier = Modifier.testTag("model-native-settings"), onClick = {
-                    onDismiss(); defaults = true
-                    if (state.online && !state.busy) actions.onRefreshNativeDefaults()
-                })
-        }
     }
-    if (defaults) NativeDefaultsDetails(state, actions) { defaults = false }
 }
 
 @Composable
 internal fun PermissionPickerMenu(state: PocUiState, actions: PocActions, expanded: Boolean, onDismiss: () -> Unit) {
     var confirmFull by remember { mutableStateOf(false) }
-    var defaults by remember { mutableStateOf(false) }
+    val selectedPreset = composerPermissionPreset(state)
     DropdownMenu(expanded = expanded, onDismissRequest = onDismiss,
         modifier = Modifier.width(240.dp).testTag("permission-sheet"),
         containerColor = if (LocalOledTheme.current) Color.Black else MaterialTheme.colorScheme.surfaceContainerHigh,
         tonalElevation = if (LocalOledTheme.current) 0.dp else MenuDefaults.TonalElevation,
         shape = OraculumTokens.ContentShape) {
-        PickerChoice(defaultChoiceLabel(composerPermissionLabel(state.copy(permissionPreset = "native")), "权限"), state.permissionPreset == "native", !state.busy, "permission-native") {
-            actions.onSelectPermission("native", false); onDismiss()
-        }
-        PickerChoice("只读", state.permissionPreset == "read-only", !state.busy, "permission-read-only") {
+        PickerChoice("只读", selectedPreset == "read-only", !state.busy, "permission-read-only", symbol = OraculumSymbol.ReadOnly) {
             actions.onSelectPermission("read-only", false); onDismiss()
         }
-        PickerChoice("Auto", state.permissionPreset == "auto", !state.busy, "permission-auto") {
+        PickerChoice("Auto", selectedPreset == "auto", !state.busy, "permission-auto", symbol = OraculumSymbol.Auto) {
             actions.onSelectPermission("auto", false); onDismiss()
         }
-        PickerChoice("Full access", state.permissionPreset == "full-access", !state.busy, "permission-full-access") {
+        PickerChoice("Full access", selectedPreset == "full-access", !state.busy, "permission-full-access", symbol = OraculumSymbol.FullAccess) {
             onDismiss(); confirmFull = true
         }
-        if ("config.read" in state.capabilityNames) {
-            HorizontalDivider()
-            DropdownMenuItem(text = { Text("设置详情") }, leadingIcon = { OraculumIcon(OraculumSymbol.Info) },
-                modifier = Modifier.testTag("permission-native-settings"), onClick = {
-                    onDismiss(); defaults = true
-                    if (state.online && !state.busy) actions.onRefreshNativeDefaults()
-                })
-        }
-        state.permissionReadback?.let { readback ->
-            HorizontalDivider()
-            DropdownMenuItem(text = { Text("当前权限：${permissionReadbackLabel(readback)}", style = MaterialTheme.typography.labelSmall) }, enabled = false, onClick = {})
-        }
     }
-    if (defaults) NativeDefaultsDetails(state, actions) { defaults = false }
     if (confirmFull) AlertDialog(onDismissRequest = { confirmFull = false },
         containerColor = if (LocalOledTheme.current) Color.Black else AlertDialogDefaults.containerColor,
         tonalElevation = if (LocalOledTheme.current) 0.dp else AlertDialogDefaults.TonalElevation,
@@ -123,8 +97,10 @@ private fun defaultChoiceLabel(value: String?, unknown: String? = null): String 
     value?.takeIf { it.isNotBlank() && it != unknown }?.let { "默认设置 · $it" } ?: "默认设置"
 
 @Composable
-private fun PickerChoice(label: String, selected: Boolean, enabled: Boolean, tag: String, availability: String? = null, onClick: () -> Unit) {
+private fun PickerChoice(label: String, selected: Boolean, enabled: Boolean, tag: String, availability: String? = null,
+    symbol: OraculumSymbol? = null, onClick: () -> Unit) {
     DropdownMenuItem(text = { Text(label) }, onClick = onClick, enabled = enabled,
+        leadingIcon = symbol?.let { icon -> { OraculumIcon(icon) } },
         trailingIcon = {
             if (availability != null) Text(availability, style = MaterialTheme.typography.labelSmall)
             else if (selected) OraculumIcon(OraculumSymbol.Check, "已选择", tint = MaterialTheme.colorScheme.primary)

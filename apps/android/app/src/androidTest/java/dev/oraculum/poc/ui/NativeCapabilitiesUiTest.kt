@@ -289,7 +289,7 @@ class NativeCapabilitiesUiTest {
         compose.runOnIdle { assertEquals("ultra", effort); assertEquals(0, sends) }
     }
 
-    @Test fun nativePermissionSelectionClearsTheOverrideWithoutSending() {
+    @Test fun autoPermissionSelectionReturnsAConcretePresetWithoutSending() {
         var selected: Pair<String, Boolean>? = null
         var sends = 0
         render(fixture().copy(permissionPreset = "read-only"), PocActions(
@@ -297,8 +297,9 @@ class NativeCapabilitiesUiTest {
             onSend = { sends++ }))
         compose.onNodeWithTag("permission-picker").performClick()
         compose.onNodeWithTag("permission-native-settings").assertDoesNotExist()
-        compose.onNodeWithTag("permission-native").assertIsEnabled().performClick()
-        compose.runOnIdle { assertEquals("native" to false, selected); assertEquals(0, sends) }
+        compose.onNodeWithTag("permission-native").assertDoesNotExist()
+        compose.onNodeWithTag("permission-auto").assertIsEnabled().performClick()
+        compose.runOnIdle { assertEquals("auto" to false, selected); assertEquals(0, sends) }
     }
 
     @Test fun inheritedChipsShowKnownValuesWithoutCreatingOverrides() {
@@ -310,25 +311,22 @@ class NativeCapabilitiesUiTest {
             permissionPreset = "native", nativeDefaults = defaults)
         render(state, PocActions(onSelectModel = { overrides++ }, onSelectEffort = { overrides++ },
             onSelectPermission = { _, _ -> overrides++ }))
-        compose.onNodeWithTag("permission-picker").assertTextContains("工作区写入")
+        compose.onNodeWithTag("permission-picker").assertTextContains("Auto")
         compose.onNodeWithTag("model-picker").assertTextContains("Fixture model · ultra")
         compose.onNodeWithText("原生").assertDoesNotExist()
         compose.runOnIdle { assertEquals(0, overrides) }
     }
 
-    @Test fun nativeConfigurationIsAccessibleThroughTheAnchoredPicker() {
+    @Test fun anchoredPickersOmitConfigurationDetailsEvenWhenCapabilityIsAvailable() {
         var refreshes = 0
-        val defaults = NativeDefaults(approvalPolicy = ApprovalPolicy.OnRequest, effort = "ultra",
-            model = "Fixture native model", origins = Origins(), readAt = 0,
-            sandboxMode = SandboxMode.WorkspaceWrite, source = NativeDefaultsSource.NativeConfig)
-        render(fixture(setOf("config.read")).copy(nativeDefaults = defaults),
-            PocActions(onRefreshNativeDefaults = { refreshes++ }))
+        render(fixture(setOf("config.read")), PocActions(onRefreshNativeDefaults = { refreshes++ }))
         compose.onNodeWithTag("permission-picker").performClick()
-        compose.onNodeWithTag("permission-native-settings").performClick()
-        compose.onNodeWithTag("native-defaults").assertIsDisplayed()
-        compose.onNodeWithText("Fixture native model").assertIsDisplayed()
-        compose.onNodeWithText("ultra").assertIsDisplayed()
-        compose.runOnIdle { assertEquals(1, refreshes) }
+        compose.onNodeWithTag("permission-native-settings").assertDoesNotExist()
+        compose.onNodeWithTag("permission-auto").performClick()
+        compose.onNodeWithTag("model-picker").performClick()
+        compose.onNodeWithTag("model-native-settings").assertDoesNotExist()
+        compose.onNodeWithTag("native-defaults").assertDoesNotExist()
+        compose.runOnIdle { assertEquals(0, refreshes) }
     }
 
     @Test fun activeTurnComposerSteersWithoutStartingAnotherTurn() {

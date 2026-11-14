@@ -1,13 +1,22 @@
 package dev.oraculum.poc.ui
 
-/** Display confirmed values without turning an inherited setting into an explicit override. */
-internal fun composerPermissionLabel(state: PocUiState): String {
-    if (state.permissionPreset != "native") return permissionPresetLabel(state.permissionPreset) ?: "权限"
-    return permissionPresetLabel(state.actualPermissionPreset)
-        ?: state.permissionReadback?.let(::permissionReadbackLabel)
-        ?: sandboxLabel(state.nativeDefaults?.sandboxMode?.value)
-        ?: "权限"
+/**
+ * Resolve the next request's concrete permission choice. Recent execution readbacks remain
+ * historical facts; they cannot stand in for the project's next-request defaults.
+ */
+internal fun composerPermissionPreset(state: PocUiState): String {
+    if (state.permissionPreset != "native")
+        return state.permissionPreset.takeIf { it in setOf("read-only", "auto", "full-access") } ?: "auto"
+    val defaults = state.nativeDefaults ?: return "auto"
+    return when {
+        defaults.sandboxMode?.value == "read-only" && defaults.approvalPolicy?.value == "on-request" -> "read-only"
+        defaults.sandboxMode?.value == "danger-full-access" && defaults.approvalPolicy?.value == "never" -> "full-access"
+        else -> "auto"
+    }
 }
+
+internal fun composerPermissionLabel(state: PocUiState): String =
+    permissionPresetLabel(composerPermissionPreset(state)) ?: "Auto"
 
 internal fun composerModelId(state: PocUiState): String? =
     state.selectedModel.visibleValue() ?: state.actualModel.visibleValue() ?: state.nativeDefaults?.model.visibleValue()

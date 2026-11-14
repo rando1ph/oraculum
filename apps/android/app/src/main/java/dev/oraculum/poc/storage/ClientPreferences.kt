@@ -1,6 +1,7 @@
 package dev.oraculum.poc.storage
 
 import android.content.Context
+import dev.oraculum.poc.ui.NavigationSort
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
@@ -24,6 +25,8 @@ data class ClientPreferenceSnapshot(
     val readingScale: Float = 1f,
     val accentColor: String = "matcha",
     val avatarFileName: String? = null,
+    val projectSort: NavigationSort = NavigationSort.NameAscending,
+    val threadSort: NavigationSort = NavigationSort.CreatedNewest,
 )
 
 /** Small, non-secret preferences only; a new namespace never reads the legacy WebView state. */
@@ -42,6 +45,8 @@ class ClientPreferences(private val store: DataStore<Preferences>) {
             readingScale = preferences[READING_SCALE]?.takeIf { it.isFinite() }?.coerceIn(0.85f, 1.4f) ?: 1f,
             accentColor = preferences[ACCENT]?.takeIf { it in ACCENT_COLOR_KEYS } ?: "matcha",
             avatarFileName = preferences[AVATAR]?.takeIf(::isAvatarFileName),
+            projectSort = NavigationSort.entries.firstOrNull { it.name == preferences[PROJECT_SORT] } ?: NavigationSort.NameAscending,
+            threadSort = NavigationSort.entries.firstOrNull { it.name == preferences[THREAD_SORT] } ?: NavigationSort.CreatedNewest,
         )
     }
 
@@ -65,6 +70,14 @@ class ClientPreferences(private val store: DataStore<Preferences>) {
             if (projectId == null) preferences.remove(PROJECT) else preferences[PROJECT] = projectId
             if (threadId == null) preferences.remove(THREAD) else preferences[THREAD] = threadId
         }
+    }
+
+    suspend fun saveProjectSort(sort: NavigationSort) {
+        store.edit { it[PROJECT_SORT] = sort.name }
+    }
+
+    suspend fun saveThreadSort(sort: NavigationSort) {
+        store.edit { it[THREAD_SORT] = sort.name }
     }
 
     suspend fun saveTheme(mode: String) {
@@ -92,6 +105,8 @@ class ClientPreferences(private val store: DataStore<Preferences>) {
     }
 
     private companion object {
+        val PROJECT_SORT = stringPreferencesKey("project-sort")
+        val THREAD_SORT = stringPreferencesKey("thread-sort")
         val USER_LABEL = stringPreferencesKey("user-label")
         val ACCENT = stringPreferencesKey("accent-color")
         val AVATAR = stringPreferencesKey("avatar-file-name")

@@ -119,7 +119,8 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
         action {
             val saved = local.preferences.snapshot()
             mutableState.value = state.value.copy(endpoint = saved.endpoint, themeMode = saved.themeMode, userLabel = saved.userLabel, assistantLabel = saved.assistantLabel, readingScale = saved.readingScale,
-                accentColor = saved.accentColor, avatarFileName = saved.avatarFileName)
+                accentColor = saved.accentColor, avatarFileName = saved.avatarFileName,
+                projectSort = saved.projectSort, threadSort = saved.threadSort)
             if (saved.endpoint.isNotBlank()) {
                 val endpoint = GatewayEndpoint.parse(saved.endpoint)
                 val identity = client.savedIdentity(endpoint)
@@ -138,6 +139,19 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
         local.preferences.saveTheme(mode)
         mutableState.value = state.value.copy(themeMode = mode)
     }
+
+    fun projectSortChange(sort: NavigationSort) = action {
+        local.preferences.saveProjectSort(sort)
+        mutableState.value = state.value.copy(projectSort = sort, projects = sortedProjects(state.value.projects, sort))
+    }
+
+    fun threadSortChange(sort: NavigationSort) = action {
+        local.preferences.saveThreadSort(sort)
+        mutableState.value = state.value.copy(threadSort = sort,
+            threads = sortedThreads(state.value.threads, sort), archivedThreads = sortedThreads(state.value.archivedThreads, sort))
+    }
+
+    private fun orderedThreads(items: List<ThreadOption>) = sortedThreads(items, state.value.threadSort)
 
     fun accentChange(mode: String) = action {
         local.preferences.saveAccent(mode)
@@ -283,7 +297,7 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
         if (state.value.selectedProjectId != project) return@action
         nextArchivedThreadCursor = data.string("nextCursor")
         val added = data.array("threads").mapNotNull { (it as? JsonObject)?.let { threadOption(it, archived = true) } }
-        mutableState.value = state.value.copy(archivedThreads = (state.value.archivedThreads + added).distinctBy { it.id }, archivedThreadsLoaded = true)
+        mutableState.value = state.value.copy(archivedThreads = orderedThreads((state.value.archivedThreads + added).distinctBy { it.id }), archivedThreadsLoaded = true)
     }
 
     private fun knownThread(id: String) = (state.value.threads + state.value.archivedThreads).firstOrNull { it.id == id }
@@ -298,9 +312,9 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
         val data = resource(client.get("projects/${segment(project)}/threads", mapOf("limit" to "20", "archived" to "true")))
         if (state.value.selectedProjectId != project) return
         nextArchivedThreadCursor = data.string("nextCursor")
-        mutableState.value = state.value.copy(archivedThreads = data.array("threads").mapNotNull {
+        mutableState.value = state.value.copy(archivedThreads = orderedThreads(data.array("threads").mapNotNull {
             (it as? JsonObject)?.let { thread -> threadOption(thread, archived = true) }
-        }, archivedThreadsLoaded = true, canLoadMoreArchivedThreads = state.value.online && !state.value.busy && nextArchivedThreadCursor != null)
+        }), archivedThreadsLoaded = true, canLoadMoreArchivedThreads = state.value.online && !state.value.busy && nextArchivedThreadCursor != null)
     }
 
     private suspend fun refreshThreadLists(project: String) {
@@ -414,7 +428,7 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
         if (!sameContext()) throw ClientStateException("分支已创建，连接已变化。请返回原账户刷新列表，请勿重复创建。")
         freshThreads.add(forked)
         mutableState.value = state.value.copy(showArchivedThreads = false,
-            threads = (state.value.threads + ThreadOption(forked, "新分支")).distinctBy { it.id })
+            threads = orderedThreads((state.value.threads + ThreadOption(forked, "新分支")).distinctBy { it.id }))
         var renamed = false
         try {
             requireOnline("thread.name.set")
@@ -426,9 +440,9 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
             renamed = receipt.string("status") == "accepted"
-            if (renamed && sameContext()) mutableState.value = state.value.copy(threads = state.value.threads.map {
+            if (renamed && sameContext()) mutableState.value = state.value.copy(threads = orderedThreads(state.value.threads.map {
                 if (it.id == forked) it.copy(label = title) else it
-            })
+            }))
         } catch (error: Exception) {
             if (error is CancellationException && error !is TimeoutCancellationException) throw error
             handleFailure(error)
@@ -438,7 +452,7 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
             try {
                 refreshThreadLists(project)
                 if (forked in freshThreads && state.value.threads.none { it.id == forked }) mutableState.value = state.value.copy(
-                    threads = state.value.threads + ThreadOption(forked, if (renamed) title else "新分支"))
+                    threads = orderedThreads(state.value.threads + ThreadOption(forked, if (renamed) title else "新分支")))
                 if (sameContext() && state.value.threads.any { it.id == forked }) {
                     selectThreadInternal(forked)
                     opened = true
@@ -517,7 +531,7 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
         if (state.value.selectedProjectId != project) return@action
         nextThreadCursor = data.string("nextCursor")
         val added = data.array("threads").mapNotNull { (it as? JsonObject)?.let { thread -> threadOption(thread) } }
-        mutableState.value = state.value.copy(threads = (state.value.threads + added).distinctBy { it.id })
+        mutableState.value = state.value.copy(threads = orderedThreads((state.value.threads + added).distinctBy { it.id }))
     }
 
     fun respondInteraction(id: String, response: JsonObject) = respondInteractionInternal(id, response, null)
@@ -741,7 +755,7 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
             showArchivedThreads = false, nativeDefaults = null, nativeDefaultsError = null)
         applyThreads(target.firstThreads)
         nextThreadCursor = target.firstThreads.string("nextCursor")
-        if (state.value.threads.none { it.id == route.threadId }) mutableState.value = state.value.copy(threads = state.value.threads + threadOption(target.thread))
+        if (state.value.threads.none { it.id == route.threadId }) mutableState.value = state.value.copy(threads = orderedThreads(state.value.threads + threadOption(target.thread)))
         val committedVersion = invalidationVersion
         // Apply the already-read snapshot before any local IO can let a new event race with it.
         applyVerifiedSnapshot(route.projectId, route.threadId, target.snapshot, committedVersion, generation, fileChangeEvidenceVersion)
@@ -764,7 +778,8 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
             pending = emptyList()
             projection.clear()
             mutableState.value = PocUiState(endpoint = value, themeMode = state.value.themeMode, userLabel = state.value.userLabel, assistantLabel = state.value.assistantLabel, readingScale = state.value.readingScale,
-                accentColor = state.value.accentColor, avatarFileName = state.value.avatarFileName)
+                accentColor = state.value.accentColor, avatarFileName = state.value.avatarFileName,
+                projectSort = state.value.projectSort, threadSort = state.value.threadSort)
         }
     }
 
@@ -847,7 +862,7 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
         val result = executeWrite("thread.start", projectId, null, "projects/${segment(projectId)}/threads") { id ->
             buildJsonObject {
                 put("operationId", id); put("expectedEpoch", epoch)
-                state.value.permissionPreset.takeUnless { it == "native" }?.let { put("permissionPreset", it) }
+                put("permissionPreset", composerPermissionPreset(state.value))
                 state.value.selectedModel?.let { put("model", it) }
                 state.value.selectedEffort?.let { put("effort", it) }
             }
@@ -859,11 +874,11 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
             if (state.value.online && position != null && epoch == startedEpoch && connectionGeneration == startedGeneration)
                 firstTurnPermit.acceptedStart(projectId, it, startedEpoch, startedGeneration)
             freshThreads.add(it)
-            if (state.value.threads.none { thread -> thread.id == it }) mutableState.value = state.value.copy(threads = state.value.threads + ThreadOption(it, "新会话", "idle"))
+            if (state.value.threads.none { thread -> thread.id == it }) mutableState.value = state.value.copy(threads = orderedThreads(state.value.threads + ThreadOption(it, "新会话", "idle")))
         }
         refreshThreads(projectId)
         createdThread?.let {
-            if (state.value.threads.none { thread -> thread.id == it }) mutableState.value = state.value.copy(threads = state.value.threads + ThreadOption(it, "新会话", "idle"))
+            if (state.value.threads.none { thread -> thread.id == it }) mutableState.value = state.value.copy(threads = orderedThreads(state.value.threads + ThreadOption(it, "新会话", "idle")))
             selectThreadInternal(it)
         }
     }
@@ -904,7 +919,7 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
             buildJsonObject {
                 put("operationId", id); put("projectId", project); put("expectedEpoch", epoch)
                 put("input", buildJsonArray { add(buildJsonObject { put("type", "text"); put("text", text) }) })
-                state.value.permissionPreset.takeUnless { it == "native" }?.let { put("permissionPreset", it) }
+                put("permissionPreset", composerPermissionPreset(state.value))
                 state.value.selectedModel?.let { put("model", it) }
                 state.value.selectedEffort?.let { put("effort", it) }
                 attachmentClaim.forEach { (key, value) -> put(key, value) }
@@ -1145,9 +1160,9 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
     private fun applyProjects(data: JsonObject) {
         mutableState.value = state.value.copy(
             roots = data.array("roots").mapNotNull { value -> (value as? JsonObject)?.let { root -> root.string("id")?.let { RootOption(it, root.string("label") ?: it) } } },
-            projects = data.array("projects").mapNotNull { value -> (value as? JsonObject)?.let { project ->
+            projects = sortedProjects(data.array("projects").mapNotNull { value -> (value as? JsonObject)?.let { project ->
                 project.string("id")?.takeIf { project.flag("available") }?.let { ProjectOption(it, project.string("name") ?: "项目", project.string("canonicalPath").orEmpty()) }
-            } },
+            } }, state.value.projectSort),
         )
     }
 
@@ -1173,12 +1188,12 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
             }
             if (found != null) {
                 freshThreads.remove(selected)
-                mutableState.value = state.value.copy(threads = state.value.threads + threadOption(found))
+                mutableState.value = state.value.copy(threads = orderedThreads(state.value.threads + threadOption(found)))
             }
             else if (selected in freshThreads) {
                 try {
                     val detail = resource(client.get("projects/${segment(project)}/threads/${segment(selected)}"))
-                    mutableState.value = state.value.copy(threads = state.value.threads + threadOption(detail))
+                    mutableState.value = state.value.copy(threads = orderedThreads(state.value.threads + threadOption(detail)))
                 } catch (error: GatewayException) {
                     if (error.httpStatus in listOf(403, 404) && !error.authInvalid) unavailableThread() else throw error
                 }
@@ -1192,14 +1207,24 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun applyThreads(data: JsonObject) {
         mutableState.value = state.value.copy(
-            threads = data.array("threads").mapNotNull { (it as? JsonObject)?.let { thread -> threadOption(thread) } },
+            threads = orderedThreads(data.array("threads").mapNotNull { (it as? JsonObject)?.let { thread -> threadOption(thread) } }),
             canLoadMoreThreads = data.string("nextCursor") != null,
         )
     }
 
     private fun threadOption(thread: JsonObject, archived: Boolean = false) = ThreadOption(thread.string("id").orEmpty(),
         thread.string("title")?.takeIf { it.isNotBlank() } ?: thread.string("preview")?.take(64)?.takeIf { it.isNotBlank() } ?: "新会话",
-        thread.string("status").orEmpty(), archived = archived)
+        thread.string("status").orEmpty(), archived = archived,
+        createdAt = thread.nativeCount("createdAt"), updatedAt = thread.nativeCount("updatedAt"))
+
+    private fun updateThreadDates(thread: JsonObject) {
+        val id = thread.string("id") ?: return
+        if (thread.string("projectId") != state.value.selectedProjectId) return
+        mutableState.value = state.value.copy(threads = orderedThreads(state.value.threads.map {
+            if (it.id == id) it.copy(createdAt = thread.nativeCount("createdAt") ?: it.createdAt,
+                updatedAt = thread.nativeCount("updatedAt") ?: it.updatedAt) else it
+        }))
+    }
 
     private suspend fun selectThreadInternal(thread: String) {
         val project = state.value.selectedProjectId ?: return
@@ -1241,6 +1266,7 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
         val history = data.obj("history") ?: throw ClientStateException("Gateway 历史数据不完整")
         val nativeThread = data.obj("thread") ?: throw ClientStateException("Gateway 会话数据不完整")
         if (nativeThread.flag("archived")) { unavailableThread(); return }
+        updateThreadDates(nativeThread)
         threadStatus = nativeThread.string("status") ?: "unknown"
         val readback = permissionReadbackUi(nativeThread)
         // A pending approval makes synchronization "synchronizing". It may still carry complete
@@ -1485,6 +1511,7 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
             return false
         }
         if (!firstTurnPermit.confirmNativeIdle(project, thread, epoch, generation, detail.string("status").orEmpty())) return false
+        updateThreadDates(detail)
         threadStatus = "idle"
         val readback = permissionReadbackUi(detail)
         mutableState.value = state.value.copy(actualPermissionPreset = readback?.preset, permissionReadback = readback, actualModel = detail.string("model"), actualEffort = detail.string("reasoningEffort"))

@@ -44,6 +44,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import dev.oraculum.poc.repository.sortedProjects
+import dev.oraculum.poc.repository.sortedThreads
 import dev.oraculum.poc.files.AttachmentChips
 import dev.oraculum.poc.files.FileTransferPolicy
 import dev.oraculum.poc.files.FilesActions
@@ -257,7 +259,8 @@ private fun ColumnScope.NavigationPanel(state: PocUiState, actions: PocActions, 
     var searchOpen by rememberSaveable { mutableStateOf(false) }
     var projectsExpanded by rememberSaveable { mutableStateOf(true) }
     var threadsExpanded by rememberSaveable { mutableStateOf(true) }
-    val activeThreads = state.threads.filterNot { it.archived }
+    val projects = sortedProjects(state.projects, state.projectSort)
+    val activeThreads = sortedThreads(state.threads.filterNot { it.archived }, state.threadSort)
     Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp, top = 12.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
         NavigationBrand(Modifier.weight(1f).padding(end = 4.dp))
         IconButton({ searchOpen = !searchOpen; if (!searchOpen) filter = "" }, Modifier.size(48.dp).testTag("toggle-navigation-search")) {
@@ -295,6 +298,8 @@ private fun ColumnScope.NavigationPanel(state: PocUiState, actions: PocActions, 
                     NavigationSectionToggle("项目", projectsExpanded, "navigation-projects-toggle", Modifier.weight(1f)) { projectsExpanded = !projectsExpanded }
                     IconButton(actions.onRefresh, enabled = state.online && !state.busy,
                         modifier = Modifier.size(48.dp).testTag("refresh-projects")) { OraculumIcon(OraculumSymbol.Refresh, "刷新项目", size = 20.dp) }
+                    NavigationSortButton(state.projectSort, "sort-projects", "项目排序",
+                        state.projects.any { it.createdAt != null }, state.projects.any { it.updatedAt != null }, actions.onProjectSortChange)
                     IconButton({
                         projectsExpanded = true
                         registerOpen = true
@@ -306,8 +311,8 @@ private fun ColumnScope.NavigationPanel(state: PocUiState, actions: PocActions, 
                 }
             }
             if (projectsExpanded) {
-                items(state.projects.filter { filter.isBlank() || it.label.contains(filter, true) || it.detail.contains(filter, true) }, key = { "project-${it.id}" }) { project ->
-                    NavigationRow(project.label, project.detail, project.id == state.selectedProjectId, "project-${project.id}", !state.busy, symbol = OraculumSymbol.Folder, detailMaxLines = 1) { actions.onSelectProject(project.id) }
+                items(projects.filter { filter.isBlank() || it.label.contains(filter, true) || it.detail.contains(filter, true) }, key = { "project-${it.id}" }) { project ->
+                    NativeProjectRow(project, state) { actions.onSelectProject(project.id) }
                 }
                 if (state.projects.isEmpty()) item { MutedText("暂无项目") }
             }
@@ -317,6 +322,8 @@ private fun ColumnScope.NavigationPanel(state: PocUiState, actions: PocActions, 
                     NavigationSectionToggle("会话", threadsExpanded, "navigation-threads-toggle", Modifier.weight(1f)) { threadsExpanded = !threadsExpanded }
                     IconButton(actions.onRefresh, enabled = state.online && !state.busy,
                         modifier = Modifier.size(48.dp).testTag("refresh-navigation")) { OraculumIcon(OraculumSymbol.Refresh, "刷新会话", size = 20.dp) }
+                    NavigationSortButton(state.threadSort, "sort-threads", "会话排序",
+                        activeThreads.any { it.createdAt != null }, activeThreads.any { it.updatedAt != null }, actions.onThreadSortChange)
                     IconButton({ actions.onCreateThread(); onDismiss() }, enabled = state.canCreateThread,
                         modifier = Modifier.size(48.dp).testTag("new-thread")) { OraculumIcon(OraculumSymbol.Add, "新建会话", size = 20.dp) }
                 }
@@ -623,7 +630,12 @@ private fun Composer(state: PocUiState, actions: PocActions, filesState: FilesUi
                         Box {
                             TextButton({ pickerMenu = "permission"; addMenu = false }, contentPadding = PaddingValues(horizontal = 8.dp),
                                 modifier = Modifier.heightIn(min = 48.dp).testTag("permission-picker").semantics { contentDescription = "选择执行权限" }) {
-                                OraculumIcon(OraculumSymbol.Shield, size = 16.dp, tint = MaterialTheme.colorScheme.primary)
+                                OraculumIcon(when (composerPermissionPreset(state)) {
+                                    "read-only" -> OraculumSymbol.ReadOnly
+                                    "full-access" -> OraculumSymbol.FullAccess
+                                    else -> OraculumSymbol.Auto
+                                }, size = 16.dp, tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.testTag("permission-icon-${composerPermissionPreset(state)}"))
                                 Spacer(Modifier.width(4.dp))
                                 Text(composerPermissionLabel(state), maxLines = 1, style = MaterialTheme.typography.labelMedium)
                             }
@@ -645,12 +657,14 @@ private fun Composer(state: PocUiState, actions: PocActions, filesState: FilesUi
                     if (!state.canStop || steering) FilledIconButton(if (steering) actions.onSteer else actions.onSend, enabled = canSubmit,
                         colors = IconButtonDefaults.filledIconButtonColors(
                             containerColor = if (oled) Color.Black else if (canSubmit) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest,
-                            contentColor = if (oled) MaterialTheme.colorScheme.primary else if (canSubmit) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
-                            disabledContainerColor = if (oled) Color.Black else MaterialTheme.colorScheme.onSurface.copy(alpha = .12f),
-                            disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .4f)),
-                        modifier = Modifier.size(48.dp).then(if (oled) Modifier.border(1.dp,
-                            if (canSubmit) MaterialTheme.colorScheme.primary.copy(alpha = .7f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = .4f), CircleShape) else Modifier)
-                            .testTag(if (steering) "steer" else "send").semantics { contentDescription = if (steering) "补充本轮指令" else "发送消息" }) { Glyph("send", LocalContentColor.current) }
+                            contentColor = if (oled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onPrimary,
+                            disabledContainerColor = if (oled) Color.Black else MaterialTheme.colorScheme.surfaceContainerHighest,
+                            disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .7f)),
+                        modifier = Modifier.size(48.dp).then(if (oled) Modifier.border(if (canSubmit) 1.5.dp else 1.dp,
+                            if (canSubmit) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .55f), CircleShape) else Modifier)
+                            .testTag(if (steering) "steer" else "send").semantics { contentDescription = if (steering) "补充本轮指令" else "发送消息" }) {
+                        OraculumIcon(OraculumSymbol.Send, tint = LocalContentColor.current, size = 26.dp)
+                    }
                 }
             }
         }
