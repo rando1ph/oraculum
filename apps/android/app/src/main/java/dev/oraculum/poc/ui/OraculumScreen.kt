@@ -91,10 +91,8 @@ fun OraculumScreen(
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 IconButton(onClick = { panel = "navigation" },
                                     modifier = Modifier.size(48.dp).testTag("navigation").semantics { contentDescription = "打开项目与会话导航" }) {
-                                    Surface(shape = CircleShape, color = if (LocalOledTheme.current) Color.Black else MaterialTheme.colorScheme.surfaceContainerHigh,
-                                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.35f))) {
-                                        OracleEyeMark(modifier = Modifier.padding(10.dp), size = 24.dp)
-                                    }
+                                    OracleEyeMark(size = 40.dp, variant = OracleEyeVariant.Full,
+                                        modifier = Modifier.testTag("navigation-logo"))
                                 }
                                 Column(Modifier.weight(1f).padding(horizontal = 10.dp)) {
                                     Text(selectedThread?.label ?: "神谕 · Oraculum", maxLines = 1, overflow = TextOverflow.Ellipsis,
@@ -261,16 +259,14 @@ private fun ColumnScope.NavigationPanel(state: PocUiState, actions: PocActions, 
     var threadsExpanded by rememberSaveable { mutableStateOf(true) }
     val activeThreads = state.threads.filterNot { it.archived }
     Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp, top = 12.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-        OracleEyeMark(size = 28.dp)
-        Column(Modifier.weight(1f).padding(start = 12.dp)) {
-            Text("神谕", style = MaterialTheme.typography.titleLarge, modifier = Modifier.semantics { heading() })
-            Text("Oraculum", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
+        NavigationBrand(Modifier.weight(1f).padding(end = 4.dp))
         IconButton({ searchOpen = !searchOpen; if (!searchOpen) filter = "" }, Modifier.size(48.dp).testTag("toggle-navigation-search")) {
             OraculumIcon(OraculumSymbol.Search, "筛选已加载的项目与会话", size = 24.dp)
         }
         GlyphButton("close", "关闭面板", "close-panel", onDismiss)
     }
+    HorizontalDivider(Modifier.padding(horizontal = 20.dp, vertical = 4.dp).testTag("navigation-brand-divider"),
+        thickness = .5.dp, color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .65f))
     if (searchOpen && !registerOpen) {
         Surface(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
             Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(start = 12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -531,7 +527,9 @@ private fun MessageHeader(message: ChatMessage, state: PocUiState, expanded: Boo
         when {
             process -> OraculumIcon(when (message.role) { "reasoning" -> OraculumSymbol.Model; "commandExecution" -> OraculumSymbol.Terminal; else -> OraculumSymbol.Code }, tint = MaterialTheme.colorScheme.onSurfaceVariant, size = 18.dp)
             user -> UserAvatar(state.avatarFileName, state.userLabel, size = 26.dp)
-            else -> Surface(shape = CircleShape, color = if (LocalOledTheme.current) Color.Black else MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)) { OracleEyeMark(modifier = Modifier.padding(5.dp), tint = MaterialTheme.colorScheme.primary, size = 18.dp) }
+            else -> Surface(shape = CircleShape, color = if (LocalOledTheme.current) Color.Black else MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)) {
+                OracleEyeMark(modifier = Modifier.padding(2.dp).testTag("assistant-logo"), size = 32.dp, variant = OracleEyeVariant.Full)
+            }
         }
         Column(Modifier.weight(1f)) {
             Text(when (message.role) { "user" -> state.userLabel; "assistant" -> state.assistantLabel; "reasoning" -> "思考过程"; "commandExecution" -> "命令执行"; "fileChange" -> "文件变更"; else -> message.role },
