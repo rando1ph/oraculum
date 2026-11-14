@@ -62,9 +62,11 @@ async function run() {
   const output = await mkdtemp(join(tmpdir(), 'oraculum-gateway-faults-'));
   const evidence: Record<string, unknown> = { result: 'running', output, nativeMode: 'SIMULATED CodexAdapter, no official Codex process or model invocation', cases: [] };
   try {
+    const executable = join(output, 'codex-version-fixture');
+    await writeFile(executable, `#!${process.execPath}\nconsole.log('codex-cli 0.0.0');\n`, { mode: 0o700 });
     for (const point of points) {
       const root = join(output, point); await mkdir(root, { mode: 0o700 }); await mkdir(join(root, 'project'), { mode: 0o700 });
-      const config = initGatewayConfig({ configPath: join(root, 'config', 'config.json'), stateDir: join(root, 'state'), allowedRoots: [{ id: 'fixture', path: root }] });
+      const config = initGatewayConfig({ configPath: join(root, 'config', 'config.json'), stateDir: join(root, 'state'), allowedRoots: [{ id: 'fixture', path: root }], codexCommand: executable });
       let store = new GatewayStore(config.stateDir, { create: true });
       const devices = [randomUUID(), randomUUID()];
       for (const deviceId of devices) store.pair({ installationId: store.installationId, deviceId, deviceCredential: randomCredential(), code: store.createPairing().code, label: 'Process crash fixture' });

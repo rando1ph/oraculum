@@ -2,6 +2,7 @@ import { closeSync, constants, fstatSync, fsyncSync, lstatSync, openSync, readFi
 import { homedir } from 'node:os';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { createPrivateFile, GatewayError, privateDirectory, privateFile } from './private-paths';
+import { resolveCodexExecutable } from './codex-executable';
 
 export interface GatewayConfig {
   configVersion: 2;
@@ -56,7 +57,11 @@ export function loadGatewayConfig(path = defaultConfigPath()): GatewayConfig {
 
 export function initGatewayConfig(options: { configPath?: string; stateDir?: string; allowedRoots?: { id: string; path: string }[]; port?: number; basePath?: string; externalOrigin?: string | null; codexCommand?: string } = {}): GatewayConfig {
   const configPath = options.configPath ?? defaultConfigPath();
+  // Refuse existing files (including dangling symlinks) before probing any replacement executable.
+  try { lstatSync(configPath); throw new GatewayError('CONFIG_ALREADY_EXISTS', 409, 'Gateway configuration already exists; init never replaces an existing installation'); }
+  catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
   const config = validateGatewayConfig({ configVersion: 2, stateDir: options.stateDir ?? defaultStateDir(), host: '127.0.0.1', port: options.port ?? 8790, basePath: options.basePath ?? '/', externalOrigin: options.externalOrigin ?? null, allowedRoots: options.allowedRoots ?? [], codexCommand: options.codexCommand ?? 'codex' });
+  config.codexCommand = resolveCodexExecutable(options.codexCommand);
   privateDirectory(dirname(configPath), true);
   const fd = createPrivateFile(configPath);
   try { writeFileSync(fd, `${JSON.stringify(config, null, 2)}\n`, 'utf8'); fsyncSync(fd); }

@@ -22,6 +22,16 @@ pnpm gateway:cli devices revoke DEVICE_UUID --config /tmp/gateway-test/config/co
 
 `allowedRoots` 由主机私有配置明确给出，HTTP 只能浏览并注册其子目录。配置中的 `externalOrigin`、`basePath`、loopback 端口是实例参数：默认根路径 `/`；远程要求 HTTPS、严格 Host/Origin 与受控本地代理覆写的协议头。仓库没有私人 endpoint 或代理默认值。候选包没有安装或启动任何正式服务。
 
+## 初始化时确定 Codex 可执行路径
+
+以运行 Gateway 的用户执行 `oraculum init`。初始化会按该用户当前 PATH 顺序寻找第一个可执行的 `codex` 文件，忽略依赖当前工作目录的空或相对 PATH 项。也可用 `oraculum init --codex /absolute/path/to/codex` 明确选择入口；有空格的路径须作为一个参数传入。两种方式都会先验证普通文件及执行权限，并以 5 秒／16 KiB 输出预算执行 `--version`、检查 `codex-cli` 版本格式，成功后才创建配置／SQLite；找不到或验证失败时给出明确错误，不留下新安装配置或数据库，也不输出子进程原始内容。
+
+`codexCommand` 保存启动入口的绝对路径，不再依赖 systemd 启动时的 PATH；若入口是指向版本化目录的符号链接，保留稳定入口，不解析并固定其内部目标。`init` 和 `status` 的 JSON 输出均包含该字段，便于检查实际选择。版本探针不登录、不启动 App Server、不发送模型请求，也不证明推理服务可用；脚本入口的解释器仍须在服务环境中可用。
+
+DEB 只安装程序文件和未启用的 user unit；root 安装脚本不替用户发现 Codex、不初始化用户状态，也不自动启用或重启服务。发现与持久保存属于上述用户级初始化步骤，程序包升级不会重写已有配置。
+
+已有 `codexCommand: "codex"` 的配置仍可读取，不做静默迁移；`init` 在探测替代程序前就拒绝现有配置，不能用重新初始化修复旧安装。既有主机应先备份私有配置，在单独获准的维护中仅将该字段改为已核验的绝对启动入口，再恢复同一服务，保留数据库和配对。部署验收应覆盖脱离交互终端 PATH 的启动，并在获准后验证整机冷启动；不要将当前登录会话里的一次成功启动等同于冷启动通过。
+
 ## systemd 服务的可选网络环境
 
 Gateway 将自身环境传给官方 Codex 子进程。终端或桌面 Codex 已能联网，不表示 systemd 启动的 Gateway 也获得了相同代理变量；`config.json` 没有代理字段，不能向其中添加未知配置项。

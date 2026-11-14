@@ -165,14 +165,17 @@ try {
   // Run the extracted private runtime from an unrelated cwd and isolated HOME.
   // The CLI initializes only its new namespace; no actual Codex process runs.
   const home = join(scratch, 'cli-home'); await mkdir(home, { mode: 0o700 });
+  const peer=join(scratch,'native-fixture.mjs');
+  await writeFile(peer,`#!${join(runtime,'node/bin/node')}\nimport {createInterface} from 'node:readline';\nif(process.argv.includes('--version')){console.log('codex-cli 0.0.0');process.exit(0); }\ncreateInterface({input:process.stdin}).on('line',line=>{const m=JSON.parse(line);if(m.id===undefined)return;let result=m.method==='initialize'?{userAgent:'codex-package-fixture'}:m.method==='model/list'?{data:[{id:'fixture',model:'fixture',displayName:'Fixture',supportedReasoningEfforts:[]}],nextCursor:null}:{};process.stdout.write(JSON.stringify({id:m.id,result})+'\\n');}).on('close',()=>process.exit(0));\n`,{mode:0o700});
   const cliEnv = { PATH: '/usr/bin:/bin', HOME: home, XDG_CONFIG_HOME: join(home, '.config'), XDG_STATE_HOME: join(home, '.local/state'),
     XDG_DATA_HOME: join(home, '.local/share'), XDG_CACHE_HOME: join(home, '.cache') };
   const cli = args => sandbox(launcher, args, { uid: process.getuid(), gid: process.getgid(), env: cliEnv });
-  report.cliInit = JSON.parse(cli(['init']));
+  report.cliInit = JSON.parse(cli(['init', '--codex', peer]));
   report.cliStatus = JSON.parse(cli(['status']));
   // Keep only public state/status evidence, never pairing codes or credentials.
   assert.ok(report.cliInit && report.cliStatus);
   assert.equal(report.cliInit.installationId, report.cliStatus.installationId);
+  assert.equal(report.cliInit.codexCommand, peer); assert.equal(report.cliStatus.codexCommand, peer);
   assert.equal(report.cliStatus.devices, 0); assert.equal(report.cliStatus.registeredProjects, 0);
   const pairing = JSON.parse(cli(['pair']));
   assert.ok(pairing.pairingFile.startsWith(home + sep));
@@ -197,10 +200,8 @@ try {
   // temporary config/port. This does not install/start a systemd service or run a model.
   const portProbe=createPortProbe();portProbe.listen(0,'127.0.0.1');await once(portProbe,'listening');
   const testPort=portProbe.address().port;await new Promise(resolve=>portProbe.close(resolve));
-  const peer=join(scratch,'native-fixture.mjs');
-  await writeFile(peer,`#!${join(runtime,'node/bin/node')}\nimport {createInterface} from 'node:readline';\nif(process.argv.includes('--version')){console.log('codex-fixture 0.0.0');process.exit(0); }\ncreateInterface({input:process.stdin}).on('line',line=>{const m=JSON.parse(line);if(m.id===undefined)return;let result=m.method==='initialize'?{userAgent:'codex-package-fixture'}:m.method==='model/list'?{data:[{id:'fixture',model:'fixture',displayName:'Fixture',supportedReasoningEfforts:[]}],nextCursor:null}:{};process.stdout.write(JSON.stringify({id:m.id,result})+'\\n');}).on('close',()=>process.exit(0));\n`,{mode:0o700});
   const configFile=join(home,'.config/oraculum-gateway/config.json');const daemonConfig=JSON.parse(await readFile(configFile,'utf8'));
-  daemonConfig.port=testPort;daemonConfig.codexCommand=peer;await writeFile(configFile,JSON.stringify(daemonConfig)+'\n',{mode:0o600});
+  assert.equal(daemonConfig.codexCommand, peer); daemonConfig.port=testPort;await writeFile(configFile,JSON.stringify(daemonConfig)+'\n',{mode:0o600});
   const daemon=spawn(join(runtime,'bin/oraculum-gateway'),['--config',configFile],{cwd:scratch,env:{...cliEnv,ORACULUM_GATEWAY_CONFIG:configFile},stdio:['ignore','pipe','pipe']});
   const daemonExit=once(daemon,'exit');let stdout='',stderr='';daemon.stdout.on('data',part=>{stdout=(stdout+part.toString()).slice(-8192);});daemon.stderr.on('data',part=>{stderr=(stderr+part.toString()).slice(-8192);});
   try{

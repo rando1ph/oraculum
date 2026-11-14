@@ -13,6 +13,7 @@ import { acquireGatewayLock } from './process-lock';
 
 const roots: string[] = []; const stores: GatewayStore[] = [];
 const directory = () => { const root = mkdtempSync(join(tmpdir(), 'oraculum-gateway-state-')); roots.push(root); return root; };
+const fixtureExecutable = (root: string) => { const path = join(root, 'codex-fixture'); writeFileSync(path, `#!${process.execPath}\nconsole.log('codex-cli 0.0.0');\n`, { mode: 0o700 }); return path; };
 const storeAt = (root = directory(), options: { create?: boolean; now?: () => number } = { create: true }) => { const store = new GatewayStore(root, options); stores.push(store); return store; };
 const identity = (store: GatewayStore) => ({ installationId: store.installationId, deviceId: randomUUID(), deviceCredential: randomCredential() });
 const paired = (store: GatewayStore) => { const device = identity(store); store.pair({ ...device, ...store.createPairing(), label: '测试设备' }); return device; };
@@ -197,7 +198,7 @@ describe('operation tombstones and workspace barriers', () => {
 describe('configuration, CLI and process lock', () => {
   it('initializes explicitly, uses private config, and prints no pairing secret', () => {
     const root = directory(); const configPath = join(root, 'config/config.json'); const stateDir = join(root, 'state'); const output: string[] = [];
-    runCli(['init', '--config', configPath, '--state-dir', stateDir, '--root', `test=${root}`, '--port', '18899'], message => output.push(message));
+    runCli(['init', '--config', configPath, '--state-dir', stateDir, '--root', `test=${root}`, '--port', '18899', '--codex', fixtureExecutable(root)], message => output.push(message));
     expect(lstatSync(configPath).mode & 0o777).toBe(0o600);
     runCli(['status', '--config', configPath], message => output.push(message));
     expect(JSON.parse(output[1]!).serviceState).toBe('not-probed');
@@ -210,7 +211,7 @@ describe('configuration, CLI and process lock', () => {
   });
 
   it('rejects public/hardlinked config, non-loopback listening, unsafe roots and unknown settings', () => {
-    const root = directory(); const configPath = join(root, 'config.json'); const config = initGatewayConfig({ configPath, stateDir: join(root, 'state') });
+    const root = directory(); const configPath = join(root, 'config.json'); const config = initGatewayConfig({ configPath, stateDir: join(root, 'state'), codexCommand: fixtureExecutable(root) });
     expect(() => validateGatewayConfig({ ...config, host: '0.0.0.0' })).toThrow();
     expect(() => validateGatewayConfig({ ...config, externalOrigin: 'http://example.com' })).toThrow();
     expect(() => validateGatewayConfig({ ...config, basePath: '/a/../' })).toThrow();
