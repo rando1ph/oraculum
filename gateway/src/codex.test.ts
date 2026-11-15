@@ -37,6 +37,16 @@ createInterface({ input: process.stdin }).on('line', line => {
 afterEach(async () => { await Promise.all(adapters.splice(0).map(adapter => adapter.close())); await Promise.all(directories.splice(0).map(path => rm(path, { recursive: true, force: true }))); });
 
 describe('official Codex stdio boundary', () => {
+  it('lists ordinary sessions from external clients with identical filters on every page', async () => {
+    const { adapter, cwd, messages } = await setup();
+    await adapter.listThreads({ cwd, limit: 10, searchTerm: 'shared', archived: false });
+    await adapter.listThreads({ cwd, limit: 10, searchTerm: 'shared', archived: false, cursor: 'next' });
+    const pages = (await messages()).filter(message => message.method === 'thread/list');
+    expect(pages.map(page => page.params)).toEqual([
+      { cwd, limit: 10, searchTerm: 'shared', archived: false, modelProviders: [], sortDirection: 'desc', sourceKinds: ['cli', 'vscode', 'exec', 'appServer', 'unknown'] },
+      { cwd, cursor: 'next', limit: 10, searchTerm: 'shared', archived: false, modelProviders: [], sortDirection: 'desc', sourceKinds: ['cli', 'vscode', 'exec', 'appServer', 'unknown'] },
+    ]);
+  });
   it.each([false, true])('inherits the service networking environment without requiring a proxy (configured=%s)', async configured => {
     const cwd = await mkdtemp(join(tmpdir(), 'oraculum-native-env-')); directories.push(cwd);
     const executable = join(cwd, 'environment-peer.mjs');

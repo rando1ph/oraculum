@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import gatewayRelease from '../../packaging/gateway/metadata.json';
 import type { Readable } from 'node:stream';
 import { GatewayStore, GatewayError, type Operation } from './store';
@@ -15,6 +15,7 @@ import { permissionReadback, type PermissionReadback } from './permission-readba
 import { projectNativeDefaults, projectAccountRateLimits, projectAccountUsage } from './native-reads';
 import { assertLifecycleInventory } from './lifecycle';
 import { EventFeeds, type EventInput } from './events';
+import { BoundedReadCache, ReadCacheBusyError, ReadCacheInvalidatedError } from './read-cache';
 import { PROTOCOL, type ThreadStartRequest, type ThreadResumeRequest, type ThreadMutationRequest, type ThreadNameRequest, type ThreadForkRequest, type ThreadRevertRequest, type TurnStartRequest, type TurnSteerRequest, type TurnInterruptRequest, type InteractionResponseRequest, type HistoryQuery, type AttachmentUploadMetadata, type AttachmentDeleteRequest } from '../../packages/gateway-protocol/src/index';
 export type Authorized = {
     deviceId: string;
@@ -23,6 +24,7 @@ export type Authorized = {
 export type ServiceOptions = {
     codexVersion?: string;
     auth?: GatewayAuth;
+    now?: () => number;
 };
 const clean = <T>(value: T): T => JSON.parse(JSON.stringify(value));
 export const receipt = (op: Operation) => clean({ operationId: op.operationId, status: op.status,
@@ -46,6 +48,8 @@ export class GatewayService {
     private readonly observed = new Set<string>();
     private readonly permissions = new Map<string, PermissionReadback>();
     private readonly nativeSettings = new Map<string, { model?: string; effort?: string }>();
+    private readonly readCache: BoundedReadCache;
+    private readonly metadataSignatures = new Map<string, string>();
     private extensionReads = 0;
     private readonly answers = new Map<string, {
         operationId: string;
@@ -67,13 +71,18 @@ export class GatewayService {
     private closing = false;
     constructor(readonly store: GatewayStore, readonly config: GatewayConfig, readonly codex: CodexAdapter, private readonly options: ServiceOptions = {}) {
         this.auth = options.auth ?? new GatewayAuth(store);
+        this.readCache = new BoundedReadCache({ now: options.now, maxEntries: 128, maxBytes: 4 * 1024 * 1024, maxPending: 16 });
         this.projects = new ProjectRegistry(store, config);
         this.files = new FileService(this.projects);
         this.attachments = new AttachmentStore(store, this.projects);
         this.feeds = new EventFeeds(store.installationId, this.epoch);
         this.history = new NativeHistory(codex, { epoch: this.epoch });
         this.interactions = this.newInteractions();
-        codex.on('notification', (message: NativeNotification) => this.enqueue(() => this.notification(message), undefined, Buffer.byteLength(JSON.stringify(message))));
+        codex.on('notification', (message: NativeNotification) => {
+            // Invalidate at arrival, before the asynchronous projection queue can lag behind a read.
+            this.invalidateNativeReads(message);
+            this.enqueue(() => this.notification(message), undefined, Buffer.byteLength(JSON.stringify(message)));
+        });
         codex.on('request', (request: NativeRequest) => this.enqueue(() => this.nativeRequest(request), request, Buffer.byteLength(JSON.stringify(request))));
         codex.on('unavailable', () => this.invalidateConnection());
     }
@@ -119,6 +128,8 @@ export class GatewayService {
         await pending;
     } while (pending !== this.eventQueue); }
     private invalidateConnection() {
+        this.readCache.clear();
+        this.metadataSignatures.clear();
         this.epoch = randomUUID();
         this.history.clear();
         this.history = new NativeHistory(this.codex, { epoch: this.epoch });
@@ -225,6 +236,22 @@ export class GatewayService {
             this.broadcast({ kind: 'native.state', impact: 'state', scope, payload: { method: message.method, data: projected.item, truncated: projected.truncated } });
         }
     }
+    private invalidateNativeReads(message: NativeNotification) {
+        const p = message.params;
+        const threadId = typeof p.threadId === 'string' ? p.threadId : record(p.thread) && typeof p.thread.id === 'string' ? p.thread.id : undefined;
+        if (threadId) {
+            if (/^(?:item\/|turn\/(?:started|completed)$|thread\/(?:started|archived|unarchived|closed|deleted)$|gateway\/unsupportedNativeEvent$)/.test(message.method)) this.history.discardCached(threadId);
+        }
+        if (message.method === 'gateway/unsupportedNativeEvent' && !threadId) { this.readCache.clear(); return; }
+        // Streaming text changes history, but does not require rescanning the project catalog per token.
+        if (!/^(?:thread\/(?:started|name\/updated|archived|unarchived|closed|deleted|status\/changed)|turn\/(?:started|completed)|gateway\/unsupportedNativeEvent)$/.test(message.method)) return;
+        if (threadId) this.readCache.invalidate(`thread:${threadId}`);
+        const projectId = threadId ? this.threads.get(threadId) : undefined;
+        this.invalidateLists(projectId);
+    }
+    private invalidateLists(projectId?: string) {
+        this.readCache.invalidateWhere(key => key.startsWith(projectId ? `list:${projectId}:` : 'list:'));
+    }
     private async nativeRequest(request: NativeRequest) {
         const threadId = typeof request.params.threadId === 'string' ? request.params.threadId : undefined;
         const projectId = threadId && this.threads.get(threadId);
@@ -255,13 +282,28 @@ export class GatewayService {
             limits: { attachmentFileBytes: 20 * 1024 * 1024, attachmentBatchBytes: 50 * 1024 * 1024, attachmentBatchCount: 6, eventReplayCount: 1024, historyPageItems: 20, requestBytes: 128 * 1024 } };
     }
     async requireThread(auth: Authorized, projectId: string, threadId: string) {
+        return this.readThread(auth, projectId, threadId, false);
+    }
+    private async readThread(auth: Authorized, projectId: string, threadId: string, shared: boolean) {
         auth.check();
         const project = await this.projects.validate(projectId);
-        const { thread } = await this.codex.readThread(threadId);
+        const epoch = this.epoch;
+        const read = () => this.codex.readThread(threadId);
+        // Authoritative cwd/status are always reread. Only simultaneous display reads share work.
+        const { thread } = shared ? await this.cachedRead(`thread:${threadId}`, 0, read) : await read();
         auth.check();
         await this.projects.validate(projectId);
+        this.expectEpoch(epoch);
         if (thread.id !== threadId || thread.cwd !== project.canonicalPath)
             fail('PROJECT_UNAVAILABLE', 403, 'Thread is outside this registered project');
+        const signature = createHash('sha256').update(JSON.stringify([thread.updatedAt, thread.status, thread.preview, thread.name])).digest('hex');
+        const previousSignature = this.metadataSignatures.get(threadId);
+        if (previousSignature !== undefined && previousSignature !== signature) {
+            this.history.invalidate(threadId);
+            this.invalidateLists(projectId);
+        }
+        this.metadataSignatures.delete(threadId); this.metadataSignatures.set(threadId, signature);
+        while (this.metadataSignatures.size > 1024) this.metadataSignatures.delete(this.metadataSignatures.keys().next().value!);
         this.remember(threadId, projectId);
         this.observed.add('thread.read');
         if (thread.status.type === 'notLoaded') { this.permissions.delete(threadId); this.nativeSettings.delete(threadId); }
@@ -273,6 +315,14 @@ export class GatewayService {
             });
         }
         return thread;
+    }
+    private async cachedRead<T>(key: string, ttlMs: number, load: () => Promise<T>) {
+        try { return await this.readCache.get(key, ttlMs, load); }
+        catch (error) {
+            if (error instanceof ReadCacheBusyError) fail(error.code, 429, error.message);
+            if (error instanceof ReadCacheInvalidatedError) fail('HISTORY_STALE', 409, error.message);
+            throw error;
+        }
     }
     async nativeDefaults(auth: Authorized, projectId: string) {
         auth.check();
@@ -330,7 +380,8 @@ export class GatewayService {
             native = cursor!.native;
         }
         const epoch = this.epoch;
-        const page = await this.codex.listThreads({ cwd: project.canonicalPath, cursor: native, limit: query.limit ?? 20, searchTerm: query.search, archived: query.archived });
+        const page = await this.cachedRead(`list:${projectId}:${JSON.stringify([project.canonicalPath, native ?? null, query.limit ?? 20, query.search ?? null, query.archived ?? false])}`, 5000,
+            () => this.codex.listThreads({ cwd: project.canonicalPath, cursor: native, limit: query.limit ?? 20, searchTerm: query.search, archived: query.archived }));
         auth.check();
         await this.projects.validate(projectId);
         if (epoch !== this.epoch)
@@ -343,7 +394,10 @@ export class GatewayService {
                 this.threadCursors.delete(this.threadCursors.keys().next().value!);
         }
         this.observed.add('thread.list');
-        return { threads: page.data.filter(thread => thread.cwd === project.canonicalPath).map(thread => this.threadView(thread, projectId)), nextCursor, source: 'native', truncated: false };
+        return { threads: page.data.filter(thread => thread.cwd === project.canonicalPath).map(thread => {
+            this.remember(thread.id, projectId);
+            return this.threadView(thread, projectId);
+        }), nextCursor, source: 'native', truncated: false };
     }
     private expectEpoch(epoch: string) { if (epoch !== this.epoch)
         fail('STALE_EPOCH', 409, 'Refresh the current native connection before writing'); }
@@ -399,6 +453,11 @@ export class GatewayService {
             if (input.attachments)
                 this.attachments.claim(input.attachments, input.operationId);
         });
+        // Even an unknown native outcome can have changed data; invalidate before dispatch.
+        if (/^(?:thread|turn)\./.test(input.kind)) {
+            if (input.threadId) { this.readCache.invalidate(`thread:${input.threadId}`); this.history.discardCached(input.threadId); }
+            if (input.projectId) this.invalidateLists(input.projectId);
+        }
         let result: {
             nativeThreadId?: string;
             nativeTurnId?: string;
@@ -420,6 +479,12 @@ export class GatewayService {
                     this.attachments.unknown(input.operationId);
             });
             return this.operationChanged(auth, input.operationId);
+        }
+        finally {
+            if (/^(?:thread|turn)\./.test(input.kind)) {
+                if (input.threadId) { this.readCache.invalidate(`thread:${input.threadId}`); this.history.discardCached(input.threadId); }
+                if (input.projectId) this.invalidateLists(input.projectId);
+            }
         }
         if(this.store.getOperation(input.operationId,auth.deviceId)?.status!=='unknown')return this.operationChanged(auth,input.operationId);
         this.store.transaction(() => { this.store.finishOperation(input.operationId, result.awaitingNativeResolution ? 'unknown' : 'accepted', result); if (result.nativeTurnId && !result.awaitingNativeResolution)
@@ -503,6 +568,7 @@ export class GatewayService {
         });
     }
     private invalidateThread(projectId: string, threadId: string, reasonCode: string, preserveSettings = false) {
+        this.readCache.invalidate(`thread:${threadId}`); this.invalidateLists(projectId);
         this.history.invalidate(threadId); this.permissions.delete(threadId);
         if (!preserveSettings) this.nativeSettings.delete(threadId);
         this.threadCursors.clear();
@@ -586,10 +652,15 @@ export class GatewayService {
         });
     }
     async historyPage(auth: Authorized, threadId: string, input: HistoryQuery) {
-        await this.requireThread(auth, input.projectId, threadId);
+        const thread = await this.readThread(auth, input.projectId, threadId, true);
+        return this.readHistory(auth, threadId, input, thread);
+    }
+    private async readHistory(auth: Authorized, threadId: string, input: HistoryQuery, thread: NativeThread) {
         const epoch = this.epoch;
-        const page = input.turnId ? await this.history.items(threadId, input.turnId, { cursor: input.cursor ?? undefined, scope: `${auth.deviceId}:${input.projectId}` })
-            : await this.history.turns(threadId, { cursor: input.cursor ?? undefined, limit: input.limit, scope: `${auth.deviceId}:${input.projectId}` });
+        await this.settled(); auth.check(); this.expectEpoch(epoch);
+        const forceFresh = thread.status.type === 'active' || thread.turns.some(turn => turn.status === 'inProgress') || this.activeTurns.has(threadId) || this.interactions.list(input.projectId, threadId).some(interaction => interaction.status === 'pending');
+        const page = input.turnId ? await this.history.items(threadId, input.turnId, { cursor: input.cursor ?? undefined, scope: `${auth.deviceId}:${input.projectId}`, forceFresh })
+            : await this.history.turns(threadId, { cursor: input.cursor ?? undefined, limit: input.limit, scope: `${auth.deviceId}:${input.projectId}`, forceFresh });
         auth.check();
         await this.projects.validate(input.projectId);
         if (epoch !== this.epoch)
@@ -605,7 +676,7 @@ export class GatewayService {
         itemId: string;
         cursor?: string | null;
     }) {
-        await this.requireThread(auth, input.projectId, threadId);
+        await this.readThread(auth, input.projectId, threadId, true);
         const epoch = this.epoch;
         const result = await this.history.details(threadId, input.turnId, input.itemId, { scope: `${auth.deviceId}:${input.projectId}`, cursor: input.cursor ?? undefined });
         auth.check();
@@ -617,8 +688,8 @@ export class GatewayService {
         this.observe(auth.deviceId);
         const observedStartSeq = this.feeds.head(auth.deviceId);
         const epoch = this.epoch;
-        const thread = await this.requireThread(auth, projectId, threadId);
-        const history = await this.historyPage(auth, threadId, { projectId, limit: 5 });
+        const thread = await this.readThread(auth, projectId, threadId, true);
+        const history = await this.readHistory(auth, threadId, { projectId, limit: 5 }, thread);
         await this.settled();
         auth.check();
         if (epoch !== this.epoch)

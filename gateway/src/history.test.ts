@@ -74,13 +74,15 @@ describe('bounded native history', () => {
     const page = await history.turns('t', { scope });
     await expect(history.turns('t', { scope, cursor: page.nextCursor! })).rejects.toMatchObject({ code: 'HISTORY_PROTOCOL' });
   });
-  it('bounds concurrent full-history fallback reads without creating a request queue', async () => {
+  it('coalesces identical reads but bounds distinct reads without creating a request queue', async () => {
     const codex = peer(); let release!: () => void;
     codex.listTurns.mockImplementationOnce(() => new Promise(resolve => { release = () => resolve({ data: [], nextCursor: null }); }));
     const history = new NativeHistory(codex, { epoch: 'e', maxConcurrent: 1 });
     const reading = history.turns('t', { scope });
-    await expect(history.turns('t', { scope })).rejects.toMatchObject({ code: 'HISTORY_BUSY' });
-    expect(codex.listTurns).toHaveBeenCalledTimes(1); release(); await reading;
+    const shared = history.turns('t', { scope });
+    await expect(history.turns('t', { scope: 'other-device' })).rejects.toMatchObject({ code: 'HISTORY_BUSY' });
+    expect(codex.listTurns).toHaveBeenCalledTimes(1); release();
+    expect((await Promise.all([reading, shared])).map(page => page.data)).toEqual([[], []]);
   });
   it('limits enormous item and metadata projections and labels incomplete snapshots', async () => {
     const codex = peer();
@@ -118,4 +120,119 @@ describe('large native item details',()=>{
   await expect(history.details('t','turn','large',{scope,cursor:first.nextCursor!})).rejects.toMatchObject({code:'HISTORY_STALE'});
   history.invalidate('t');await expect(history.details('t','turn','large',{scope,cursor:first.nextCursor!})).rejects.toMatchObject({code:'HISTORY_CURSOR_INVALID'});
  });
+});
+
+describe('disposable history page reuse', () => {
+  it('serves ten repeated pages with one native load and detaches native and caller objects', async () => {
+    const codex = peer(), nativeTurns = [turn('new'), turn('old')];
+    codex.listTurns.mockResolvedValue({ data: nativeTurns, nextCursor: null });
+    const history = new NativeHistory(codex, { epoch: 'e' });
+    for (let index = 0; index < 10; index++) {
+      const page = await history.turns('t', { scope });
+      expect(page.data[0].items[0].text).toBe('old-1');
+      page.data[0].items[0].text = 'caller edit';
+    }
+    expect(codex.listTurns).toHaveBeenCalledTimes(1);
+    expect(codex.listItems).toHaveBeenCalledTimes(2);
+    expect(nativeTurns).toEqual([turn('new'), turn('old')]);
+  });
+  it('keeps device/project scopes isolated and reuses identical item queries', async () => {
+    const codex = peer(), history = new NativeHistory(codex, { epoch: 'e' });
+    await history.items('t', 'old', { scope });
+    await history.items('t', 'old', { scope });
+    expect(codex.listItems).toHaveBeenCalledTimes(1);
+    await history.items('t', 'old', { scope: 'device-2:project-1' });
+    await history.items('t', 'old', { scope: 'device-1:project-2' });
+    expect(codex.listItems).toHaveBeenCalledTimes(3);
+  });
+  it('revalidates roots under a thread lease and expires old windows without native event evidence', async () => {
+    let now = 1000;
+    const codex = peer(), history = new NativeHistory(codex, { epoch: 'e', now: () => now });
+    const first = await history.turns('t', { scope, limit: 2 });
+    now += 5001;
+    const sameWindow = await history.turns('t', { scope, limit: 2 });
+    expect(sameWindow.revision).toBe(first.revision);
+    now += 25000;
+    const revalidated = await history.turns('t', { scope: 'device-2:project-1', limit: 2 });
+    expect(revalidated.revision).not.toBe(first.revision);
+    await expect(history.turns('t', { scope, limit: 2, cursor: first.nextCursor! })).rejects.toMatchObject({ code: 'HISTORY_CURSOR_INVALID' });
+    const anotherLimit = await history.turns('t', { scope, limit: 5 });
+    expect(anotherLimit.revision).toBe(revalidated.revision);
+    expect(codex.listTurns).toHaveBeenCalledTimes(4);
+  });
+  it('rotates a still-valid lease when fresh root contents reveal an external change', async () => {
+    let now = 1000;
+    const codex = peer(), history = new NativeHistory(codex, { epoch: 'e', now: () => now });
+    const first = await history.turns('t', { scope });
+    now += 5001;
+    codex.listItems.mockResolvedValue({ data: [], nextCursor: null });
+    const changed = await history.turns('t', { scope });
+    expect(changed.revision).not.toBe(first.revision);
+    await expect(history.turns('t', { scope, cursor: first.nextCursor! })).rejects.toMatchObject({ code: 'HISTORY_CURSOR_INVALID' });
+    expect(changed.data.every(turn => turn.items.length === 0)).toBe(true);
+  });
+  it('does not return expired or evicted cursor tokens from the cached projection', async () => {
+    let now = 1000;
+    const codex = peer(), history = new NativeHistory(codex, { epoch: 'e', now: () => now, cursorTtlMs: 10, maxCursors: 1 });
+    const first = await history.turns('t', { scope });
+    now += 11;
+    const second = await history.turns('t', { scope });
+    expect(second.nextCursor).not.toBe(first.nextCursor);
+    expect(codex.listTurns).toHaveBeenCalledTimes(1);
+    await expect(history.turns('t', { scope, cursor: first.nextCursor! })).rejects.toMatchObject({ code: 'HISTORY_CURSOR_INVALID' });
+    codex.listTurns.mockResolvedValueOnce({ data: [], nextCursor: null });
+    expect((await history.turns('t', { scope, cursor: second.nextCursor! })).complete).toBe(true);
+  });
+  it('bounds retained entries and skips retaining pages larger than the byte budget', async () => {
+    const codex = peer(), history = new NativeHistory(codex, { epoch: 'e', cacheMaxEntries: 1 });
+    await history.turns('t', { scope });
+    await history.items('t', 'old', { scope });
+    await history.turns('t', { scope });
+    expect(codex.listTurns).toHaveBeenCalledTimes(2);
+    const tiny = new NativeHistory(codex, { epoch: 'e', cacheMaxBytes: 1 });
+    await tiny.items('t', 'old', { scope });
+    await tiny.items('t', 'old', { scope });
+    expect(codex.listItems).toHaveBeenCalledTimes(7);
+  });
+  it('discards affected pages for a content event without rotating the history revision', async () => {
+    const codex = peer(), history = new NativeHistory(codex, { epoch: 'e' });
+    const first = await history.turns('t', { scope });
+    history.discardCached('t');
+    const next = await history.turns('t', { scope });
+    expect(next.revision).toBe(first.revision);
+    expect(codex.listTurns).toHaveBeenCalledTimes(2);
+  });
+  it('rejects late reads after invalidation and does not repopulate old content', async () => {
+    const codex = peer(), history = new NativeHistory(codex, { epoch: 'e' });
+    let release!: () => void;
+    codex.listItems.mockImplementationOnce(() => new Promise(resolve => { release = () => resolve({ data: [{ turnId: 'old', item: item('stale') }], nextCursor: null }); }));
+    const reading = history.items('t', 'old', { scope });
+    await vi.waitFor(() => expect(codex.listItems).toHaveBeenCalledTimes(1));
+    history.discardCached('t'); release();
+    await expect(reading).rejects.toMatchObject({ code: 'HISTORY_STALE' });
+    expect((await history.items('t', 'old', { scope })).data.map(item => item.id)).toEqual(['old-1', 'old-2']);
+    expect(codex.listItems).toHaveBeenCalledTimes(2);
+  });
+  it('does not cache errors or retain stale pages when a security-sensitive read forces fresh data', async () => {
+    const codex = peer(), history = new NativeHistory(codex, { epoch: 'e' });
+    codex.listItems.mockRejectedValueOnce(new CodexError('NATIVE_TIMEOUT', 'timeout', 'rejected'));
+    await expect(history.items('t', 'old', { scope })).rejects.toMatchObject({ code: 'NATIVE_TIMEOUT' });
+    await history.items('t', 'old', { scope });
+    codex.listItems.mockResolvedValue({ data: [{ turnId: 'old', item: item('fresh') }], nextCursor: null });
+    expect((await history.items('t', 'old', { scope, forceFresh: true })).data[0].id).toBe('fresh');
+    expect((await history.items('t', 'old', { scope })).data[0].id).toBe('fresh');
+    expect(codex.listItems).toHaveBeenCalledTimes(4);
+  });
+  it('drains parallel item RPCs before releasing history capacity on an early failure', async () => {
+    const codex = peer(), history = new NativeHistory(codex, { epoch: 'e', maxConcurrent: 1 });
+    let release!: () => void;
+    codex.listItems.mockImplementation(async ({ turnId }) => {
+      if (turnId === 'new') throw new CodexError('NATIVE_TIMEOUT', 'failure', 'rejected');
+      return new Promise(resolve => { release = () => resolve({ data: [], nextCursor: null }); });
+    });
+    const reading = history.turns('t', { scope });
+    await vi.waitFor(() => expect(codex.listItems).toHaveBeenCalledTimes(2));
+    await expect(history.items('t', 'elsewhere', { scope })).rejects.toMatchObject({ code: 'HISTORY_BUSY' });
+    release(); await expect(reading).rejects.toMatchObject({ code: 'NATIVE_TIMEOUT' });
+  });
 });
