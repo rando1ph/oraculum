@@ -47,6 +47,8 @@ class FilesController(
     private var currentJob: Job? = null
     private var generation = 0L
     private var storageSafe = true
+    private data class Binding(val scope: String, val project: String?, val thread: String?, val online: Boolean, val capabilities: JsonObject?)
+    private var binding: Binding? = null
     private var pickerGeneration: Long? = null
     private var saveSelection: FilePreview? = null
     private val previews = PreviewCache(File(context.cacheDir, "artifact-shares"))
@@ -54,6 +56,8 @@ class FilesController(
         { pickerGeneration = generation }, { saveSelection = state.value.preview })
 
     suspend fun bind(scopeKey: String, projectId: String?, threadId: String?, online: Boolean, capabilities: JsonObject? = null) = lock.withLock {
+        val requested = Binding(scopeKey, projectId, threadId, online, capabilities)
+        if (binding == requested) return@withLock
         val changed = boundScope != scopeKey || state.value.projectId != projectId || state.value.threadId != threadId
         if (changed) {
             generation++; currentJob?.cancel()
@@ -78,6 +82,7 @@ class FilesController(
             val protected = protectedPreviews()
             withContext(Dispatchers.IO) { previews.clean(protected) }
         }
+        binding = requested
     }
 
     fun browse(path: String = "") = runAction {

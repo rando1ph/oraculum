@@ -25,6 +25,10 @@ import java.io.File
 import java.security.MessageDigest
 import java.util.Base64
 import dev.oraculum.poc.files.HostFileGrant
+import dev.oraculum.poc.repository.EventDecision
+import dev.oraculum.poc.repository.EventPosition
+import dev.oraculum.poc.repository.acceptEvent
+import dev.oraculum.poc.repository.eventConnectionPosition
 
 class GatewayClientTest {
     @Test fun deletingAProjectUsesOnlyItsRegistrationEndpointAndOperationId() = runBlocking {
@@ -297,6 +301,35 @@ class GatewayClientTest {
             assertEquals(listOf(6L), applied)
             assertEquals("EVENT_RESET_REQUIRED", errorCode)
             assertEquals(5L, f.resumeAfter)
+        }
+    }
+
+    @Test fun resumedProjectionAcceptsRetainedEventsEvenWhenConnectionHeadIsAhead() = runBlocking {
+        Fixture().use { f ->
+            f.client.pair(f.endpoint, "C".repeat(32))
+            val failed = CountDownLatch(1)
+            val applied = mutableListOf<Long>()
+            val cursor = EventCursor(EPOCH, 5)
+            var position: EventPosition? = null
+            f.client.openEvents(cursor, object : GatewayEventListener {
+                override fun onConnection(message: JsonObject) {
+                    position = eventConnectionPosition(INSTALLATION, EPOCH,
+                        message.getValue("headSeq").jsonPrimitive.content.toLong(),
+                        message.getValue("resetRequired").jsonPrimitive.content.toBoolean(), cursor)
+                }
+                override fun onEvent(event: JsonObject) {
+                    val current = requireNotNull(position)
+                    val seq = event.getValue("seq").jsonPrimitive.content.toLong()
+                    if (acceptEvent(current, INSTALLATION, EPOCH, seq, "item.delta", "state") == EventDecision.APPLY) {
+                        applied += seq
+                        position = current.copy(sequence = seq)
+                    }
+                }
+                override fun onFailure(error: GatewayException) { failed.countDown() }
+            })
+            assertTrue(failed.await(5, TimeUnit.SECONDS))
+            assertEquals(listOf(6L), applied)
+            assertEquals(6L, position?.sequence)
         }
     }
 

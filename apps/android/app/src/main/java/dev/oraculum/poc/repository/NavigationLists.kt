@@ -25,9 +25,12 @@ fun appendThreadPage(current: List<ThreadOption>, next: List<ThreadOption>, unli
     (current.filterNot { it.id in unlisted } + next + current.filter { it.id in unlisted }).distinctBy { it.id }
 
 /** Preserve all fetched pages and their final cursor when locating a selected or notified thread. */
-fun mergeThreadPages(current: JsonObject, next: JsonObject): JsonObject = JsonObject(current + next + ("threads" to
-    JsonArray(((current["threads"] as? JsonArray).orEmpty() + (next["threads"] as? JsonArray).orEmpty())
-        .distinctBy { (it as? JsonObject)?.get("id") })))
+fun mergeThreadPages(current: JsonObject, next: JsonObject, unlisted: Set<String> = emptySet()): JsonObject {
+    val prior = (current["threads"] as? JsonArray).orEmpty()
+    fun placeholder(value: JsonElement) = (value as? JsonObject)?.string("id") in unlisted
+    return JsonObject(current + next + ("threads" to JsonArray((prior.filterNot(::placeholder) +
+        (next["threads"] as? JsonArray).orEmpty() + prior.filter(::placeholder)).distinctBy { (it as? JsonObject)?.get("id") })))
+}
 
 /** Only the registration projection changes; cached histories and drafts are retained. */
 fun withoutRegisteredProject(data: JsonObject, projectId: String): JsonObject = JsonObject(data + ("projects" to

@@ -38,11 +38,12 @@ class HistoryProjection(private val maxItems: Int = 250, private val maxVerified
         activeTurnId = null
     }
 
-    fun snapshot(history: JsonObject, preserveTerminal: Boolean = true) {
+    fun snapshot(history: JsonObject, preserveTerminal: Boolean = true, preserveOlder: Boolean = false) {
         val observed = if (preserveTerminal) items.toMap() else emptyMap()
         val observedDetails = if (preserveTerminal) verifiedDetails.toMap() else emptyMap()
         val observedTurns = turnMetadata.toMap()
         val observedItems = itemMetadata.toMap()
+        val observedStatuses = turnStatuses.toMap()
         val usage = observedUsage
         clear()
         applyHistory(history)
@@ -67,6 +68,18 @@ class HistoryProjection(private val maxItems: Int = 250, private val maxVerified
             // A complete started event followed by continuous deltas is already an independent,
             // appendable live projection. Keep that stream without appending any snapshot bytes.
             if (value.appendable && !value.terminal && current?.terminal != true && (current == null || sameItem)) items[id] = value
+        }
+        if (preserveOlder) {
+            // The caller verified the same native root/revision. Keep terminal loaded pages in
+            // their original order, but let the root's current native IDs replace matching rows.
+            val current = LinkedHashMap(items)
+            items.clear()
+            observed.filterValues { it.terminal }.forEach { (id, item) -> items[id] = item }
+            items.putAll(current)
+            observedTurns.forEach { (id, value) -> if (id !in turnMetadata) turnMetadata[id] = value }
+            observedStatuses.forEach { (id, value) -> if (id !in turnStatuses) turnStatuses[id] = value }
+            observedItems.forEach { (id, value) -> if (id in items && id !in itemMetadata) itemMetadata[id] = value }
+            turnStatuses.forEach { (id, value) -> terminalTurns[id] = value in setOf("completed", "interrupted", "failed") }
         }
         observedDetails.forEach { (id, detail) ->
             val current = items[id]

@@ -51,6 +51,16 @@ class NavigationListsTest {
         assertEquals(JsonPrimitive(true), result["limited"])
     }
 
+    @Test fun aFreshThreadPlaceholderStaysAfterEveryCachedNativePage() {
+        val first = obj("""{"threads":[{"id":"newest"},{"id":"restored"}],"nextCursor":"p2"}""")
+        val next = obj("""{"threads":[{"id":"next"}],"nextCursor":"p3"}""")
+        val window = mergeThreadPages(first, next, setOf("restored"))
+        assertEquals(listOf("newest", "next", "restored"), ids(window))
+        val actualPage = obj("""{"threads":[{"id":"before-restored"},{"id":"restored"},{"id":"after-restored"}],"nextCursor":null}""")
+        assertEquals(listOf("newest", "next", "before-restored", "restored", "after-restored"),
+            ids(mergeThreadPages(window, actualPage, setOf("restored"))))
+    }
+
     @Test fun removingRegistrationPreservesOtherProjectsRootsAndHistoryData() {
         val data = obj("""{"projects":[{"id":"target","canonicalPath":"/fixture/target"},{"id":"keep","canonicalPath":"/fixture/keep"}],"roots":[{"id":"root"}],"history":{"items":["retained"]}}""")
         val result = withoutRegisteredProject(data, "target")

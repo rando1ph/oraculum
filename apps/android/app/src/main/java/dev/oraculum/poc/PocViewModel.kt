@@ -30,12 +30,29 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
     private val projection = HistoryProjection()
     private val inspectorProjection = InspectorProjection()
     private val fileChangeContexts = FileChangeApprovalContexts()
+    private val readPolicy = SyncReadPolicy()
+    private val resumeCheckpoint = EventResumeCheckpoint()
+    private var eventScopeKey: String? = null
+    private var lastHistoryRoot: JsonObject? = null
+    private var historyEpoch: String? = null
+    private var externalSyncJob: Job? = null
+    private val snapshotRefresh = SnapshotRefreshScheduler(viewModelScope) {
+        actionMutex.withLock {
+            try {
+                if (state.value.online) {
+                    reconcileUnknown()
+                    state.value.selectedThreadId?.let { syncThread(it) }
+                }
+            } catch (error: Exception) { handleFailure(error) }
+        }
+    }
     private val notifications = dev.oraculum.poc.notifications.GatewayNotifications(application)
     private var foreground = true
     private var capabilityData: JsonObject? = null
     private var nextThreadCursor: String? = null
     private var nextArchivedThreadCursor: String? = null
     private var navigationSyncJob: Job? = null
+    private var navigationThreadsRequested = false
     private var operationNoticeJob: Job? = null
     private var compactionCompletionVersion = 0L
     private var nextDirectoryCursor: String? = null
@@ -55,9 +72,7 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
     private var capabilities: Set<String> = emptySet()
     private var pending: List<OperationRecord> = emptyList()
     private var pendingObserver: Job? = null
-    private var syncJob: Job? = null
     private var reconnectJob: Job? = null
-    private var heartbeatJob: Job? = null
     private var cacheJob: Job? = null
     private var anchorJob: Job? = null
     private var automaticReconnect = true
@@ -66,6 +81,7 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
     private val itemCursors = linkedMapOf<String, String>()
     private var historyRevision: String? = null
     private var historyPages = 0
+    private var historyWindowInvalidated = false
     private var replaceTerminalOnSnapshot = true
     // Native empty threads may not be listed until their first Turn. This is only the current
     // connection's accepted explicit start receipt, never permission inferred from cached history.
@@ -218,8 +234,11 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
         val project = state.value.selectedProjectId ?: return
         if (!state.value.online || position == null) return
         val generation = connectionGeneration
+        val freshnessKey = "native-defaults:$project"
+        val freshnessTicket = readPolicy.version(freshnessKey)
         if ("config.read" !in capabilities) {
             mutableState.value = state.value.copy(nativeDefaults = null, nativeDefaultsError = "当前连接暂未提供默认设置")
+            readPolicy.checked(freshnessKey, freshnessTicket)
             return
         }
         try {
@@ -230,6 +249,11 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
         } catch (error: Exception) {
             val message = optionalReadMessage(error)
             if (generation == connectionGeneration && state.value.selectedProjectId == project) mutableState.value = state.value.copy(nativeDefaultsError = message)
+        } finally {
+            // Bound automatic optional-read retries too; an error remains visible and explicit
+            // refresh/write preparation never uses this timer as native permission evidence.
+            if (generation == connectionGeneration && state.value.selectedProjectId == project)
+                readPolicy.checked(freshnessKey, freshnessTicket)
         }
     }
 
@@ -237,6 +261,7 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
         if (!state.value.online || position == null) return
         val generation = connectionGeneration
         val scope = scopeKey
+        val freshnessTicket = readPolicy.version("account")
         mutableState.value = state.value.copy(accountRefreshing = true)
         val errors = mutableListOf<String>()
         try {
@@ -259,7 +284,10 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
             } else if ("account.usage.read" !in capabilities) mutableState.value = state.value.copy(accountUsage = null)
             if (generation == connectionGeneration && scope == scopeKey)
                 mutableState.value = state.value.copy(accountError = errors.takeIf { it.isNotEmpty() }?.joinToString("\n"))
-        } finally { mutableState.value = state.value.copy(accountRefreshing = false) }
+        } finally {
+            if (generation == connectionGeneration && scope == scopeKey) readPolicy.checked("account", freshnessTicket)
+            mutableState.value = state.value.copy(accountRefreshing = false)
+        }
     }
 
     fun showArchivedThreads(archived: Boolean): Job {
@@ -279,8 +307,9 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
         requireOnline("thread.list")
         val project = state.value.selectedProjectId ?: return@action
         val cursor = nextArchivedThreadCursor ?: return@action
+        val generation = connectionGeneration
         val data = resource(client.get("projects/${segment(project)}/threads", mapOf("limit" to "20", "archived" to "true", "cursor" to cursor)))
-        if (state.value.selectedProjectId != project) return@action
+        if (generation != connectionGeneration || state.value.selectedProjectId != project) return@action
         nextArchivedThreadCursor = data.string("nextCursor")
         val added = data.array("threads").mapNotNull { (it as? JsonObject)?.let { threadOption(it, archived = true) } }
         mutableState.value = state.value.copy(archivedThreads = appendThreadPage(state.value.archivedThreads, added), archivedThreadsLoaded = true)
@@ -295,8 +324,9 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private suspend fun refreshArchivedThreads(project: String) {
+        val generation = connectionGeneration
         val data = resource(client.get("projects/${segment(project)}/threads", mapOf("limit" to "20", "archived" to "true")))
-        if (state.value.selectedProjectId != project) return
+        if (generation != connectionGeneration || state.value.selectedProjectId != project) return
         nextArchivedThreadCursor = data.string("nextCursor")
         mutableState.value = state.value.copy(archivedThreads = data.array("threads").mapNotNull {
             (it as? JsonObject)?.let { thread -> threadOption(thread, archived = true) }
@@ -513,12 +543,15 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
         requireOnline("thread.list")
         val project = state.value.selectedProjectId ?: return@action
         val cursor = nextThreadCursor ?: return@action
+        val generation = connectionGeneration
         val data = resource(client.get("projects/${segment(project)}/threads", mapOf("limit" to "20", "archived" to "false", "cursor" to cursor)))
-        if (state.value.selectedProjectId != project) return@action
+        if (generation != connectionGeneration || state.value.selectedProjectId != project) return@action
         nextThreadCursor = data.string("nextCursor")
         val added = data.array("threads").mapNotNull { (it as? JsonObject)?.let { thread -> threadOption(thread) } }
-        mutableState.value = state.value.copy(threads = appendThreadPage(state.value.threads, added, freshThreads))
+        val unlisted = freshThreads.toSet()
+        mutableState.value = state.value.copy(threads = appendThreadPage(state.value.threads, added, unlisted))
         freshThreads.removeAll(added.map { it.id }.toSet())
+        cached("threads", project)?.let { cache("threads", project, mergeThreadPages(it, data, unlisted), project) }
     }
 
     fun respondInteraction(id: String, response: JsonObject) = respondInteractionInternal(id, response, null)
@@ -703,15 +736,15 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
         requireOnline("thread.read")
         if (operation.projectId.isBlank()) throw ClientStateException("此操作尚无可确认的项目，未知状态继续保留")
         // Read-only inspection of the original scope does not resolve or remove the operation barrier.
-        readSnapshot(operation.projectId, thread)
-        showOperationNotice("会话状态已读取。请求结果仍以查询记录为准，请勿重复提交。")
         if (thread == state.value.selectedThreadId && operation.projectId == state.value.selectedProjectId) syncThread(thread)
+        else readSnapshot(operation.projectId, thread)
+        showOperationNotice("会话状态已读取。请求结果仍以查询记录为准，请勿重复提交。")
     }
 
     fun onForegroundChanged(value: Boolean) {
         val was = foreground
         foreground = value
-        if (value && !was && state.value.paired && automaticReconnect) refresh()
+        if (value && !was && state.value.paired && automaticReconnect) action { refreshAutomatically() }
     }
 
     fun openNotification(route: dev.oraculum.poc.notifications.NotificationRoute) = action(queue = true) {
@@ -794,14 +827,36 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /** Automatic observation reads only expired/dirty projections; explicit refresh remains forced. */
+    private suspend fun refreshAutomatically() {
+        if (!state.value.online) { connectInternal(); return }
+        reconcileUnknown()
+        if (!readPolicy.fresh("projects")) refreshProjects()
+        state.value.selectedProjectId?.let { project ->
+            if (!readPolicy.fresh("threads:$project")) refreshThreadLists(project)
+        }
+        state.value.selectedThreadId?.let { thread ->
+            if (!snapshotRefresh.pending && !readPolicy.fresh("snapshot:${state.value.selectedProjectId}:$thread")) syncThread(thread)
+        }
+        state.value.selectedProjectId?.let { project ->
+            if (!readPolicy.fresh("native-defaults:$project", 60_000)) refreshNativeDefaultsInternal()
+        }
+        if (!readPolicy.fresh("account", 300_000)) refreshAccountInternal()
+    }
+
     fun selectProject(projectId: String) = action {
         if (state.value.projects.none { it.id == projectId }) return@action
+        if (state.value.selectedProjectId == projectId) return@action
         resetThread()
         clearArchivedThreads()
         nextThreadCursor = null
         mutableState.value = state.value.copy(selectedProjectId = projectId, threads = emptyList(), error = null, showArchivedThreads = false, nativeDefaults = null, nativeDefaultsError = null)
         scopeKey?.let { local.preferences.saveSelection(it, projectId, null) }
-        if (state.value.online) { refreshThreads(projectId); refreshNativeDefaultsInternal() } else loadCachedThreads(projectId)
+        val hasCachedThreads = loadCachedThreads(projectId)
+        if (state.value.online) {
+            if (!hasCachedThreads || !readPolicy.fresh("threads:$projectId")) refreshThreads(projectId)
+            refreshNativeDefaultsInternal()
+        }
     }
 
     fun selectThread(threadId: String) = action {
@@ -1000,17 +1055,20 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
 
     fun loadMore() = action {
         requireOnline("history")
+        if (historyWindowInvalidated) throw ClientStateException("历史正在校正，请稍后继续加载")
         val project = state.value.selectedProjectId ?: return@action
         val thread = state.value.selectedThreadId ?: return@action
         if (historyPages >= 20) throw ClientStateException("已加载 20 页；请重新打开会话以回到最新历史")
         val itemPage = itemCursors.entries.firstOrNull()?.let { it.key to it.value }
         val cursor = itemPage?.second ?: nextHistoryCursor ?: return@action
         val version = invalidationVersion
+        val generation = connectionGeneration
         val data = resource(client.post("threads/${segment(thread)}/history/query", buildJsonObject {
             put("projectId", project); put("cursor", cursor); put("limit", 5)
             itemPage?.let { put("turnId", it.first) }
         }))
-        if (version != invalidationVersion || data.string("epoch") != epoch || data.string("historyRevision") != historyRevision)
+        if (generation != connectionGeneration || state.value.selectedProjectId != project || state.value.selectedThreadId != thread ||
+            version != invalidationVersion || data.string("epoch") != epoch || data.string("historyRevision") != historyRevision)
             throw ClientStateException("历史版本已变化，请刷新后重新加载")
         projection.applyHistory(data, itemPage?.first, older = true)
         inspectorProjection.history(data, itemPage?.first)
@@ -1043,6 +1101,7 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
 
     fun clearCache() = action {
         withCache { local.cache.clearAll() }
+        readPolicy.clear()
         projection.clear()
         snapshotCurrent = false
         replaceTerminalOnSnapshot = true
@@ -1057,7 +1116,7 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
     fun disconnect() {
         automaticReconnect = false
         reconnectJob?.cancel()
-        syncJob?.cancel()
+        snapshotRefresh.cancel()
         disconnectTransport()
         client.disconnect()
         mutableState.value = state.value.copy(online = false, connectionLabel = "已断开 · 缓存只读", error = null)
@@ -1100,7 +1159,9 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
         freshThreads.clear()
         val ready = CompletableDeferred<Unit>()
         pendingConnectionReady = ready
-        events = client.openEvents(null, object : GatewayEventListener {
+        val requestedCursor = resumeCheckpoint.cursor(newScope, identity.installationId, epoch)
+        eventScopeKey = newScope
+        events = client.openEvents(requestedCursor, object : GatewayEventListener {
             override fun onConnection(message: JsonObject) {
                 viewModelScope.launch {
                     if (generation != connectionGeneration) return@launch
@@ -1110,7 +1171,8 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
                         if (actualEpoch != epoch || message.string("installationId") != identity.installationId) {
                             ready.completeExceptionally(ClientStateException("Gateway 身份或代次已变化，请重新连接")); return@withLock
                         }
-                        position = EventPosition(identity.installationId, epoch, message.number("headSeq") ?: 0)
+                        position = eventConnectionPosition(identity.installationId, epoch, message.number("headSeq") ?: 0,
+                            message.flag("resetRequired"), requestedCursor)
                         ready.complete(Unit)
                     }
                 }
@@ -1159,14 +1221,21 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
         observeNativeRead(NativeReadStage.MODELS, "连接校正") { refreshModels() }
         state.value.selectedProjectId?.let { project -> observeNativeRead(NativeReadStage.ACTIVE_THREADS, "连接校正") { refreshThreads(project) } }
         state.value.selectedThreadId?.let { thread -> observeNativeRead(NativeReadStage.SNAPSHOT, "连接校正") { syncThread(thread) } }
-        heartbeatJob = viewModelScope.launch { while (isActive) { delay(15_000); events?.ping() } }
         refreshNativeDefaultsInternal()
         refreshAccountInternal()
+        externalSyncJob = viewModelScope.launch {
+            while (isActive) {
+                delay(5_000)
+                if (foreground && state.value.online) actionMutex.withLock {
+                    try { refreshAutomatically() } catch (error: Exception) { handleFailure(error) }
+                }
+            }
+        }
         updateControls()
     }
 
     private suspend fun setScope(value: String) {
-        if (scopeKey != value) clearArchivedThreads()
+        if (scopeKey != value) { clearArchivedThreads(); readPolicy.clear() }
         scopeKey = value
         pendingObserver?.cancel()
         pending = local.state.unresolved(value)
@@ -1181,9 +1250,14 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private suspend fun refreshProjects() {
+        val generation = connectionGeneration
+        val scope = scopeKey
+        val version = readPolicy.version("projects")
         val data = resource(client.get("projects"))
+        if (generation != connectionGeneration || scope != scopeKey) return
         applyProjects(data)
         cache("projects", "", data)
+        readPolicy.checked("projects", version)
         val project = state.value.selectedProjectId
         if (project != null && state.value.projects.none { it.id == project }) {
             resetThread()
@@ -1203,8 +1277,10 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private suspend fun refreshThreads(project: String) {
+        val generation = connectionGeneration
+        val version = readPolicy.version("threads:$project")
         var window = resource(client.get("projects/${segment(project)}/threads", mapOf("limit" to "20", "archived" to "false")))
-        if (state.value.selectedProjectId != project) return
+        if (generation != connectionGeneration || state.value.selectedProjectId != project) return
         applyThreads(window)
         nextThreadCursor = window.string("nextCursor")
         freshThreads.removeAll(state.value.threads.map { it.id }.toSet())
@@ -1217,7 +1293,7 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
             while (cursor != null && state.value.threads.none { it.id == selected } && pages < 10 && cursors.add(cursor)) {
                 val page = resource(client.get("projects/${segment(project)}/threads",
                     mapOf("limit" to "20", "archived" to "false", "cursor" to cursor)))
-                if (state.value.selectedProjectId != project) return
+                if (generation != connectionGeneration || state.value.selectedProjectId != project) return
                 window = mergeThreadPages(window, page)
                 applyThreads(window)
                 nextThreadCursor = window.string("nextCursor")
@@ -1229,6 +1305,7 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
                 if (selected in freshThreads) {
                     try {
                         val detail = resource(client.get("projects/${segment(project)}/threads/${segment(selected)}"))
+                        if (generation != connectionGeneration || state.value.selectedProjectId != project) return
                         mutableState.value = state.value.copy(threads = state.value.threads + threadOption(detail))
                     } catch (error: GatewayException) {
                         if (error.httpStatus in listOf(403, 404) && !error.authInvalid) unavailableThread() else throw error
@@ -1240,6 +1317,7 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
         cache("threads", project, window, project)
+        readPolicy.checked("threads:$project", version)
     }
 
     private fun applyThreads(data: JsonObject) {
@@ -1255,6 +1333,7 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
 
     private suspend fun selectThreadInternal(thread: String) {
         val project = state.value.selectedProjectId ?: return
+        if (state.value.selectedThreadId == thread) return
         resetThread()
         mutableState.value = state.value.copy(selectedThreadId = thread, error = null)
         local.preferences.saveSelection(requireScope(), project, thread)
@@ -1271,6 +1350,8 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
         if (!state.value.online || state.value.selectedThreadId != thread || position == null) return
         val version = invalidationVersion
         val generation = connectionGeneration
+        val freshnessKey = "snapshot:$project:$thread"
+        val freshnessTicket = readPolicy.version(freshnessKey)
         revokeFileChangeContexts()
         val evidenceVersion = fileChangeEvidenceVersion
         snapshotCurrent = false
@@ -1282,6 +1363,8 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
             if (error.httpStatus in listOf(403, 404) && !error.authInvalid) { unavailableThread(); return } else throw error
         }
         applyVerifiedSnapshot(project, thread, data, version, generation, evidenceVersion)
+        if (version == invalidationVersion && generation == connectionGeneration && state.value.selectedProjectId == project && state.value.selectedThreadId == thread)
+            readPolicy.checked(freshnessKey, freshnessTicket)
     }
 
     private suspend fun applyVerifiedSnapshot(project: String, thread: String, data: JsonObject, version: Long, generation: Int, evidenceVersion: Long) {
@@ -1291,6 +1374,8 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
         val history = data.obj("history") ?: throw ClientStateException("Gateway 历史数据不完整")
+        val preserveWindow = preserveHistoryWindow(historyEpoch, epoch, historyRevision, history.string("historyRevision"),
+            lastHistoryRoot, history, replaceTerminalOnSnapshot)
         val nativeThread = data.obj("thread") ?: throw ClientStateException("Gateway 会话数据不完整")
         if (nativeThread.flag("archived")) { unavailableThread(); return }
         threadStatus = nativeThread.string("status") ?: "unknown"
@@ -1306,14 +1391,19 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
             NativeInteractionForms.bindFileChangeContext(parsed, fileChangeContexts.forInteraction(parsed))
         } }
         mutableState.value = state.value.copy(actualModel = nativeThread.string("model"), actualEffort = nativeThread.string("reasoningEffort"), interactions = interactions)
-        inspectorProjection.history(history, replace = true)
+        inspectorProjection.history(history, replace = !preserveWindow)
         firstTurnPermit.invalidate(thread)
-        projection.snapshot(history, preserveTerminal = !replaceTerminalOnSnapshot && (historyRevision == null || historyRevision == history.string("historyRevision")))
+        projection.snapshot(history, preserveTerminal = !replaceTerminalOnSnapshot && (historyRevision == null || historyRevision == history.string("historyRevision")), preserveOlder = preserveWindow)
         replaceTerminalOnSnapshot = false
         activeTurnId = projection.activeTurnId ?: activeTurnId.takeUnless { data.string("synchronization") == "current" }
         historyRevision = history.string("historyRevision")
-        nextHistoryCursor = history.string("nextCursor")
-        itemCursors.clear(); readItemCursors(history); historyPages = 1
+        historyEpoch = epoch
+        lastHistoryRoot = history
+        if (!preserveWindow) {
+            nextHistoryCursor = history.string("nextCursor")
+            itemCursors.clear(); readItemCursors(history); historyPages = 1
+        }
+        historyWindowInvalidated = false
         data.array("operations").forEach { (it as? JsonObject)?.let { receipt -> applyReceipt(receipt, project, thread) } }
         snapshotCurrent = data.string("synchronization") == "current" && version == invalidationVersion &&
             position?.epoch == epoch && (position?.sequence ?: -1) <= (data.number("observedEndSeq") ?: -2)
@@ -1321,7 +1411,7 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
         // A new first page replaces this thread's prior page/cursor window. Repeated refreshes
         // must not accumulate opaque cursor tokens or old-revision pages indefinitely.
         val currentScope = requireScope()
-        withCache { local.cache.deleteThread(currentScope, project, thread) }
+        if (!preserveWindow) withCache { local.cache.deleteThread(currentScope, project, thread) }
         cache("snapshot", thread, data, project, thread)
         saveProjection()
         val hasInteractions = data.array("interactions").isNotEmpty()
@@ -1331,7 +1421,7 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
             else -> null
         })
         showProjectionWithAnchor()
-        if (!snapshotCurrent && state.value.online) {
+        if (!snapshotCurrent && state.value.online && activeTurnId == null && !hasInteractions) {
             correctionAttempts++
             if (correctionAttempts < if (foreground) 4 else 1) scheduleSync(1_500, resetBudget = false)
             else mutableState.value = state.value.copy(historyWarning = "会话暂未同步完成，已暂停自动刷新。可手动刷新，确认状态前不会发送。")
@@ -1352,7 +1442,7 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
             }
         } else continuity
         if (decision == EventDecision.DUPLICATE) return
-        if (decision == EventDecision.RESET) { connectionFailed(null); return }
+        if (decision == EventDecision.RESET) { connectionFailed(null, allowResume = false); return }
         // Notifications consume only whitelisted native shapes and never alter execution state.
         if (continuity in setOf(EventDecision.APPLY, EventDecision.INVALIDATE)) scopeKey?.let { notifications.onVerifiedEvent(it, event) }
         val scope = event.obj("scope")
@@ -1360,8 +1450,25 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
         val eventThread = scope?.string("threadId")
         val eventKind = event.string("kind")
         val nativeMethod = event.obj("payload")?.string("method")
-        if (decision != EventDecision.SKIP && (scope?.string("projectId") == null || scope.string("projectId") == state.value.selectedProjectId) &&
-            (eventKind == "history.invalidated" || nativeMethod in setOf("thread/started", "thread/name/updated", "thread/archived", "thread/unarchived", "thread/deleted", "thread/closed")))
+        if (decision != EventDecision.SKIP) {
+            val project = scope?.string("projectId")
+            val navigationChanged = eventKind !in setOf("item.started", "item.delta", "item.completed") &&
+                nativeMethod !in setOf("turn/plan/updated", "turn/diff/updated", "thread/tokenUsage/updated")
+            if (eventKind == "project.changed" || project == null) readPolicy.invalidate("projects")
+            if (project == null) {
+                if (navigationChanged) readPolicy.invalidatePrefix("threads:")
+                readPolicy.invalidatePrefix("snapshot:")
+                readPolicy.invalidatePrefix("native-defaults:")
+            } else {
+                if (navigationChanged) readPolicy.invalidate("threads:$project")
+                if (eventKind == "project.changed") readPolicy.invalidate("native-defaults:$project")
+                if (eventThread == null) readPolicy.invalidatePrefix("snapshot:$project:")
+                else readPolicy.invalidate("snapshot:$project:$eventThread")
+            }
+        }
+        if (decision != EventDecision.SKIP && eventKind == "project.changed") scheduleNavigationRefresh(projectsOnly = true)
+        else if (decision != EventDecision.SKIP && (scope?.string("projectId") == null || scope.string("projectId") == state.value.selectedProjectId) &&
+            (eventKind == "history.invalidated" || nativeMethod in setOf("thread/started", "thread/name/updated", "thread/archived", "thread/unarchived", "thread/deleted", "thread/closed", "turn/completed")))
             scheduleNavigationRefresh()
         if (relevant && decision != EventDecision.SKIP) {
             revokeFileChangeContexts()
@@ -1399,7 +1506,7 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
         if (decision == EventDecision.INVALIDATE && relevant) {
             invalidationVersion++
             snapshotCurrent = false
-            nextHistoryCursor = null; itemCursors.clear()
+            historyWindowInvalidated = true
             if (event.string("kind") in setOf("history.invalidated", "connection.reset")) {
                 replaceTerminalOnSnapshot = true
                 projection.invalidate()
@@ -1415,7 +1522,7 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
             // native.state never unlocks sending. Only a subsequent current snapshot can do that.
-            scheduleSync()
+            scheduleSync(if (eventKind == "native.state" && nativeMethod in setOf("turn/plan/updated", "turn/diff/updated", "thread/tokenUsage/updated")) 5_000 else 300)
         }
         if (decision == EventDecision.APPLY) {
             if (event.string("kind") == "operation.changed") event.obj("payload")?.let { receipt ->
@@ -1424,10 +1531,11 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
                 val terminalLateEvent = event.string("kind") in setOf("item.delta", "item.started") && projection.isTerminal(scope.string("itemId"))
                 if (!terminalLateEvent) {
                     snapshotCurrent = false
+                    historyWindowInvalidated = true
                     invalidationVersion++
                     projection.event(event)
                     showProjection()
-                    scheduleSync()
+                    scheduleSync(if (eventKind in setOf("item.started", "item.delta")) 5_000 else 300)
                 }
             }
         }
@@ -1597,15 +1705,21 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private fun scheduleNavigationRefresh() {
-        val project = state.value.selectedProjectId ?: return
+    private fun scheduleNavigationRefresh(projectsOnly: Boolean = false) {
+        val project = state.value.selectedProjectId
+        navigationThreadsRequested = navigationThreadsRequested || !projectsOnly
         val generation = connectionGeneration
         navigationSyncJob?.cancel()
         navigationSyncJob = viewModelScope.launch {
             delay(250)
             actionMutex.withLock {
-                if (generation != connectionGeneration || state.value.selectedProjectId != project || !state.value.online) return@withLock
-                try { refreshThreadLists(project) } catch (error: Exception) { handleFailure(error) }
+                if (generation != connectionGeneration || !state.value.online) return@withLock
+                val refreshThreads = navigationThreadsRequested
+                navigationThreadsRequested = false
+                try {
+                    if (!readPolicy.fresh("projects")) refreshProjects()
+                    if (refreshThreads && project != null && state.value.selectedProjectId == project) refreshThreadLists(project)
+                } catch (error: Exception) { handleFailure(error) }
             }
         }
     }
@@ -1613,16 +1727,7 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
     private fun scheduleSync(delayMs: Long = 300, resetBudget: Boolean = true) {
         if (!state.value.online) return
         if (resetBudget) correctionAttempts = 0
-        syncJob?.cancel()
-        syncJob = viewModelScope.launch {
-            delay(delayMs)
-            actionMutex.withLock {
-                try {
-                    reconcileUnknown()
-                    state.value.selectedThreadId?.let { syncThread(it) }
-                } catch (error: Exception) { handleFailure(error) }
-            }
-        }
+        snapshotRefresh.request(delayMs)
     }
 
     private suspend fun loadCached(saved: ClientPreferenceSnapshot) {
@@ -1635,7 +1740,13 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private suspend fun loadCachedThreads(project: String) { nextThreadCursor = null; cached("threads", project)?.let(::applyThreads) }
+    private suspend fun loadCachedThreads(project: String): Boolean {
+        nextThreadCursor = null
+        val data = cached("threads", project) ?: return false
+        nextThreadCursor = data.string("nextCursor")
+        applyThreads(data)
+        return true
+    }
 
     private suspend fun loadLocalThread(thread: String) {
         val scope = scopeKey ?: return
@@ -1667,7 +1778,7 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
         val project = if (kind == "projects") "" else if (kind == "threads") resourceId else state.value.selectedProjectId.orEmpty()
         val row = withCache { local.cache.get(scope, kind, resourceId, projectId = project) } ?: return null
         return try { Json.parseToJsonElement(row.payloadJson) as? JsonObject }
-        catch (_: Exception) { withCache { local.cache.clearScope(scope) }; mutableState.value = state.value.copy(historyWarning = "损坏的历史缓存已丢弃；可重新连接重建"); null }
+        catch (_: Exception) { withCache { local.cache.clearScope(scope) }; readPolicy.clear(); mutableState.value = state.value.copy(historyWarning = "损坏的历史缓存已丢弃；可重新连接重建"); null }
     }
 
     private suspend fun cache(kind: String, resourceId: String, data: JsonObject, project: String? = null, thread: String? = null, pageKey: String = "") {
@@ -1694,6 +1805,7 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
         try { block() }
         catch (_: SQLiteDatabaseCorruptException) {
             local.rebuildCache()
+            readPolicy.clear()
             mutableState.value = state.value.copy(historyWarning = "损坏的历史缓存已重建；草稿与未知操作保持独立")
             block()
         }
@@ -1711,9 +1823,11 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun resetThread() {
         revokeFileChangeContexts()
-        syncJob?.cancel(); cacheJob?.cancel(); anchorJob?.cancel(); operationNoticeJob?.cancel()
+        snapshotRefresh.cancel(); cacheJob?.cancel(); anchorJob?.cancel(); operationNoticeJob?.cancel()
         snapshotCurrent = false; activeTurnId = null; threadStatus = "unknown"; correctionAttempts = 0
         nextHistoryCursor = null; itemCursors.clear(); historyRevision = null; historyPages = 0
+        historyWindowInvalidated = false
+        historyEpoch = null; lastHistoryRoot = null
         replaceTerminalOnSnapshot = true; projection.clear(); inspectorProjection.clear(); invalidationVersion++
         mutableState.value = state.value.copy(selectedThreadId = null, messages = emptyList(), draft = "", readIndex = 0, readOffset = 0,
             executionLabel = "", conversationRefreshing = false, historyWarning = null, operationStatusMessage = null, inspector = InspectorUiState(), interactions = emptyList(), actualPermissionPreset = null, permissionReadback = null, permissionPreset = "native", selectedModel = null, selectedEffort = null, actualModel = null, actualEffort = null)
@@ -1754,7 +1868,7 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
             canManageThread = ready && !blocked && snapshotCurrent && activeTurnId == null && threadStatus in setOf("idle", "active", "notLoaded"),
             canStop = ready && activeTurnId != null && "turn.interrupt" in capabilities,
             canResume = ready && snapshotCurrent && !blocked && activeTurnId == null && threadStatus == "notLoaded" && "thread.resume" in capabilities,
-            canLoadMore = current.online && !current.busy && historyPages < 20 && (nextHistoryCursor != null || itemCursors.isNotEmpty()),
+            canLoadMore = current.online && !current.busy && !historyWindowInvalidated && historyPages < 20 && (nextHistoryCursor != null || itemCursors.isNotEmpty()),
             unknownWarning = if (blocked) UNKNOWN_MESSAGE else null,
             unresolvedOperations = pending.map { UnknownOperationUi(it.operationId, it.kind, it.projectId, it.threadId, it.createdAt, it.status, it.delivery, it.nativeThreadId, it.nativeTurnId) },
             canLoadMoreThreads = current.online && !current.busy && nextThreadCursor != null,
@@ -1817,7 +1931,8 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
                 // health. Keep the same-generation first-turn proof after this known notSent.
                 if (error.authInvalid || error.code == "ACCESS_EXPIRED" || (error.httpStatus == null && error.code != "REQUEST_TOO_LARGE")) connectionFailed(error)
                 else if (error.code.contains("CURSOR") || error.code.contains("STALE")) {
-                    snapshotCurrent = false; invalidationVersion++; nextHistoryCursor = null; itemCursors.clear(); scheduleSync()
+                    snapshotCurrent = false; invalidationVersion++; nextHistoryCursor = null; itemCursors.clear()
+                    replaceTerminalOnSnapshot = true; historyWindowInvalidated = true; scheduleSync()
                 }
             }
             is ClientStateException -> mutableState.value = state.value.copy(error = error.message)
@@ -1827,8 +1942,9 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
         updateControls()
     }
 
-    private fun connectionFailed(error: GatewayException?) {
-        disconnectTransport()
+    private fun connectionFailed(error: GatewayException?, allowResume: Boolean = true) {
+        disconnectTransport(preserveCheckpoint = allowResume && error?.authInvalid != true &&
+            error?.code !in setOf("EVENT_RESET_REQUIRED", "INVALID_RESPONSE", "PROTOCOL_INCOMPATIBLE", "INSTALLATION_CHANGED"))
         mutableState.value = state.value.copy(online = false,
             connectionLabel = if (error?.authInvalid == true) "设备身份失效 · 请重新配对" else "离线缓存 · 等待重连",
             paired = if (error?.authInvalid == true) false else state.value.paired,
@@ -1857,8 +1973,13 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
             mutableState.value = state.value.copy(actualPermissionPreset = null, permissionReadback = null)
     }
 
-    private fun disconnectTransport() {
+    private fun disconnectTransport(preserveCheckpoint: Boolean = true) {
+        if (preserveCheckpoint) resumeCheckpoint.remember(eventScopeKey, position) else resumeCheckpoint.clear()
         navigationSyncJob?.cancel()
+        navigationThreadsRequested = false
+        externalSyncJob?.cancel(); externalSyncJob = null
+        snapshotRefresh.cancel()
+        readPolicy.clear()
         mutableState.value = state.value.copy(nativeDefaults = null, nativeDefaultsError = null, conversationRefreshing = false)
         revokeFileChangeContexts()
         invalidatePermissionReadback()
@@ -1868,7 +1989,6 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
         firstTurnPermit.invalidate()
         freshThreads.clear()
         events?.close(); events = null
-        heartbeatJob?.cancel()
         position = null; snapshotCurrent = false; activeTurnId = null
         // Do not clear the freshly exchanged HTTP access while replacing only the WSS subscription.
     }
