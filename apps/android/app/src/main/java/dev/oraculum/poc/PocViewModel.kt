@@ -51,6 +51,8 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
     private var capabilityData: JsonObject? = null
     private var nextThreadCursor: String? = null
     private var nextArchivedThreadCursor: String? = null
+    private var threadPages = 1
+    private var archivedThreadPages = 1
     private var navigationSyncJob: Job? = null
     private var navigationThreadsRequested = false
     private var operationNoticeJob: Job? = null
@@ -308,9 +310,12 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
         val project = state.value.selectedProjectId ?: return@action
         val cursor = nextArchivedThreadCursor ?: return@action
         val generation = connectionGeneration
+        val version = readPolicy.version("threads:$project")
         val data = resource(client.get("projects/${segment(project)}/threads", mapOf("limit" to "20", "archived" to "true", "cursor" to cursor)))
         if (generation != connectionGeneration || state.value.selectedProjectId != project) return@action
+        if (version != readPolicy.version("threads:$project")) { scheduleNavigationRefresh(); return@action }
         nextArchivedThreadCursor = data.string("nextCursor")
+        archivedThreadPages++
         val added = data.array("threads").mapNotNull { (it as? JsonObject)?.let { threadOption(it, archived = true) } }
         mutableState.value = state.value.copy(archivedThreads = appendThreadPage(state.value.archivedThreads, added), archivedThreadsLoaded = true)
     }
@@ -319,15 +324,26 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun clearArchivedThreads() {
         nextArchivedThreadCursor = null
+        archivedThreadPages = 1
         mutableState.value = state.value.copy(archivedThreads = emptyList(), archivedThreadsLoaded = false,
             canLoadMoreArchivedThreads = false, showArchivedThreads = false)
     }
 
     private suspend fun refreshArchivedThreads(project: String) {
         val generation = connectionGeneration
-        val data = resource(client.get("projects/${segment(project)}/threads", mapOf("limit" to "20", "archived" to "true")))
-        if (generation != connectionGeneration || state.value.selectedProjectId != project) return
+        val scope = scopeKey
+        val version = readPolicy.version("threads:$project")
+        val window = readThreadWindow(archivedThreadPages, isCurrent = {
+            generation == connectionGeneration && scope == scopeKey && state.value.selectedProjectId == project &&
+                version == readPolicy.version("threads:$project")
+        }) { cursor ->
+            resource(client.get("projects/${segment(project)}/threads", buildMap {
+                put("limit", "20"); put("archived", "true"); cursor?.let { put("cursor", it) }
+            }))
+        } ?: return
+        val data = window.data
         nextArchivedThreadCursor = data.string("nextCursor")
+        archivedThreadPages = window.pages
         mutableState.value = state.value.copy(archivedThreads = data.array("threads").mapNotNull {
             (it as? JsonObject)?.let { thread -> threadOption(thread, archived = true) }
         }, archivedThreadsLoaded = true, canLoadMoreArchivedThreads = state.value.online && !state.value.busy && nextArchivedThreadCursor != null)
@@ -544,14 +560,17 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
         val project = state.value.selectedProjectId ?: return@action
         val cursor = nextThreadCursor ?: return@action
         val generation = connectionGeneration
+        val version = readPolicy.version("threads:$project")
         val data = resource(client.get("projects/${segment(project)}/threads", mapOf("limit" to "20", "archived" to "false", "cursor" to cursor)))
         if (generation != connectionGeneration || state.value.selectedProjectId != project) return@action
+        if (version != readPolicy.version("threads:$project")) { scheduleNavigationRefresh(); return@action }
         nextThreadCursor = data.string("nextCursor")
+        threadPages++
         val added = data.array("threads").mapNotNull { (it as? JsonObject)?.let { thread -> threadOption(thread) } }
         val unlisted = freshThreads.toSet()
         mutableState.value = state.value.copy(threads = appendThreadPage(state.value.threads, added, unlisted))
         freshThreads.removeAll(added.map { it.id }.toSet())
-        cached("threads", project)?.let { cache("threads", project, mergeThreadPages(it, data, unlisted), project) }
+        cached("threads", project)?.let { cache("threads", project, cachedThreadWindow(mergeThreadPages(it, data, unlisted), threadPages), project) }
     }
 
     fun respondInteraction(id: String, response: JsonObject) = respondInteractionInternal(id, response, null)
@@ -850,6 +869,7 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
         resetThread()
         clearArchivedThreads()
         nextThreadCursor = null
+        threadPages = 1
         mutableState.value = state.value.copy(selectedProjectId = projectId, threads = emptyList(), error = null, showArchivedThreads = false, nativeDefaults = null, nativeDefaultsError = null)
         scopeKey?.let { local.preferences.saveSelection(it, projectId, null) }
         val hasCachedThreads = loadCachedThreads(projectId)
@@ -1140,6 +1160,7 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
         val newScope = CacheScope(identity.endpoint, identity.installationId, identity.deviceId).key
         if (oldScope != newScope) {
             resetThread()
+            threadPages = 1; nextThreadCursor = null
             mutableState.value = state.value.copy(projects = emptyList(), threads = emptyList(), selectedProjectId = null,
                 accountRateLimits = null, accountUsage = null, accountError = null, nativeDefaults = null, nativeDefaultsError = null, showArchivedThreads = false)
         }
@@ -1278,49 +1299,47 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
 
     private suspend fun refreshThreads(project: String) {
         val generation = connectionGeneration
+        val scope = scopeKey
         val version = readPolicy.version("threads:$project")
-        var window = resource(client.get("projects/${segment(project)}/threads", mapOf("limit" to "20", "archived" to "false")))
-        if (generation != connectionGeneration || state.value.selectedProjectId != project) return
-        applyThreads(window)
-        nextThreadCursor = window.string("nextCursor")
-        freshThreads.removeAll(state.value.threads.map { it.id }.toSet())
         val selected = state.value.selectedThreadId
-        if (selected != null && state.value.threads.none { it.id == selected }) {
-            // Keep every fetched row, not just the selected thread, so later pages never jump ahead.
-            var cursor = nextThreadCursor
-            var pages = 1
-            val cursors = mutableSetOf<String>()
-            while (cursor != null && state.value.threads.none { it.id == selected } && pages < 10 && cursors.add(cursor)) {
-                val page = resource(client.get("projects/${segment(project)}/threads",
-                    mapOf("limit" to "20", "archived" to "false", "cursor" to cursor)))
-                if (generation != connectionGeneration || state.value.selectedProjectId != project) return
-                window = mergeThreadPages(window, page)
-                applyThreads(window)
-                nextThreadCursor = window.string("nextCursor")
-                freshThreads.removeAll(state.value.threads.map { it.id }.toSet())
-                cursor = nextThreadCursor
-                pages++
-            }
-            if (state.value.threads.none { it.id == selected }) {
-                if (selected in freshThreads) {
-                    try {
-                        val detail = resource(client.get("projects/${segment(project)}/threads/${segment(selected)}"))
-                        if (generation != connectionGeneration || state.value.selectedProjectId != project) return
-                        mutableState.value = state.value.copy(threads = state.value.threads + threadOption(detail))
-                    } catch (error: GatewayException) {
-                        if (error.httpStatus in listOf(403, 404) && !error.authInvalid) unavailableThread() else throw error
-                    }
-                } else {
-                    unavailableThread()
-                    if (cursor != null) mutableState.value = state.value.copy(error = "在有界会话列表内无法确认上次会话仍可用；请重新选择会话")
-                }
+        fun current() = generation == connectionGeneration && scope == scopeKey && state.value.selectedProjectId == project &&
+            version == readPolicy.version("threads:$project")
+        val result = readThreadWindow(threadPages, selected, ::current) { cursor ->
+            resource(client.get("projects/${segment(project)}/threads", buildMap {
+                put("limit", "20"); put("archived", "false"); cursor?.let { put("cursor", it) }
+            }))
+        } ?: return
+        var window = result.data
+        val listed = window.array("threads").mapNotNull { (it as? JsonObject)?.string("id") }.toSet()
+        var unavailable = selected != null && selected !in listed
+        if (unavailable && selected in freshThreads) {
+            // Only a same-connection accepted start may be temporarily unmaterialized in lists.
+            try {
+                val detail = resource(client.get("projects/${segment(project)}/threads/${segment(selected!!)}"))
+                if (!current()) return
+                window = JsonObject(window + ("threads" to JsonArray(window.array("threads") + detail)))
+                unavailable = false
+            } catch (error: GatewayException) {
+                if (error.httpStatus !in listOf(403, 404) || error.authInvalid) throw error
             }
         }
+        if (!current()) return
+        // Commit only a complete fresh window, so an error/event on an older page leaves the
+        // previously loaded list visible instead of shrinking it to a successful first page.
+        window = cachedThreadWindow(window, result.pages)
+        applyThreads(window)
+        nextThreadCursor = window.string("nextCursor")
+        freshThreads.removeAll(listed)
         cache("threads", project, window, project)
         readPolicy.checked("threads:$project", version)
+        if (unavailable && current()) {
+            unavailableThread()
+            if (nextThreadCursor != null) mutableState.value = state.value.copy(error = "在有界会话列表内无法确认上次会话仍可用；请重新选择会话")
+        }
     }
 
     private fun applyThreads(data: JsonObject) {
+        threadPages = cachedThreadWindowPages(data)
         mutableState.value = state.value.copy(
             threads = data.array("threads").mapNotNull { (it as? JsonObject)?.let { thread -> threadOption(thread) } },
             canLoadMoreThreads = data.string("nextCursor") != null,
@@ -1420,7 +1439,7 @@ class PocViewModel(application: Application) : AndroidViewModel(application) {
             nextHistoryCursor != null || itemCursors.isNotEmpty() -> "已加载最近历史，可继续加载更早内容"
             else -> null
         })
-        showProjectionWithAnchor()
+        if (preserveWindow) showProjection() else showProjectionWithAnchor()
         if (!snapshotCurrent && state.value.online && activeTurnId == null && !hasInteractions) {
             correctionAttempts++
             if (correctionAttempts < if (foreground) 4 else 1) scheduleSync(1_500, resetBudget = false)

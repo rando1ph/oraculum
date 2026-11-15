@@ -32,6 +32,43 @@ fun mergeThreadPages(current: JsonObject, next: JsonObject, unlisted: Set<String
         (next["threads"] as? JsonArray).orEmpty() + prior.filter(::placeholder)).distinctBy { (it as? JsonObject)?.get("id") })))
 }
 
+data class ThreadWindowRead(val data: JsonObject, val pages: Int)
+
+/** Rebuild a previously loaded window from fresh Gateway pages; never append stale cached rows. */
+suspend fun readThreadWindow(
+    loadedPages: Int,
+    selectedThreadId: String? = null,
+    isCurrent: () -> Boolean,
+    readPage: suspend (String?) -> JsonObject,
+): ThreadWindowRead? {
+    var window = readPage(null)
+    if (!isCurrent()) return null
+    var pages = 1
+    var cursor = window.threadText("nextCursor")
+    val cursors = mutableSetOf<String>()
+    fun selectedMissing() = selectedThreadId != null && (window["threads"] as? JsonArray).orEmpty().none {
+        (it as? JsonObject)?.threadText("id") == selectedThreadId
+    }
+    while (cursor != null && (pages < loadedPages.coerceAtLeast(1) || (selectedMissing() && pages < 10))) {
+        require(cursors.add(cursor)) { "会话分页游标没有前进，请重新刷新" }
+        val page = readPage(cursor)
+        if (!isCurrent()) return null
+        window = mergeThreadPages(window, page)
+        pages++
+        cursor = window.threadText("nextCursor")
+    }
+    return ThreadWindowRead(window, pages)
+}
+
+/** Local cache metadata; this value is never part of a Gateway request. */
+fun cachedThreadWindow(data: JsonObject, pages: Int): JsonObject = JsonObject(data + ("_loadedPages" to JsonPrimitive(pages)))
+
+fun cachedThreadWindowPages(data: JsonObject): Int =
+    (data["_loadedPages"] as? JsonPrimitive)?.intOrNull?.takeIf { it > 0 }
+        ?: (((data["threads"] as? JsonArray).orEmpty().size + 19) / 20).coerceAtLeast(1)
+
+private fun JsonObject.threadText(key: String) = (this[key] as? JsonPrimitive)?.takeIf { it.isString }?.content
+
 /** Only the registration projection changes; cached histories and drafts are retained. */
 fun withoutRegisteredProject(data: JsonObject, projectId: String): JsonObject = JsonObject(data + ("projects" to
     JsonArray((data["projects"] as? JsonArray).orEmpty().filterNot {

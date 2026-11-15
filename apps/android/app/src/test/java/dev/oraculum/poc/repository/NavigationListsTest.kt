@@ -3,6 +3,7 @@ package dev.oraculum.poc.repository
 import dev.oraculum.poc.ui.ProjectOption
 import dev.oraculum.poc.ui.ThreadOption
 import kotlinx.serialization.json.*
+import kotlinx.coroutines.test.runTest
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -70,5 +71,87 @@ class NavigationListsTest {
         assertEquals(listOf("target", "keep"), ids(data, "projects"))
         assertEquals(result, withoutRegisteredProject(result, "target"))
         assertEquals(data, withoutRegisteredProject(data, "absent"))
+    }
+
+    @Test fun automaticRefreshRetainsEveryLoadedPageEvenWhenSelectedThreadIsOnTheFirstPage() = runTest {
+        val pages = mapOf<String?, JsonObject>(
+            null to obj("""{"threads":[{"id":"new"},{"id":"selected"}],"nextCursor":"p2"}"""),
+            "p2" to obj("""{"threads":[{"id":"second"},{"id":"third"}],"nextCursor":"p3"}"""),
+            "p3" to obj("""{"threads":[{"id":"fourth"}],"nextCursor":"p4"}"""),
+        )
+        val requests = mutableListOf<String?>()
+        val result = readThreadWindow(3, "selected", { true }) { requests += it; pages.getValue(it) }!!
+        assertEquals(listOf(null, "p2", "p3"), requests)
+        assertEquals(listOf("new", "selected", "second", "third", "fourth"), ids(result.data))
+        assertEquals("p4", result.data["nextCursor"]?.jsonPrimitive?.content)
+        assertEquals(3, result.pages)
+    }
+
+    @Test fun noSelectionStillPreservesLoadedWindowAndNativeRefreshDropsDeletedOrArchivedRows() = runTest {
+        val first = obj("""{"threads":[{"id":"inserted"},{"id":"last-page-row-now-first"}],"nextCursor":"p2"}""")
+        val second = obj("""{"threads":[{"id":"retained"}],"nextCursor":null}""")
+        val result = readThreadWindow(3, null, { true }) { if (it == null) first else second }!!
+        assertEquals(listOf("inserted", "last-page-row-now-first", "retained"), ids(result.data))
+        assertEquals(JsonNull, result.data["nextCursor"])
+        assertEquals(2, result.pages)
+    }
+
+    @Test fun windowRefreshPublishesNothingWhenLaterPageFailsOrInvalidatesTheRead() = runTest {
+        val first = obj("""{"threads":[{"id":"first"}],"nextCursor":"p2"}""")
+        var current = true
+        val invalidated = readThreadWindow(2, null, { current }) {
+            if (it == null) first else { current = false; obj("""{"threads":[{"id":"late"}],"nextCursor":null}""") }
+        }
+        assertNull(invalidated)
+        try {
+            readThreadWindow(2, null, { true }) { if (it == null) first else error("failed second page") }
+            fail("The entire window read must fail instead of returning its first page")
+        } catch (error: IllegalStateException) { assertEquals("failed second page", error.message) }
+    }
+
+    @Test fun selectedMembershipChecksRemainBoundedAndCursorLoopsAreRejected() = runTest {
+        var calls = 0
+        val result = readThreadWindow(1, "absent", { true }) {
+            calls++; obj("""{"threads":[{"id":"row-$calls"}],"nextCursor":"page-$calls"}""")
+        }!!
+        assertEquals(10, result.pages)
+        assertEquals(10, calls)
+        assertEquals(10, ids(result.data).size)
+        calls = 0
+        try {
+            readThreadWindow(3, null, { true }) {
+                calls++; obj("""{"threads":[{"id":"row-$calls"}],"nextCursor":"loop"}""")
+            }
+            fail("Repeated native cursors cannot describe a complete new window")
+        } catch (_: IllegalArgumentException) { assertEquals(2, calls) }
+    }
+
+    @Test fun retainingAnExplicitlyLoadedWindowIsNotTruncatedByTheSelectedMembershipSearchBudget() = runTest {
+        var calls = 0
+        val result = readThreadWindow(12, "row-1", { true }) {
+            calls++; obj("""{"threads":[{"id":"row-$calls"}],"nextCursor":"page-$calls"}""")
+        }!!
+        assertEquals(12, calls)
+        assertEquals(12, result.pages)
+        assertEquals(12, ids(result.data).size)
+    }
+
+    @Test fun aOnePageWindowDoesNotAddRequestsWhenItsSelectedThreadWasAlreadyFound() = runTest {
+        var calls = 0
+        val result = readThreadWindow(1, "selected", { true }) {
+            calls++; obj("""{"threads":[{"id":"selected"}],"nextCursor":"older"}""")
+        }!!
+        assertEquals(1, calls)
+        assertEquals(1, result.pages)
+        assertEquals(JsonPrimitive("older"), result.data["nextCursor"])
+    }
+
+    @Test fun localCachedPageDepthSurvivesProjectSwitchWithoutChangingGatewayOrdering() {
+        val data = obj("""{"threads":[{"id":"z"},{"id":"a"}],"nextCursor":"next"}""")
+        val cached = cachedThreadWindow(data, 3)
+        assertEquals(3, cachedThreadWindowPages(cached))
+        assertEquals(ids(data), ids(cached))
+        assertEquals(data["nextCursor"], cached["nextCursor"])
+        assertEquals(1, cachedThreadWindowPages(data))
     }
 }
