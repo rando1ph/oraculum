@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { CodexError, type CodexAdapter, type NativeItem, type NativeThread, type NativeTurn } from './codex';
-import { NativeHistory, nativeItemTiming, projectItem } from './history';
+import { HistoryError, NativeHistory, nativeItemTiming, projectItem } from './history';
 
 const scope = 'device-1:project-1';
 const item = (id: string, text = id): NativeItem => ({ id, type: 'agentMessage', text });
@@ -145,20 +145,158 @@ describe('disposable history page reuse', () => {
     await history.items('t', 'old', { scope: 'device-1:project-2' });
     expect(codex.listItems).toHaveBeenCalledTimes(3);
   });
-  it('revalidates roots under a thread lease and expires old windows without native event evidence', async () => {
+  it('revalidates an unchanged root after the lease without expiring loaded windows or details', async () => {
     let now = 1000;
     const codex = peer(), history = new NativeHistory(codex, { epoch: 'e', now: () => now });
+    const nativeItems = codex.listItems.getMockImplementation()!;
+    codex.listItems.mockImplementation(async input => input.turnId === 'detail-turn'
+      ? { data: [{ turnId: input.turnId, item: item('large', 'x'.repeat(100000)) }], nextCursor: null }
+      : nativeItems(input));
     const first = await history.turns('t', { scope, limit: 2 });
+    const detail = await history.details('t', 'detail-turn', 'large', { scope });
     now += 5001;
     const sameWindow = await history.turns('t', { scope, limit: 2 });
     expect(sameWindow.revision).toBe(first.revision);
     now += 25000;
     const revalidated = await history.turns('t', { scope: 'device-2:project-1', limit: 2 });
-    expect(revalidated.revision).not.toBe(first.revision);
-    await expect(history.turns('t', { scope, limit: 2, cursor: first.nextCursor! })).rejects.toMatchObject({ code: 'HISTORY_CURSOR_INVALID' });
+    expect(revalidated.revision).toBe(first.revision);
+    codex.listTurns.mockResolvedValueOnce({ data: [], nextCursor: null });
+    expect((await history.turns('t', { scope, limit: 2, cursor: first.nextCursor! })).revision).toBe(first.revision);
+    expect((await history.details('t', 'detail-turn', 'large', { scope, cursor: detail.nextCursor! })).historyRevision).toBe(first.revision);
     const anotherLimit = await history.turns('t', { scope, limit: 5 });
     expect(anotherLimit.revision).toBe(revalidated.revision);
-    expect(codex.listTurns).toHaveBeenCalledTimes(4);
+  });
+  it('detects silent old-only changes from the full fallback read without extra RPCs', async () => {
+    let now = 1000;
+    const codex = peer();
+    const turns = Array.from({ length: 12 }, (_, index) => turn(`turn-${index}`, [item(`item-${index}`)]));
+    codex.listTurns.mockRejectedValue(new CodexError('NATIVE_PAGINATION_UNSUPPORTED', 'unsupported', 'rejected'));
+    codex.readThread.mockImplementation(async () => ({ thread: thread(structuredClone(turns)) }));
+    const history = new NativeHistory(codex, { epoch: 'e', now: () => now });
+    const first = await history.turns('t', { scope, limit: 5 });
+    now += 31000;
+    const unchanged = await history.turns('t', { scope, limit: 5 });
+    expect(unchanged.revision).toBe(first.revision);
+    expect(codex.readThread).toHaveBeenCalledTimes(2);
+    turns[0].items[0].text = 'external CLI changed an older item';
+    now += 5001;
+    const changed = await history.turns('t', { scope, limit: 5 });
+    expect(changed.data).toEqual(unchanged.data);
+    expect(changed.revision).not.toBe(first.revision);
+    expect(codex.readThread).toHaveBeenCalledTimes(3);
+    await expect(history.turns('t', { scope, limit: 5, cursor: first.nextCursor! })).rejects.toMatchObject({ code: 'HISTORY_CURSOR_INVALID' });
+  });
+  it('revalidates loaded native pages and rotates only when an old page changed', async () => {
+    let now = 1000, olderText = 'old original';
+    const codex = peer();
+    codex.listTurns.mockImplementation(async ({ cursor }) => ({ data: [turn(cursor ? 'older' : 'recent')], nextCursor: cursor ? null : 'older-position' }));
+    codex.listItems.mockImplementation(async ({ turnId }) => ({ data: [{ turnId, item: item(`${turnId}-item`, turnId === 'older' ? olderText : 'recent unchanged') }], nextCursor: null }));
+    const history = new NativeHistory(codex, { epoch: 'e', now: () => now });
+    const first = await history.turns('t', { scope, limit: 1 });
+    const older = await history.turns('t', { scope, limit: 1, cursor: first.nextCursor! });
+    now += 31000;
+    const unchanged = await history.turns('t', { scope, limit: 1 });
+    expect(unchanged.revision).toBe(first.revision);
+    expect(codex.listTurns).toHaveBeenCalledTimes(4); // The root and observed older page were reread.
+    expect((await history.turns('t', { scope, limit: 1, cursor: first.nextCursor! })).data).toEqual(older.data);
+    olderText = 'external ACP changed old-only content';
+    now += 31000;
+    await expect(history.turns('t', { scope, limit: 1 })).rejects.toMatchObject({ code: 'HISTORY_STALE' });
+    await expect(history.turns('t', { scope, limit: 1, cursor: first.nextCursor! })).rejects.toMatchObject({ code: 'HISTORY_CURSOR_INVALID' });
+    expect((await history.turns('t', { scope, limit: 1 })).revision).not.toBe(first.revision);
+  });
+  it('does not renew a validation lease when an observed page fails to reread', async () => {
+    let now = 1000, unavailable = false;
+    const codex = peer();
+    codex.listTurns.mockImplementation(async ({ cursor }) => {
+      if (cursor && unavailable) throw new CodexError('NATIVE_TIMEOUT', 'unavailable', 'rejected');
+      return { data: [turn(cursor ? 'older' : 'recent')], nextCursor: cursor ? null : 'older-position' };
+    });
+    const history = new NativeHistory(codex, { epoch: 'e', now: () => now });
+    const first = await history.turns('t', { scope, limit: 1 });
+    await history.turns('t', { scope, limit: 1, cursor: first.nextCursor! });
+    now += 31000; unavailable = true;
+    await expect(history.turns('t', { scope, limit: 1 })).rejects.toMatchObject({ code: 'NATIVE_TIMEOUT' });
+    unavailable = false;
+    const count = codex.listTurns.mock.calls.length;
+    expect((await history.turns('t', { scope, limit: 1 })).revision).toBe(first.revision);
+    expect(codex.listTurns.mock.calls.length - count).toBe(2);
+  });
+  it.each(['missing-turn', 'invalid-position'])('rebuilds after external history removal invalidates an observed %s', async reason => {
+    let now = 1000, removed = false;
+    const codex = peer();
+    codex.listTurns.mockImplementation(async ({ cursor }) => {
+      if (cursor === 'older-v1' && removed) throw reason === 'missing-turn'
+        ? new HistoryError('HISTORY_STALE', 'Observed Turn was removed')
+        : new CodexError('NATIVE_REJECTED', 'Native cursor is no longer valid', 'rejected', -32602);
+      return { data: [turn(cursor ? 'older' : 'recent')], nextCursor: cursor ? null : removed ? 'older-v2' : 'older-v1' };
+    });
+    const history = new NativeHistory(codex, { epoch: 'e', now: () => now });
+    const first = await history.turns('t', { scope, limit: 1 });
+    await history.turns('t', { scope, limit: 1, cursor: first.nextCursor! });
+    now += 31000; removed = true;
+    await expect(history.turns('t', { scope, limit: 1 })).rejects.toMatchObject({ code: 'HISTORY_STALE' });
+    const corrected = await history.turns('t', { scope, limit: 1 });
+    expect(corrected.revision).not.toBe(first.revision);
+    expect((await history.turns('t', { scope, limit: 1, cursor: corrected.nextCursor! })).data[0].id).toBe('older');
+  });
+  it('keeps loaded-window validation inside the admitted read deadline', async () => {
+    let now = 1000, slow = false;
+    const codex = peer();
+    codex.listTurns.mockImplementation(async ({ cursor }) => {
+      if (cursor && slow) await new Promise(resolve => setTimeout(resolve, 130));
+      return { data: [turn(cursor ? 'older' : 'recent')], nextCursor: cursor ? null : 'older-position' };
+    });
+    const history = new NativeHistory(codex, { epoch: 'e', now: () => now, deadlineMs: 100, maxConcurrent: 1 });
+    const first = await history.turns('t', { scope, limit: 1 });
+    await history.turns('t', { scope, limit: 1, cursor: first.nextCursor! });
+    now += 31000; slow = true;
+    await expect(history.turns('t', { scope, limit: 1 })).rejects.toMatchObject({ code: 'HISTORY_TIMEOUT' });
+    slow = false;
+    expect((await history.turns('t', { scope, limit: 1 })).revision).toBe(first.revision);
+  });
+  it('detects a verified native detail changing beyond the bounded root preview', async () => {
+    let now = 1000, text = 'a'.repeat(20000) + 'first tail';
+    const codex = peer();
+    codex.listTurns.mockResolvedValue({ data: [turn('new')], nextCursor: null });
+    codex.listItems.mockImplementation(async ({ turnId }) => ({ data: [{ turnId, item: item('large', text) }], nextCursor: null }));
+    const history = new NativeHistory(codex, { epoch: 'e', now: () => now });
+    const first = await history.turns('t', { scope });
+    await history.details('t', 'new', 'large', { scope });
+    now += 31000;
+    expect((await history.turns('t', { scope })).revision).toBe(first.revision);
+    text = 'a'.repeat(20000) + 'second tail'; now += 31000;
+    await expect(history.turns('t', { scope })).rejects.toMatchObject({ code: 'HISTORY_STALE' });
+    const corrected = await history.turns('t', { scope });
+    expect(corrected.data[0].items[0]).toEqual(first.data[0].items[0]);
+    expect(corrected.revision).not.toBe(first.revision);
+    expect(corrected).not.toHaveProperty('contentDigest');
+    expect(corrected).not.toHaveProperty('fullDigest');
+  });
+  it('keeps observed native windows bounded and rejects a cursor after budget eviction', async () => {
+    const codex = peer(), history = new NativeHistory(codex, { epoch: 'e', maxObservedPages: 1 });
+    const first = await history.turns('t', { scope });
+    await expect(history.items('t', 'old', { scope })).rejects.toMatchObject({ code: 'HISTORY_STALE' });
+    await expect(history.turns('t', { scope, cursor: first.nextCursor! })).rejects.toMatchObject({ code: 'HISTORY_CURSOR_INVALID' });
+    expect((await history.turns('t', { scope })).revision).not.toBe(first.revision);
+  });
+  it('does not publish a current root when invalidation arrives during older-page validation', async () => {
+    let now = 1000, validating = false, release!: () => void;
+    const codex = peer();
+    codex.listTurns.mockImplementation(async ({ cursor }) => {
+      if (cursor && validating) await new Promise<void>(resolve => { release = resolve; });
+      return { data: [turn(cursor ? 'older' : 'recent')], nextCursor: cursor ? null : 'older-position' };
+    });
+    const history = new NativeHistory(codex, { epoch: 'e', now: () => now });
+    const first = await history.turns('t', { scope, limit: 1 });
+    await history.turns('t', { scope, limit: 1, cursor: first.nextCursor! });
+    now += 31000; validating = true;
+    const reading = history.turns('t', { scope, limit: 1 });
+    await vi.waitFor(() => expect(release).toBeTypeOf('function'));
+    history.invalidate('t'); release();
+    await expect(reading).rejects.toMatchObject({ code: 'HISTORY_STALE' });
+    validating = false;
+    expect((await history.turns('t', { scope, limit: 1 })).revision).not.toBe(first.revision);
   });
   it('rotates a still-valid lease when fresh root contents reveal an external change', async () => {
     let now = 1000;
@@ -170,6 +308,39 @@ describe('disposable history page reuse', () => {
     expect(changed.revision).not.toBe(first.revision);
     await expect(history.turns('t', { scope, cursor: first.nextCursor! })).rejects.toMatchObject({ code: 'HISTORY_CURSOR_INVALID' });
     expect(changed.data.every(turn => turn.items.length === 0)).toBe(true);
+  });
+  it('ignores object key and parallel timing-map insertion order while preserving native facts', async () => {
+    let now = 1000, reversed = false, completedAtMs = 1700000001000;
+    const codex = peer();
+    codex.listItems.mockImplementation(async ({ turnId }) => {
+      if ((turnId === 'new') === reversed) await new Promise(resolve => setTimeout(resolve, 5));
+      const native = reversed ? { text: 'same', type: 'agentMessage', id: `${turnId}-item` }
+        : { id: `${turnId}-item`, type: 'agentMessage', text: 'same' };
+      return { data: [{ turnId, item: native, startedAtMs: 1700000000000, completedAtMs }], nextCursor: null };
+    });
+    const history = new NativeHistory(codex, { epoch: 'e', now: () => now });
+    const first = await history.turns('t', { scope });
+    reversed = true; now += 5001;
+    const reordered = await history.turns('t', { scope });
+    expect(Object.keys(reordered.itemTimings!)).toEqual(Object.keys(first.itemTimings!).reverse());
+    expect(reordered.data).toEqual(first.data);
+    expect(reordered.revision).toBe(first.revision);
+    codex.listTurns.mockResolvedValueOnce({ data: [], nextCursor: null });
+    expect((await history.turns('t', { scope, cursor: first.nextCursor! })).revision).toBe(first.revision);
+    completedAtMs++; now += 5001;
+    expect((await history.turns('t', { scope })).revision).not.toBe(first.revision);
+  });
+  it('still invalidates when a native Item array changes order', async () => {
+    let now = 1000, reversed = false;
+    const codex = peer();
+    codex.listItems.mockImplementation(async ({ turnId }) => {
+      const items = [item(`${turnId}-a`), item(`${turnId}-b`)];
+      return { data: (reversed ? items.reverse() : items).map(item => ({ turnId, item })), nextCursor: null };
+    });
+    const history = new NativeHistory(codex, { epoch: 'e', now: () => now });
+    const first = await history.turns('t', { scope });
+    reversed = true; now += 5001;
+    expect((await history.turns('t', { scope })).revision).not.toBe(first.revision);
   });
   it('does not return expired or evicted cursor tokens from the cached projection', async () => {
     let now = 1000;

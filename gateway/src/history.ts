@@ -42,6 +42,15 @@ export type HistoryPage<T> = {
 type PageProjection<T> = Omit<HistoryPage<T>, 'nextCursor' | 'itemCursors'> & {
     nextPosition: string | number | null;
     itemPositions?: Record<string, { source: Cursor['source']; position: string | number }>;
+    contentDigest?: string;
+    fullDigest?: string;
+};
+type ObservedPage = {
+    threadId: string;
+    revision: string;
+    digest: string;
+    bytes: number;
+    load: (deadline: number, revision: string) => Promise<PageProjection<unknown>>;
 };
 const fallback = (error: unknown) => error instanceof CodexError && ['NATIVE_UNSUPPORTED', 'NATIVE_EXPERIMENTAL', 'NATIVE_PAGINATION_UNSUPPORTED'].includes(error.code);
 /** Bounded display projection; never stored as canonical history or used for operation correlation. */
@@ -108,11 +117,12 @@ export class NativeHistory {
     private active = 0;
     private revisions = new Map<string, string>();
     private readonly pages: BoundedReadCache;
-    // A local revision is not a native history version. A fresh root validation
-    // starts a new bounded lease, expiring older windows even if external edits
-    // did not produce notifications or alter the native metadata timestamps.
+    // A lease schedules fresh content validation; elapsed time is not a history change.
     private readonly rootLeases = new Map<string, number>();
     private readonly rootFingerprints = new Map<string, Map<number, string>>();
+    private readonly fullDigests = new Map<string, string>();
+    private readonly observedPages = new Map<string, ObservedPage>();
+    private observedBytes = 0;
     private cursors = new Map<string, Cursor>();
     private detailCursors = new Map<string, {
         scope: string;
@@ -135,6 +145,7 @@ export class NativeHistory {
         validationTtlMs?: number;
         cacheMaxEntries?: number;
         cacheMaxBytes?: number;
+        maxObservedPages?: number;
         now?: () => number;
     }) {
         this.pages = new BoundedReadCache({ maxEntries: options.cacheMaxEntries ?? 128,
@@ -148,6 +159,10 @@ export class NativeHistory {
         this.discardCached(threadId);
         this.rootLeases.delete(threadId);
         this.rootFingerprints.delete(threadId);
+        this.fullDigests.delete(threadId);
+        for (const [key, page] of this.observedPages) if (page.threadId === threadId) {
+            this.observedPages.delete(key); this.observedBytes -= page.bytes;
+        }
         this.revisions.set(threadId, randomUUID());
         for (const [token, entry] of this.cursors)
             if (entry.threadId === threadId)
@@ -157,21 +172,20 @@ export class NativeHistory {
                 this.detailCursors.delete(token);
         this.pruneRevisions();
     }
-    clear() { this.pages.clear(); this.rootLeases.clear(); this.rootFingerprints.clear(); this.revisions.clear(); this.cursors.clear(); this.detailCursors.clear(); }
+    clear() { this.pages.clear(); this.rootLeases.clear(); this.rootFingerprints.clear(); this.fullDigests.clear(); this.observedPages.clear(); this.observedBytes = 0; this.revisions.clear(); this.cursors.clear(); this.detailCursors.clear(); }
     private pageRevision(threadId: string, root: boolean) {
         if (root) {
-            const expires = this.rootLeases.get(threadId), now = this.now();
-            if (expires !== undefined && expires <= now) this.invalidate(threadId);
+            const now = this.now();
             if (!this.rootLeases.has(threadId)) this.rootLeases.set(threadId, now + (this.options.validationTtlMs ?? 30000));
         }
         return this.revision(threadId);
     }
     private validateRoot(threadId: string, pageSize: number, projection: PageProjection<NativeTurn>) {
         // Native cursors are opaque positions, not stable version identifiers.
-        const fingerprint = createHash('sha256').update(JSON.stringify({ source: projection.source,
+        const fingerprint = projection.fullDigest ?? projection.contentDigest ?? this.digest({ source: projection.source,
             data: projection.data, itemTimings: projection.itemTimings, truncated: projection.truncated,
             complete: projection.complete, hasNext: projection.nextPosition !== null,
-            itemPages: Object.keys(projection.itemPositions ?? {}).sort() })).digest('hex');
+            itemPages: Object.keys(projection.itemPositions ?? {}).sort() });
         const previous = this.rootFingerprints.get(threadId)?.get(pageSize);
         if (previous !== undefined && previous !== fingerprint) {
             this.invalidate(threadId);
@@ -180,6 +194,64 @@ export class NativeHistory {
         let fingerprints = this.rootFingerprints.get(threadId);
         if (!fingerprints) this.rootFingerprints.set(threadId, fingerprints = new Map());
         fingerprints.set(pageSize, fingerprint);
+    }
+    private digest(value: unknown): string {
+        // Object insertion order (notably parallel Item timing completion) is not
+        // a native content change. Arrays keep their canonical native order.
+        const json = JSON.stringify(value, (_key, part) => part && typeof part === 'object' && !Array.isArray(part)
+            ? Object.fromEntries(Object.keys(part).sort().map(key => [key, part[key]])) : part);
+        return createHash('sha256').update(json).digest('hex');
+    }
+    private observe(threadId: string, key: string, projection: PageProjection<unknown>, load: ObservedPage['load'], root: boolean) {
+        const full = projection.fullDigest, previousFull = this.fullDigests.get(threadId);
+        if (full && previousFull !== undefined && previousFull !== full) {
+            this.invalidate(threadId);
+            if (!root) throw new HistoryError('HISTORY_STALE', 'Native history changed while reading an older page');
+            projection.revision = this.pageRevision(threadId, true);
+        }
+        if (full) this.fullDigests.set(threadId, full);
+        // Full reads already validate every Turn/Item without retaining the raw history.
+        if (full) return;
+        const digest = projection.contentDigest!;
+        const previous = this.observedPages.get(key);
+        if (previous && previous.revision === projection.revision && previous.digest !== digest) {
+            this.invalidate(threadId);
+            if (!root) throw new HistoryError('HISTORY_STALE', 'Native history changed while reading an older page');
+            projection.revision = this.pageRevision(threadId, true);
+        }
+        const bytes = Buffer.byteLength(key) + 128;
+        if (!this.observedPages.has(key)) {
+            while (this.observedPages.size >= (this.options.maxObservedPages ?? 128) || this.observedBytes + bytes > 2 * 1024 * 1024) {
+                const oldest = this.observedPages.values().next().value;
+                if (!oldest) throw new HistoryError('HISTORY_BUSY', 'Native history observation budget exhausted');
+                this.invalidate(oldest.threadId);
+                if (oldest.threadId === threadId) throw new HistoryError('HISTORY_STALE', 'Loaded native history exceeded its observation budget; reload the current page');
+            }
+            this.observedBytes += bytes;
+        }
+        this.observedPages.set(key, { threadId, revision: projection.revision, digest, bytes, load });
+    }
+    private async validateObserved(threadId: string, revision: string, key: string, current: PageProjection<unknown>, deadline: number) {
+        if (!current.fullDigest) for (const [otherKey, page] of [...this.observedPages]) {
+            if (page.threadId !== threadId || page.revision !== revision) continue;
+            let fresh: PageProjection<unknown>;
+            try { fresh = otherKey === key ? current : await page.load(deadline, revision); }
+            catch (error) {
+                if (error instanceof HistoryError && error.code === 'HISTORY_STALE') this.invalidate(threadId);
+                if (error instanceof CodexError && error.code === 'NATIVE_REJECTED' && error.nativeCode === -32602) {
+                    this.invalidate(threadId);
+                    throw new HistoryError('HISTORY_STALE', 'An observed native history position is no longer valid; reload the current page');
+                }
+                throw error;
+            }
+            this.check(threadId, revision, deadline);
+            if (fresh.contentDigest !== page.digest) {
+                this.invalidate(threadId);
+                throw new HistoryError('HISTORY_STALE', 'Native history changed in the loaded page window; reload the current page');
+            }
+        }
+        this.check(threadId, revision, deadline);
+        this.rootLeases.set(threadId, this.now() + (this.options.validationTtlMs ?? 30000));
     }
     private async projection<T>(key: string, forceFresh: boolean | undefined, load: () => Promise<T>): Promise<T> {
         try {
@@ -191,7 +263,7 @@ export class NativeHistory {
         }
     }
     private page<T>(projection: PageProjection<T>, scope: string, threadId: string, kind: Cursor['kind'], pageSize?: number, turnId?: string): HistoryPage<T> {
-        const { nextPosition, itemPositions, ...page } = projection;
+        const { nextPosition, itemPositions, contentDigest: _contentDigest, fullDigest: _fullDigest, ...page } = projection;
         const itemCursors = itemPositions ? Object.fromEntries(Object.entries(itemPositions).map(([id, position]) => [id,
             this.encode({ scope, threadId, turnId: id, revision: page.revision, kind: 'items', ...position })])) : undefined;
         return { ...page, ...(itemCursors ? { itemCursors } : {}), nextCursor: nextPosition === null ? null :
@@ -212,6 +284,10 @@ export class NativeHistory {
             this.revisions.delete(removed);
             this.rootLeases.delete(removed);
             this.rootFingerprints.delete(removed);
+            this.fullDigests.delete(removed);
+            for (const [key, page] of this.observedPages) if (page.threadId === removed) {
+                this.observedPages.delete(key); this.observedBytes -= page.bytes;
+            }
             this.discardCached(removed);
             for (const [token, entry] of this.cursors)
                 if (entry.threadId === removed)
@@ -273,12 +349,16 @@ export class NativeHistory {
             throw new HistoryError('HISTORY_CURSOR_INVALID', 'History page limit must be 1–20');
         const revision = this.pageRevision(threadId, options.cursor === undefined);
         const position = this.decode(options.cursor, threadId, undefined, revision, 'turns', options.scope, pageSize);
-        if (options.forceFresh) this.discardCached(threadId);
+        const root = options.cursor === undefined;
+        const validate = root && (this.rootLeases.get(threadId) ?? 0) <= this.now();
+        if (options.forceFresh || validate) this.discardCached(threadId);
+        const descriptor = JSON.stringify([threadId, 'turns', pageSize, position?.source ?? 'native-pages', position?.position ?? null]);
         const key = JSON.stringify([threadId, options.scope, revision, 'turns', pageSize, position?.source, position?.position]);
-        const projection = await this.projection(key, options.forceFresh, () => this.bounded(async (deadline): Promise<PageProjection<NativeTurn>> => {
+        const load = async (deadline: number, expectedRevision: string): Promise<PageProjection<NativeTurn>> => {
             const snapshotSeq = this.options.sequence?.() ?? 0;
             const itemPositions: NonNullable<PageProjection<NativeTurn>['itemPositions']> = Object.create(null);
             const itemTimings: Record<string, NativeItemTiming> = Object.create(null);
+            let fullDigest: string | undefined;
             let source: Cursor['source'] = position?.source ?? 'native-pages', turns: NativeTurn[], next: string | number | null;
             if (source === 'native-pages') {
                 try {
@@ -323,6 +403,7 @@ export class NativeHistory {
                 const result = await this.codex.readThread(threadId, true, this.remaining(deadline));
                 if (result.thread.id !== threadId)
                     throw new HistoryError('HISTORY_PROTOCOL', 'Native history returned another thread');
+                fullDigest = this.digest(result.thread.turns);
                 const total = result.thread.turns.length;
                 turns = result.thread.turns.slice(Math.max(0, total - offset - pageSize), Math.max(0, total - offset)).reverse().map(turn => ({ ...turn }));
                 next = offset + pageSize < total ? offset + pageSize : null;
@@ -333,7 +414,8 @@ export class NativeHistory {
                     turn.itemsView = itemPositions[turn.id] ? 'summary' : 'full';
                 }
             }
-            this.check(threadId, revision, deadline);
+            this.check(threadId, expectedRevision, deadline);
+            const contentDigest = this.digest({ source, turns: turns!, itemTimings, hasNext: next! !== null });
             let budget = 256 * 1024 - Buffer.byteLength(JSON.stringify(itemTimings)), truncated = false;
             const data = turns!.reverse().map(turn => {
                 const items: NativeItem[] = [];
@@ -351,12 +433,18 @@ export class NativeHistory {
                 truncated ||= metadata.truncated;
                 return { ...metadata.item, id: turn.id, status: turn.status, items } as NativeTurn;
             });
-            return { epoch: this.options.epoch, revision, source, data, snapshotSeq, truncated, itemPositions,
+            return { epoch: this.options.epoch, revision: expectedRevision, source, data, snapshotSeq, truncated, itemPositions, contentDigest, ...(fullDigest ? { fullDigest } : {}),
                 ...(Object.keys(itemTimings).length ? { itemTimings } : {}),
                 complete: next! === null && Object.keys(itemPositions).length === 0 && !truncated, nextPosition: next! };
+        };
+        const projection = await this.projection(key, options.forceFresh || validate, () => this.bounded(async deadline => {
+            const fresh = await load(deadline, revision);
+            if (validate) await this.validateObserved(threadId, revision, descriptor, fresh, deadline);
+            return fresh;
         }));
         if (this.revision(threadId) !== revision) throw new HistoryError('HISTORY_STALE', 'Native history changed while reading; reload the current page');
-        if (options.cursor === undefined) this.validateRoot(threadId, pageSize, projection);
+        this.observe(threadId, descriptor, projection, load, root);
+        if (root) this.validateRoot(threadId, pageSize, projection);
         return this.page(projection, options.scope, threadId, 'turns', pageSize);
     }
     private async itemPage(threadId: string, turnId: string, position: Cursor | undefined, deadline: number) {
@@ -391,7 +479,7 @@ export class NativeHistory {
         if (!turn)
             throw new HistoryError('HISTORY_STALE', 'Native history turn no longer exists');
         const offset = (position?.position as number | undefined) ?? 0, total = turn.items.length;
-        return { items: turn.items.slice(Math.max(0, total - offset - 40), Math.max(0, total - offset)), itemTimings: {}, next: offset + 40 < total ? offset + 40 : null, source: 'native-read' as const };
+        return { items: turn.items.slice(Math.max(0, total - offset - 40), Math.max(0, total - offset)), itemTimings: {}, next: offset + 40 < total ? offset + 40 : null, source: 'native-read' as const, fullDigest: this.digest(result.thread.turns) };
     }
     async items(threadId: string, turnId: string, options: {
         cursor?: string;
@@ -401,11 +489,12 @@ export class NativeHistory {
         const revision = this.pageRevision(threadId, false);
         const position = this.decode(options.cursor, threadId, turnId, revision, 'items', options.scope);
         if (options.forceFresh) this.discardCached(threadId);
+        const descriptor = JSON.stringify([threadId, 'items', turnId, position?.source ?? 'native-pages', position?.position ?? null]);
         const key = JSON.stringify([threadId, options.scope, revision, 'items', turnId, position?.source, position?.position]);
-        const projection = await this.projection(key, options.forceFresh, () => this.bounded(async (deadline): Promise<PageProjection<NativeItem>> => {
+        const load = async (deadline: number, expectedRevision: string): Promise<PageProjection<NativeItem>> => {
             const snapshotSeq = this.options.sequence?.() ?? 0;
             const page = await this.itemPage(threadId, turnId, position, deadline);
-            this.check(threadId, revision, deadline);
+            this.check(threadId, expectedRevision, deadline);
             let budget = 256 * 1024 - Buffer.byteLength(JSON.stringify(page.itemTimings)), truncated = false;
             const data = page.items.map(item => {
                 if (budget < Buffer.byteLength(JSON.stringify({ id: item.id, type: item.type })) + 64)
@@ -415,12 +504,35 @@ export class NativeHistory {
                 truncated ||= projected.truncated;
                 return projected.item;
             });
-            return { epoch: this.options.epoch, revision, source: page.source, data, snapshotSeq, truncated, complete: page.next === null && !truncated,
+            return { epoch: this.options.epoch, revision: expectedRevision, source: page.source, data, snapshotSeq, truncated, complete: page.next === null && !truncated,
                 ...(Object.keys(page.itemTimings).length ? { itemTimings: page.itemTimings } : {}),
-                nextPosition: page.next };
-        }));
+                nextPosition: page.next, contentDigest: this.digest({ items: page.items, itemTimings: page.itemTimings, source: page.source, hasNext: page.next !== null }), ...(page.fullDigest ? { fullDigest: page.fullDigest } : {}) };
+        };
+        const projection = await this.projection(key, options.forceFresh, () => this.bounded(deadline => load(deadline, revision)));
         if (this.revision(threadId) !== revision) throw new HistoryError('HISTORY_STALE', 'Native history changed while reading; reload the current page');
+        this.observe(threadId, descriptor, projection, load, options.cursor === undefined);
         return this.page(projection, options.scope, threadId, 'items', undefined, turnId);
+    }
+    private async detailItem(threadId: string, turnId: string, itemId: string, scope: string, revision: string, deadline: number) {
+        let nativePosition: Cursor | undefined, selected: NativeItem | undefined, source: 'native-pages' | 'native-read' = 'native-pages', fullDigest: string | undefined;
+        const seen = new Set<string>();
+        for (let page = 0; page < 32; page++) {
+            const part = await this.itemPage(threadId, turnId, nativePosition, deadline);
+            source = part.source; fullDigest = part.fullDigest;
+            selected = part.items.find(item => item.id === itemId);
+            if (selected)
+                break;
+            if (part.next === null)
+                break;
+            const key = String(part.next);
+            if (seen.has(key))
+                throw new HistoryError('HISTORY_PROTOCOL', 'Native detail cursor did not advance');
+            seen.add(key);
+            nativePosition = { scope, threadId, turnId, revision, kind: 'items', source, position: part.next, expiresAt: this.now() + 60000 };
+        }
+        if (!selected)
+            throw new HistoryError('HISTORY_STALE', 'Item was not found within the native detail read budget');
+        return { selected, source, fullDigest };
     }
     /** Bounded chunks of one native item, for content too large for display projections.
      * No raw history is cached: every page re-reads Codex and verifies its digest. */
@@ -432,29 +544,18 @@ export class NativeHistory {
             const revision = this.revision(threadId), position = options.cursor ? this.detailCursors.get(options.cursor) : undefined;
             if (options.cursor && (!position || position.expiresAt < this.now() || position.scope !== options.scope || position.threadId !== threadId || position.turnId !== turnId || position.itemId !== itemId || position.revision !== revision))
                 throw new HistoryError('HISTORY_CURSOR_INVALID', 'Item detail cursor is stale or outside this query');
-            let nativePosition: Cursor | undefined, selected: NativeItem | undefined, source: 'native-pages' | 'native-read' = 'native-pages';
-            const seen = new Set<string>();
-            for (let page = 0; page < 32; page++) {
-                const part = await this.itemPage(threadId, turnId, nativePosition, deadline);
-                source = part.source;
-                selected = part.items.find(item => item.id === itemId);
-                if (selected)
-                    break;
-                if (part.next === null)
-                    break;
-                const key = String(part.next);
-                if (seen.has(key))
-                    throw new HistoryError('HISTORY_PROTOCOL', 'Native detail cursor did not advance');
-                seen.add(key);
-                nativePosition = { scope: options.scope, threadId, turnId, revision, kind: 'items', source, position: part.next, expiresAt: this.now() + 60000 };
-            }
-            if (!selected)
-                throw new HistoryError('HISTORY_STALE', 'Item was not found within the native detail read budget');
+            const { selected, source, fullDigest } = await this.detailItem(threadId, turnId, itemId, options.scope, revision, deadline);
             this.check(threadId, revision, deadline);
             const bytes = Buffer.from(JSON.stringify(selected), 'utf8');
             if (bytes.length > 8 * 1024 * 1024)
                 throw new HistoryError('HISTORY_PROTOCOL', 'Native item exceeded the detail byte budget');
             const sha256 = createHash('sha256').update(bytes).digest('hex'), offset = position?.offset ?? 0;
+            const observation: PageProjection<NativeItem> = { epoch: this.options.epoch, revision, source, data: [], nextPosition: null,
+                complete: true, truncated: false, snapshotSeq: 0, contentDigest: this.digest(selected), ...(fullDigest ? { fullDigest } : {}) };
+            this.observe(threadId, JSON.stringify([threadId, 'detail', turnId, itemId]), observation, async (readDeadline, expectedRevision) => {
+                const current = await this.detailItem(threadId, turnId, itemId, options.scope, expectedRevision, readDeadline);
+                return { ...observation, revision: expectedRevision, contentDigest: this.digest(current.selected), fullDigest: current.fullDigest };
+            }, false);
             if (position && (position.digest !== sha256 || offset >= bytes.length))
                 throw new HistoryError('HISTORY_STALE', 'Native item changed while its details were being read');
             const end = Math.min(offset + 65536, bytes.length), chunk = bytes.subarray(offset, end).toString('base64');

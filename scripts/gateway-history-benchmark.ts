@@ -75,7 +75,8 @@ try {
   const dependency = resolve(repository, 'gateway/src/codex.ts');
   assert.ok(oldSource.includes("from './codex'"), 'The baseline import layout changed; inspect the benchmark loader');
   const filename = join(temporary, 'baseline-history.mts');
-  await writeFile(filename, oldSource.replace("from './codex'", `from ${JSON.stringify(dependency)}`));
+  await writeFile(filename, oldSource.replace("from './codex'", `from ${JSON.stringify(dependency)}`)
+    .replace("from './read-cache'", `from ${JSON.stringify(resolve(repository, 'gateway/src/read-cache.ts'))}`));
   const PreviousHistory = (await import(pathToFileURL(filename).href)).NativeHistory as typeof NativeHistory;
   const scenarios: [string, number, Parameters<typeof measure>[3]][] = [
     ['cold-five-turn-page', 1, {}],
