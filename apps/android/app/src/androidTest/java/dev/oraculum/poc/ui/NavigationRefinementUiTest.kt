@@ -22,63 +22,62 @@ class NavigationRefinementUiTest {
         selectedProjectId = "project-alpha", selectedThreadId = "thread-fixture",
         projects = listOf(ProjectOption("project-alpha", "Alpha project"),
             ProjectOption("project-zulu", "Zulu project")),
-        threads = listOf(ThreadOption("thread-fixture", "Fixture conversation", createdAt = 10, updatedAt = 20)),
+        threads = listOf(ThreadOption("thread-fixture", "Fixture conversation")), capabilityNames = setOf("projects"),
         messages = listOf(ChatMessage("answer-fixture", "assistant", "Fixture answer",
             turnId = "turn-fixture", turn = TurnMetadataUi(status = "completed"))),
     )
 
-    @Test fun sortMenusKeepCallbacksIndependentAndDisableMissingProjectDates() {
-        val state = mutableStateOf(fixture())
-        val projectChoices = mutableListOf<NavigationSort>()
-        val threadChoices = mutableListOf<NavigationSort>()
-        compose.setContent { OraculumTheme(mode = "oled") {
-            OraculumScreen(state.value, PocActions(
-                onProjectSortChange = { projectChoices += it; state.value = state.value.copy(projectSort = it) },
-                onThreadSortChange = { threadChoices += it; state.value = state.value.copy(threadSort = it) },
-            ))
-        } }
+    @Test fun navigationHasNoSortingControlsAndPreservesGatewayThreadOrder() {
+        val state = fixture().copy(projects = fixture().projects.reversed(), threads = listOf(
+            ThreadOption("z", "Zulu conversation"), ThreadOption("a", "Alpha conversation")))
+        compose.setContent { OraculumTheme(mode = "oled") { OraculumScreen(state, PocActions()) } }
         compose.onNodeWithTag("navigation").performClick()
-        compose.onNodeWithTag("sort-projects").performScrollTo().performClick()
-        compose.onNodeWithTag("sort-projects-CreatedNewest").assertIsNotEnabled().performTouchInput { click() }
-        compose.onNodeWithTag("sort-projects-UpdatedNewest").assertIsNotEnabled()
-        compose.onNodeWithTag("sort-projects-NameAscending").assertIsEnabled()
-        compose.runOnIdle { assertTrue(projectChoices.isEmpty()); assertTrue(threadChoices.isEmpty()) }
-        compose.onNodeWithTag("sort-projects-NameDescending").assertIsEnabled().performClick()
-        compose.runOnIdle {
-            assertEquals(listOf(NavigationSort.NameDescending), projectChoices)
-            assertTrue(threadChoices.isEmpty())
-        }
-        compose.onNodeWithTag("sort-projects").performClick()
-        compose.onNodeWithTag("sort-projects-NameDescending").assertIsSelected()
-        compose.onNodeWithTag("sort-projects-NameAscending").performClick()
-
-        compose.onNodeWithTag("sort-threads").performScrollTo().performClick()
-        NavigationSort.entries.forEach {
-            compose.onNodeWithTag("sort-threads-${it.name}").assertIsEnabled()
-        }
-        compose.onNodeWithTag("sort-threads-UpdatedNewest").performClick()
-        compose.onNodeWithTag("sort-threads").performClick()
-        compose.onNodeWithTag("sort-threads-UpdatedNewest").assertIsSelected()
-        compose.onNodeWithTag("sort-threads-CreatedNewest").performClick()
-        compose.runOnIdle {
-            assertEquals(listOf(NavigationSort.NameDescending, NavigationSort.NameAscending), projectChoices)
-            assertEquals(listOf(NavigationSort.UpdatedNewest, NavigationSort.CreatedNewest), threadChoices)
-        }
+        compose.onNodeWithTag("sort-projects").assertDoesNotExist()
+        compose.onNodeWithTag("sort-threads").assertDoesNotExist()
+        assertTrue(compose.onNodeWithTag("project-project-alpha").fetchSemanticsNode().boundsInRoot.top <
+            compose.onNodeWithTag("project-project-zulu").fetchSemanticsNode().boundsInRoot.top)
+        assertTrue(compose.onNodeWithTag("thread-z").fetchSemanticsNode().boundsInRoot.top <
+            compose.onNodeWithTag("thread-a").fetchSemanticsNode().boundsInRoot.top)
     }
 
-    @Test fun disabledProjectOverflowDoesNotSelectItsProject() {
+    @Test fun projectDeletionRequiresConfirmationAndDoesNotSelectTheTarget() {
+        val deleted = mutableListOf<String>()
         val selected = mutableListOf<String>()
         compose.setContent { OraculumTheme(mode = "oled") {
-            OraculumScreen(fixture(), PocActions(onSelectProject = { selected += it }))
+            OraculumScreen(fixture(), PocActions(onSelectProject = { selected += it }, onDeleteProject = { deleted += it }))
         } }
         compose.onNodeWithTag("navigation").performClick()
+        compose.onNodeWithTag("project-menu-project-zulu").performClick()
+        compose.onNodeWithTag("delete-project-project-zulu").assertIsEnabled().performClick()
+        compose.onNodeWithText("实际文件夹和 Codex 会话历史会保留。", substring = true).assertIsDisplayed()
+        compose.runOnIdle { assertTrue(deleted.isEmpty()); assertTrue(selected.isEmpty()) }
+        compose.onNodeWithText("取消").performClick()
+        compose.runOnIdle { assertTrue(deleted.isEmpty()) }
+        compose.onNodeWithTag("project-menu-project-zulu").performClick()
+        compose.onNodeWithTag("delete-project-project-zulu").performClick()
+        compose.onNodeWithTag("confirm-delete-project-project-zulu").performClick()
+        compose.runOnIdle { assertEquals(listOf("project-zulu"), deleted); assertTrue(selected.isEmpty()) }
         compose.onNodeWithTag("project-project-alpha").assertIsSelected()
-        compose.onNodeWithTag("project-project-zulu").assertIsNotSelected()
-        compose.onNodeWithTag("project-menu-project-zulu").assertIsNotEnabled().performTouchInput { click() }
-        compose.runOnIdle { assertTrue(selected.isEmpty()) }
-        compose.onNodeWithTag("project-project-alpha").assertIsSelected()
-        compose.onNodeWithTag("project-project-zulu").performClick()
-        compose.runOnIdle { assertEquals(listOf("project-zulu"), selected) }
+    }
+
+    @Test fun projectDeleteConfirmationRechecksOfflineBusyAndUnknownState() {
+        val state = mutableStateOf(fixture())
+        val deleted = mutableListOf<String>()
+        compose.setContent { OraculumTheme(mode = "oled") {
+            OraculumScreen(state.value, PocActions(onDeleteProject = { deleted += it }))
+        } }
+        compose.onNodeWithTag("navigation").performClick()
+        compose.onNodeWithTag("project-menu-project-zulu").performClick()
+        compose.onNodeWithTag("delete-project-project-zulu").performClick()
+        compose.runOnIdle { state.value = state.value.copy(online = false) }
+        compose.onNodeWithTag("confirm-delete-project-project-zulu").assertIsNotEnabled().performTouchInput { click() }
+        compose.runOnIdle { state.value = state.value.copy(online = true, unknownWarning = "待确认请求") }
+        compose.onNodeWithTag("confirm-delete-project-project-zulu").assertIsNotEnabled().performTouchInput { click() }
+        compose.runOnIdle { state.value = state.value.copy(unknownWarning = null, busy = true) }
+        compose.onNodeWithTag("confirm-delete-project-project-zulu").assertIsNotEnabled().performTouchInput { click() }
+        compose.runOnIdle { assertTrue(deleted.isEmpty()); state.value = state.value.copy(busy = false) }
+        compose.onNodeWithTag("confirm-delete-project-project-zulu").assertIsEnabled().performClick()
+        compose.runOnIdle { assertEquals(listOf("project-zulu"), deleted) }
     }
 
     @Test fun permissionDefaultsUseConcretePresetsAndFullAccessStillRequiresConfirmation() {

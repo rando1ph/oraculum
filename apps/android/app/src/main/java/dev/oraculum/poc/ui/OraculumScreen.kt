@@ -45,7 +45,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import dev.oraculum.poc.repository.sortedProjects
-import dev.oraculum.poc.repository.sortedThreads
 import dev.oraculum.poc.files.AttachmentChips
 import dev.oraculum.poc.files.FileTransferPolicy
 import dev.oraculum.poc.files.FilesActions
@@ -259,8 +258,8 @@ private fun ColumnScope.NavigationPanel(state: PocUiState, actions: PocActions, 
     var searchOpen by rememberSaveable { mutableStateOf(false) }
     var projectsExpanded by rememberSaveable { mutableStateOf(true) }
     var threadsExpanded by rememberSaveable { mutableStateOf(true) }
-    val projects = sortedProjects(state.projects, state.projectSort)
-    val activeThreads = sortedThreads(state.threads.filterNot { it.archived }, state.threadSort)
+    val projects = sortedProjects(state.projects)
+    val activeThreads = state.threads.filterNot { it.archived }
     Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp, top = 12.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
         NavigationBrand(Modifier.weight(1f).padding(end = 4.dp))
         IconButton({ searchOpen = !searchOpen; if (!searchOpen) filter = "" }, Modifier.size(48.dp).testTag("toggle-navigation-search")) {
@@ -298,8 +297,6 @@ private fun ColumnScope.NavigationPanel(state: PocUiState, actions: PocActions, 
                     NavigationSectionToggle("项目", projectsExpanded, "navigation-projects-toggle", Modifier.weight(1f)) { projectsExpanded = !projectsExpanded }
                     IconButton(actions.onRefresh, enabled = state.online && !state.busy,
                         modifier = Modifier.size(48.dp).testTag("refresh-projects")) { OraculumIcon(OraculumSymbol.Refresh, "刷新项目", size = 20.dp) }
-                    NavigationSortButton(state.projectSort, "sort-projects", "项目排序",
-                        state.projects.any { it.createdAt != null }, state.projects.any { it.updatedAt != null }, actions.onProjectSortChange)
                     IconButton({
                         projectsExpanded = true
                         registerOpen = true
@@ -312,7 +309,7 @@ private fun ColumnScope.NavigationPanel(state: PocUiState, actions: PocActions, 
             }
             if (projectsExpanded) {
                 items(projects.filter { filter.isBlank() || it.label.contains(filter, true) || it.detail.contains(filter, true) }, key = { "project-${it.id}" }) { project ->
-                    NativeProjectRow(project, state) { actions.onSelectProject(project.id) }
+                    NativeProjectRow(project, state, actions) { actions.onSelectProject(project.id) }
                 }
                 if (state.projects.isEmpty()) item { MutedText("暂无项目") }
             }
@@ -322,8 +319,6 @@ private fun ColumnScope.NavigationPanel(state: PocUiState, actions: PocActions, 
                     NavigationSectionToggle("会话", threadsExpanded, "navigation-threads-toggle", Modifier.weight(1f)) { threadsExpanded = !threadsExpanded }
                     IconButton(actions.onRefresh, enabled = state.online && !state.busy,
                         modifier = Modifier.size(48.dp).testTag("refresh-navigation")) { OraculumIcon(OraculumSymbol.Refresh, "刷新会话", size = 20.dp) }
-                    NavigationSortButton(state.threadSort, "sort-threads", "会话排序",
-                        activeThreads.any { it.createdAt != null }, activeThreads.any { it.updatedAt != null }, actions.onThreadSortChange)
                     IconButton({ actions.onCreateThread(); onDismiss() }, enabled = state.canCreateThread,
                         modifier = Modifier.size(48.dp).testTag("new-thread")) { OraculumIcon(OraculumSymbol.Add, "新建会话", size = 20.dp) }
                 }

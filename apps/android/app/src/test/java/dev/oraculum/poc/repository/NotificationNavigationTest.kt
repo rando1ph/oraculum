@@ -51,6 +51,8 @@ class NotificationNavigationTest {
         assertEquals(1, snapshots)
         assertEquals(snapshot, result.snapshot)
         assertEquals("target", result.thread["id"]!!.jsonPrimitive.content)
+        assertEquals(listOf("other", "target"), result.threads.getValue("threads").jsonArray.map { it.jsonObject.getValue("id").jsonPrimitive.content })
+        assertEquals(JsonNull, result.threads["nextCursor"])
     }
 
     @Test fun endlessOrRepeatedCursorsNeverCreateUnboundedNavigationReads() = runBlocking {

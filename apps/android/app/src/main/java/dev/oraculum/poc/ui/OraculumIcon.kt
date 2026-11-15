@@ -32,7 +32,6 @@ enum class OraculumSymbol(@DrawableRes internal val drawable: Int) {
     ReadOnly(R.drawable.ms_visibility),
     Auto(R.drawable.ms_auto_awesome),
     FullAccess(R.drawable.ms_lock_open),
-    Sort(R.drawable.ms_sort),
     More(R.drawable.ms_more_horiz),
     Model(R.drawable.ms_tune),
     Tune(R.drawable.ms_tune),

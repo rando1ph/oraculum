@@ -27,6 +27,31 @@ import java.util.Base64
 import dev.oraculum.poc.files.HostFileGrant
 
 class GatewayClientTest {
+    @Test fun deletingAProjectUsesOnlyItsRegistrationEndpointAndOperationId() = runBlocking {
+        Fixture().use { f ->
+            f.client.pair(f.endpoint, "C".repeat(32))
+            val result = f.client.delete("projects/$INSTALLATION", operation())
+            val request = requireNotNull(f.lastWriteRequest)
+            assertEquals("DELETE", request.method)
+            assertEquals("/base/api/v2/projects/$INSTALLATION", request.path)
+            assertEquals(operation(), parse(request.body.readUtf8()))
+            assertEquals(1, f.writeRequests.get())
+            assertEquals("accepted", result.getValue("operation").jsonObject.getValue("status").jsonPrimitive.content)
+        }
+    }
+
+    @Test fun lostProjectDeletionAcknowledgementIsNeverReplayed() = runBlocking {
+        Fixture().use { f ->
+            f.client.pair(f.endpoint, "C".repeat(32))
+            f.loseWriteAck = true
+            assertEquals("CONNECTION_LOST", failure { f.client.delete("projects/$INSTALLATION", operation()) }.code)
+            assertEquals(1, f.writeRequests.get())
+            f.client.get("projects")
+            assertEquals(1, f.writeRequests.get())
+            assertEquals("DELETE", f.lastWriteRequest?.method)
+        }
+    }
+
     @Test fun binaryUploadHasPinnedScopeLengthAndNeverRetriesLostAcknowledgement() = runBlocking {
         Fixture().use { f ->
             f.client.pair(f.endpoint, "C".repeat(32))
@@ -306,6 +331,7 @@ class GatewayClientTest {
         var revoked = false
         var writeStatus = 200
         var writeReceiptStatus = "accepted"
+        var lastWriteRequest: RecordedRequest? = null
         var redirect = false
         var resumeAfter: Long? = null
         val pairRequests = AtomicInteger()
@@ -342,11 +368,12 @@ class GatewayClientTest {
                             if (revoked) error("DEVICE_REVOKED", 403) else if (registered == null) error("UNAUTHENTICATED", 401) else auth()
                         }
                         "/base/api/v2/capabilities" -> json(resource("""{"protocol":{"major":2,"minor":0,"minClientMinor":0},"gatewayVersion":"2.0.0","installationId":"$installation","epoch":"$EPOCH","codex":{"version":null,"connectionState":"connected"},"capabilities":[],"limits":{"requestBytes":131072,"historyPageItems":20,"attachmentFileBytes":1,"attachmentBatchBytes":1,"attachmentBatchCount":1,"eventReplayCount":1024}}"""))
-                        "/base/api/v2/projects" -> if (request.method == "GET") {
+                        "/base/api/v2/projects", "/base/api/v2/projects/$INSTALLATION" -> if (request.method == "GET") {
                             if (redirect) MockResponse().setResponseCode(302).addHeader("Location", "/redirect")
                             else json(resource("""{"projects":[],"roots":[]}"""))
                         } else {
                             writeRequests.incrementAndGet()
+                            lastWriteRequest = request
                             if (loseWriteAck) MockResponse().setSocketPolicy(SocketPolicy.DISCONNECT_AFTER_REQUEST)
                             else if (writeStatus != 200) error(if (writeStatus == 401) "UNAUTHENTICATED" else "UNAVAILABLE", writeStatus).addHeader("Retry-After", "0")
                             else json("""{"installationId":"$installation","epoch":"$EPOCH","requestId":"request","operation":{"operationId":"$OPERATION","status":"$writeReceiptStatus"}}""")

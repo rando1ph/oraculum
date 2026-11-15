@@ -2,7 +2,7 @@ package dev.oraculum.poc.repository
 
 import kotlinx.serialization.json.*
 
-data class NotificationTargetRead(val projects: JsonObject, val firstThreads: JsonObject, val thread: JsonObject, val snapshot: JsonObject)
+data class NotificationTargetRead(val projects: JsonObject, val threads: JsonObject, val thread: JsonObject, val snapshot: JsonObject)
 class NotificationTargetUnavailable(message: String) : Exception(message)
 
 /** Read every target prerequisite before the caller commits a visible navigation change. */
@@ -20,6 +20,7 @@ suspend fun readNotificationTarget(
         } != true) throw NotificationTargetUnavailable("通知项目已不可访问；保留当前会话")
     val firstThreads = observeNativeRead(NativeReadStage.ACTIVE_THREADS, "通知定位") { readThreads(null) }
     var page = firstThreads
+    var window = firstThreads
     var found: JsonObject? = null
     var pages = 0
     val cursors = mutableSetOf<String>()
@@ -30,6 +31,7 @@ suspend fun readNotificationTarget(
         val cursor = page.text("nextCursor") ?: break
         if (!cursors.add(cursor) || pages == 10) break
         page = observeNativeRead(NativeReadStage.ACTIVE_THREADS, "通知定位") { readThreads(cursor) }
+        window = mergeThreadPages(window, page)
     }
     val thread = found ?: throw NotificationTargetUnavailable("在有界未归档列表内无法确认通知会话仍可用；保留当前会话")
     // A successful thread/read alone cannot establish unarchived membership.
@@ -40,7 +42,7 @@ suspend fun readNotificationTarget(
         nativeThread["archived"] == JsonPrimitive(true) || history == null || snapshot.text("epoch") == null ||
         history.text("epoch") != snapshot.text("epoch"))
         throw NotificationTargetUnavailable("通知会话快照范围不匹配；保留当前会话")
-    return NotificationTargetRead(projects, firstThreads, thread, snapshot)
+    return NotificationTargetRead(projects, window, thread, snapshot)
 }
 
 private fun JsonObject.text(key: String) = (this[key] as? JsonPrimitive)?.takeIf { it.isString }?.content
