@@ -49,6 +49,10 @@ let versions: Record<string, string | undefined> = {};
 let osSandbox: { seccomp: string; noNewPrivileges: string; helperOverrideUsed: boolean } | undefined;
 let display: unknown;
 let stage = 'initialization';
+const screenshotEvidence: {
+  file: string; theme: string; sha256: string; width: number; height: number; attempts: number;
+  samples: { column: string; expected: number[]; actual: number[] }[];
+}[] = [];
 
 async function check(name: string, run: () => Promise<void>) {
   stage = name;
@@ -101,12 +105,73 @@ async function chooseTheme(page: Page, theme: 'light' | 'dark' | 'oled') {
   await expect.poll(() => page.evaluate(async () => (await (window as unknown as DesktopWindow).oraculumDesktop.getState()).preferences.theme)).toBe(theme);
 }
 
-async function capture(_page: Page, filename: string) {
+async function capture(page: Page, filename: string) {
   // Playwright page.screenshot applies CSS viewport clipping at non-unit
   // Electron zoom. capturePage preserves the actual native content rectangle.
-  const png = await app!.evaluate(async ({ BrowserWindow }) =>
-    (await BrowserWindow.getAllWindows()[0].webContents.capturePage()).toPNG().toString('base64'));
-  await writeFile(join(output, filename), Buffer.from(png, 'base64'));
+  // A DOM theme assertion alone is not a compositor fence: capturePage can
+  // return the preceding frame. Wait for resources and paints, then independently
+  // compare native bitmap pixels with the visible columns' current CSS colors.
+  await app!.evaluate(({ BrowserWindow }) => {
+    const win = BrowserWindow.getAllWindows()[0];
+    win.show(); win.focus();
+  });
+  let mismatch: unknown;
+  for (let attempt = 1; attempt <= 8; attempt++) {
+    const visual = await page.evaluate(async () => {
+      await document.fonts.ready;
+      await Promise.all(Array.from(document.images).map(image => image.decode()));
+      const masks = [...new Set(Array.from(document.querySelectorAll('.oracle-eye')).map(element =>
+        getComputedStyle(element).maskImage.match(/url\(["']?(.*?)["']?\)/)?.[1]).filter((url): url is string => Boolean(url)))];
+      await Promise.all(masks.map(async url => {
+        const image = new Image(); image.src = url; await image.decode();
+      }));
+      await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+      return {
+        theme: document.documentElement.dataset.theme ?? 'missing',
+        viewport: { width: window.innerWidth, height: window.innerHeight },
+        samples: Array.from(document.querySelectorAll('.navigation, .conversation, .inspector')).map(element => {
+          const rect = element.getBoundingClientRect();
+          const color = getComputedStyle(element).backgroundColor.match(/^rgb\((\d+), (\d+), (\d+)\)$/);
+          if (!color) throw new Error('A visible column must have an opaque RGB background.');
+          // Just inside the left/bottom padding: away from text, borders,
+          // scrollbars and the connection banner at the top of the main column.
+          return {
+            column: element.classList[0], x: rect.left + 5, y: rect.bottom - 5,
+            expected: [Number(color[1]), Number(color[2]), Number(color[3]), 255],
+          };
+        }),
+      };
+    });
+    const native = await app!.evaluate(async ({ BrowserWindow }, visual) => {
+      const image = await BrowserWindow.getAllWindows()[0].webContents.capturePage();
+      const png = image.toPNG();
+      const width = png.readUInt32BE(16), height = png.readUInt32BE(20);
+      const bitmap = image.toBitmap();
+      if (bitmap.length !== width * height * 4) throw new Error('Native bitmap dimensions do not match the PNG.');
+      const samples = visual.samples.map(sample => {
+        const x = Math.min(width - 1, Math.floor(sample.x * width / visual.viewport.width));
+        const y = Math.min(height - 1, Math.floor(sample.y * height / visual.viewport.height));
+        const offset = (y * width + x) * 4;
+        // nativeImage.toBitmap is BGRA on this little-endian Linux host.
+        return { column: sample.column, expected: sample.expected,
+          actual: [bitmap[offset + 2], bitmap[offset + 1], bitmap[offset], bitmap[offset + 3]] };
+      });
+      return { png: png.toString('base64'), width, height, samples };
+    }, visual);
+    if (native.samples.length >= 2 && native.samples.every(sample => sample.expected.every((value, channel) => Math.abs(value - sample.actual[channel]) <= 1))) {
+      const bytes = Buffer.from(native.png, 'base64');
+      const sha256 = createHash('sha256').update(bytes).digest('hex');
+      await writeFile(join(output, filename), bytes);
+      screenshotEvidence.push({ file: filename, theme: visual.theme, sha256,
+        width: native.width, height: native.height, attempts: attempt, samples: native.samples });
+      return sha256;
+    }
+    mismatch = { theme: visual.theme, samples: native.samples };
+    // A bounded retry is necessary when Chromium has not submitted its new
+    // compositor frame yet, even though the DOM and computed style are current.
+    await page.waitForTimeout(50);
+  }
+  throw new Error(`Native capture did not match the painted theme: ${JSON.stringify(mismatch)}`);
 }
 
 try {
@@ -174,15 +239,17 @@ try {
   await check('unconfigured startup and three authentic themes', async () => {
     await expect(page.locator('body')).toContainText('尚未配置');
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+    const hashes = new Set<string>();
     for (const theme of ['light', 'dark', 'oled'] as const) {
       await chooseTheme(page, theme);
-      await capture(page, `01-connect-${theme}.png`);
+      hashes.add(await capture(page, `01-connect-${theme}.png`));
       if (theme === 'oled') {
         const colors = await page.locator('.navigation, .conversation, .inspector').evaluateAll(elements => elements.map(element => getComputedStyle(element).backgroundColor));
         assert.equal(colors.length, 3);
         assert.ok(colors.every(color => color === 'rgb(0, 0, 0)'), JSON.stringify(colors));
       }
     }
+    assert.equal(hashes.size, 3, 'Connection screenshots must contain three distinct painted themes.');
   });
 
   await check('single instance stays within the selected isolated profile', async () => {
@@ -221,10 +288,12 @@ try {
     const masks = await page.locator('.oracle-eye').evaluateAll(elements => elements.map(element => getComputedStyle(element).maskImage));
     assert.ok(masks.length >= 2);
     assert.ok(masks.every(mask => mask.includes('outline') && !mask.includes('compact')));
+    const hashes = new Set<string>();
     for (const theme of ['light', 'dark', 'oled'] as const) {
       await chooseTheme(page, theme);
-      await capture(page, `02-preview-${theme}.png`);
+      hashes.add(await capture(page, `02-preview-${theme}.png`));
     }
+    assert.equal(hashes.size, 3, 'Preview screenshots must contain three distinct painted themes.');
     const toggle = page.getByRole('button', { name: '收起 Inspector', exact: true });
     await toggle.focus();
     await toggle.press('Enter');
@@ -455,7 +524,7 @@ try {
   });
   await writeFile(join(output, 'results.json'), JSON.stringify({
     status: 'passed', stage: 'P4.1', evidence: 'Real sandboxed Electron on GNOME/Wayland; renderer sample data only',
-    versions, osSandbox, display, checks: passed, screenshots: (await readdir(output)).filter(name => name.endsWith('.png') && name !== 'failure.png').sort(),
+    versions, osSandbox, display, checks: passed, screenshots: screenshotEvidence.map(item => item.file).sort(), screenshotEvidence,
     limitations: ['No Gateway/HTTP/WS pairing or business traffic', 'No HTTPS/TLS or package installation', 'Request observation starts after Playwright launch returns; startup protection also relies on resource/session policy and unit tests', 'Redirect/frame navigation handler emission is synthetic; the external anchor click is a real renderer action', 'Native recovery menu handler is invoked programmatically; physical Ctrl+Shift+0 is verified separately because CDP does not emit before-input-event on this host', 'Compositor screenshots and native input acceptance are recorded separately'],
   }, null, 2) + '\n');
   console.log(`DESKTOP_P41_GUI_OK ${passed.length} checks; output ${output}`);
