@@ -14,7 +14,7 @@ The [original Oraculum project](https://app.notion.com/p/3ff5421e690b81bdae14c06
 
 ## Core Principles
 
-- Oraculum (神谕) 2.0 currently consists of a native Android Kotlin + Jetpack Compose client and an independent TypeScript/Node Oraculum Gateway connected to the official Codex App Server. Ubuntu Desktop GUI work is deferred; the old shared Web UI/Desktop/Bridge is legacy.
+- Oraculum (神谕) 2.0 consists of a native Android Kotlin + Jetpack Compose client, an independent TypeScript/Node Oraculum Gateway connected to the official Codex App Server, and an independent Electron + React + TypeScript Ubuntu Desktop client in development. The old shared Web UI/Desktop/Bridge is legacy. The latest Notion P4.1 authorization supersedes the earlier Desktop deferral.
 - The official Codex App Server is the sole execution authority. Never reimplement the agent loop, tool execution, context management, or model orchestration.
 - Prioritize usability, visual quality, stability, and maintainability.
 - Approved Trusted CSS Themes and Theme API v1 apply only to the legacy Desktop/Bridge UI; retain their contracts and documentation while legacy consumers remain. Legacy React/JS changes use the normal reviewed development workflow, not Live UI hot deployment. Live UI hot deployment remains prohibited; Android visual changes use the normal source review workflow.
@@ -26,6 +26,13 @@ The [original Oraculum project](https://app.notion.com/p/3ff5421e690b81bdae14c06
 - Use native Kotlin + Jetpack Compose and the existing Material 3 Expressive design system; do not port legacy CSS themes or shared React pages into Android.
 - Follow the user's latest visual feedback and approved Stitch/Oracle Eye assets. Preserve existing functionality and safety semantics; obtain direction before major design or information architecture changes.
 - For user-directed Android Studio visual refinement, read [upgrade/phase3/ANDROID_STUDIO_AGENT_HANDOFF.md](upgrade/phase3/ANDROID_STUDIO_AGENT_HANDOFF.md) and wait for the user's page/item instructions before changing UI.
+
+## Ubuntu Desktop P4.1
+
+- Follow the [current P4.1 Task](https://app.notion.com/p/41a5421e690b81e0b07ff1000d8c8abc). P4.0 was accepted on 2026-11-17; its approved three-column layout, Light / Dark / OLED Dark tokens, complete Outline Oracle Eye SVG and original Diff font size remain the visual baseline.
+- P4.1 implements independent bundled resources, the minimal React shell, isolated profiles and Electron safety/recovery. Real Gateway authentication/communication and full business state belong to later approved phases.
+- The new Desktop does not import legacy themes, Theme API v1, Bridge transport or service lifecycle code. Preserve historical source files without putting them in the new runtime.
+- Do not connect to or change the running Gateway Beta 3 for P4.1, create a test Gateway, install/build a formal DEB, publish a release or advance to P4.2. Use a dedicated client profile for real GNOME/Wayland verification; keep the task In progress pending user review.
 
 ## Engineering Workflow
 

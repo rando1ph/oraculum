@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" color="#7BCDF7" viewBox="0 0 256 256" width="256" height="256" fill="none" role="img" aria-labelledby="oraculum-title oraculum-desc">
+  <title id="oraculum-title">Oraculum · Oracle Eye</title>
+  <desc id="oraculum-desc">A minimal, theme-adaptive line-art rendition of Oraculum's Oracle Eye: four sweeping eye blades, an iris and four-point star, four navigation beacons, and a segmented orbital ring.</desc>
+
+  <!-- Everything inherits its color from the surrounding UI. Transparent background. -->
+  <g stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Broken outer orbit: the four deliberate gaps frame the cardinal beacons. -->
+    <g stroke-width="2.8" opacity=".63">
+      <path d="M116 46.9 A82 82 0 0 0 46.9 116"/>
+      <path d="M140 46.9 A82 82 0 0 1 209.1 116"/>
+      <path d="M46.9 140 A82 82 0 0 0 116 209.1"/>
+      <path d="M209.1 140 A82 82 0 0 1 140 209.1"/>
+    </g>
+
+    <!-- Four gently swept blades preserve the original Oracle Eye silhouette. -->
+    <g stroke-width="5.4">
+      <path d="M48 126 C71 116 92 92 111 82 C121 76 124 68 125 59"/>
+      <path d="M208 126 C185 116 164 92 145 82 C135 76 132 68 131 59"/>
+      <path d="M48 130 C71 140 92 164 111 174 C121 180 124 188 125 197"/>
+      <path d="M208 130 C185 140 164 164 145 174 C135 180 132 188 131 197"/>
+    </g>
+
+    <!-- Inner contours hint at the original wing-shaped highlights. -->
+    <g stroke-width="2.5" opacity=".62">
+      <path d="M59 126 C84 122 104 105 117 88"/>
+      <path d="M197 126 C172 122 152 105 139 88"/>
+      <path d="M59 130 C84 134 104 151 117 168"/>
+      <path d="M197 130 C172 134 152 151 139 168"/>
+    </g>
+
+    <!-- Iris: two concentric contours and flanking crescent strokes. -->
+    <circle cx="128" cy="128" r="39" stroke-width="2.7" opacity=".56"/>
+    <circle cx="128" cy="128" r="33" stroke-width="3.8"/>
+    <g stroke-width="3.2" opacity=".73">
+      <path d="M85 99 C77 116 77 140 85 157"/>
+      <path d="M171 99 C179 116 179 140 171 157"/>
+    </g>
+
+    <!-- Compass axes, separated so they do not cut through the pupil. -->
+    <g stroke-width="3.1" opacity=".83">
+      <path d="M128 54 V88 M128 168 V202"/>
+      <path d="M54 128 H88 M168 128 H202"/>
+    </g>
+
+    <!-- Minimal terminal rays. -->
+    <g stroke-width="2.6" opacity=".69">
+      <path d="M128 40 V23 M128 216 V233 M40 128 H23 M216 128 H233"/>
+    </g>
+  </g>
+
+  <!-- Cardinal light points, reduced to simple geometries instead of raster glow. -->
+  <g fill="currentColor">
+    <circle cx="128" cy="46" r="4"/>
+    <circle cx="210" cy="128" r="4"/>
+    <circle cx="128" cy="210" r="4"/>
+    <circle cx="46" cy="128" r="4"/>
+
+    <!-- The iconic four-point oracle star. -->
+    <path d="M128 105 C131 120 136 125 151 128 C136 131 131 136 128 151 C125 136 120 131 105 128 C120 125 125 120 128 105 Z"/>
+  </g>
+</svg>
