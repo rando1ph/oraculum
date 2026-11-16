@@ -1,5 +1,30 @@
 # Release build and verification
 
+## Gateway Beta 3 and Android Beta 2
+
+The components continue independently: Gateway `2.0.0~beta.3` (npm
+`2.0.0-beta.3`) uses `gateway-v2.0.0-beta.3`; Android `2.0.0-beta.2` /
+versionCode `6` uses `android-v2.0.0-beta.2`. Both are GitHub Pre-releases,
+with Latest disabled, built from clean committed main. No Stable is published.
+Gateway protocol remains 2.1 / minClientMinor 0 and state schema remains 1.
+
+Publish each component with its own installer, component release manifest,
+`RELEASE_NOTES.md` and `SHA256SUMS`. Download every public asset without
+authentication and recheck bytes, package/build identity, tag provenance and
+the original Android signing certificate. Preserve all previous tags/assets.
+Android validation for this release uses host-side builds, lint, JVM tests and
+APK inspection only; do not use physical devices or emulators.
+
+After both releases pass public verification, the user has authorized upgrading
+the existing local Gateway. Back up its actual configuration, state and old DEB;
+confirm no active native turns, pending approvals or unknown operations before
+switching. Preserve private `network.env`, systemd drop-ins, installation/device
+identity and receipts. Validate the installed service through HTTPS/WSS,
+Snapshot and an actual streamed Codex response, including child-process proxy
+inheritance. Roll back program bytes if needed; never restore an old database
+over current receipts or replay an unknown write. This does not authorize
+Android installation or changes to VPS, tunnels or global network settings.
+
 Bridge/Desktop now use the independent [component candidate workflow](COMPONENT_RELEASES.md)
 and [phase B installation handoff](PHASE_B_SPLIT_PACKAGES.md). Their versions come
 from `release.json.components`; Desktop no longer embeds Bridge or server Node.
