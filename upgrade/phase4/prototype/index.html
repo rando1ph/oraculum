@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'none'; connect-src 'none'; form-action 'none'; base-uri 'none'">
+  <title>Oraculum Desktop · P4.0 静态视觉原型</title>
+  <link rel="stylesheet" href="tokens.css">
+  <link rel="stylesheet" href="prototype.css">
+  <script src="prototype.js" defer></script>
+</head>
+<body>
+  <svg class="symbol-library" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4 4"/></symbol>
+    <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7V5h7l2 3h9v12H3z"/></symbol>
+    <symbol id="i-chat" viewBox="0 0 24 24"><path d="M4 4h16v12H9l-5 4zM8 8h8M8 12h5"/></symbol>
+    <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></symbol>
+    <symbol id="i-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24"><path d="m9 3-1 3-3 1-2 3 2 2-1 4 3 2 3-1 2 4 4-1 1-3 4-1v-4l-3-1-1-4-4-1-1-3z"/><circle cx="12" cy="12" r="3"/></symbol>
+    <symbol id="i-panel" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><path d="M8 8h12v13H8zM4 16H2V2h13v2"/></symbol>
+    <symbol id="i-file" viewBox="0 0 24 24"><path d="M5 2h9l5 5v15H5zM14 2v6h5M9 12h6M9 16h6"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="m12 2 8 4v6c0 5-8 10-8 10S4 17 4 12V6zM8 12l3 3 5-6"/></symbol>
+    <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M12 19V5m-6 6 6-6 6 6"/></symbol>
+    <symbol id="i-command" viewBox="0 0 24 24"><path d="m4 6 6 6-6 6M12 18h8"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 10a8 8 0 1 0-1 7M20 4v6h-6"/></symbol>
+    <symbol id="i-wifi-off" viewBox="0 0 24 24"><path d="m3 3 18 18M2 8a17 17 0 0 1 3-2m4-1a17 17 0 0 1 13 3M5 12a12 12 0 0 1 4-2m6 0a12 12 0 0 1 4 2M8 16a7 7 0 0 1 4-1m0 5h.01"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v6l4 2"/></symbol>
+    <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1 1m12 12 1 1M5 19l1-1M18 6l1-1"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 15A9 9 0 0 1 9 4a9 9 0 1 0 11 11z"/></symbol>
+  </svg>
+  <header class="review-toolbar" aria-label="原型审阅工具">
+    <div class="review-label"><span class="review-dot"></span><b>P4.0</b><span>静态设计原型 · 全部数据为样例 · 无真实连接</span></div>
+    <div class="scene-control"><label for="scene-select">场景</label><select id="scene-select"><option value="conversation">会话与变更</option><option value="approval">等待审批</option><option value="offline">离线与未决操作</option><option value="connect">首次连接</option></select></div>
+    <div class="theme-control" role="group" aria-label="预览主题"><button data-theme-choice="light" aria-pressed="true">Light</button><button data-theme-choice="dark" aria-pressed="false">Dark</button><button data-theme-choice="oled" aria-pressed="false">OLED Dark</button></div>
+  </header>
+  <div class="desktop-window">
+    <div class="titlebar"><span>ORACULUM <span class="titlebar-muted">/ Ubuntu Desktop</span></span><span class="titlebar-center">Atlas Studio</span><div class="window-controls" aria-hidden="true"><span>−</span><span>□</span><span>×</span></div></div>
+    <div class="workspace">
+      <nav class="navigation" aria-label="项目与会话导航">
+        <div class="brand"><span class="oracle-eye" role="img" aria-label="神谕之眼"></span><div><strong>Oraculum</strong><span>神谕 · 你的工作，从这里展开</span></div></div>
+        <button class="new-conversation" data-demo="新建会话"><svg><use href="#i-plus"/></svg>新建会话<kbd>Ctrl N</kbd></button>
+        <label class="search-field"><svg><use href="#i-search"/></svg><input id="thread-search" placeholder="搜索会话" aria-label="搜索样例会话"><kbd>Ctrl K</kbd></label>
+        <div class="navigation-scroll">
+          <div class="section-label">项目<button class="icon-button" aria-label="添加项目（静态预览）" data-demo="注册项目"><svg><use href="#i-plus"/></svg></button></div>
+          <button class="project-current" data-demo="切换项目"><span class="project-initial">A</span><span><b>Atlas Studio</b><small>本机项目 · 样例</small></span><svg><use href="#i-down"/></svg></button>
+          <div class="thread-group"><div class="section-label">今天<span>3</span></div>
+            <button class="thread selected" data-thread="重构会话恢复流程"><span class="thread-marker"></span><span><b>重构会话恢复流程</b><small>设计、边界与恢复策略</small></span><time>14:32</time></button>
+            <button class="thread" data-thread="检查交付清单"><svg><use href="#i-chat"/></svg><span><b>检查交付清单</b></span><time>11:08</time></button>
+            <button class="thread" data-thread="梳理附件工作流"><svg><use href="#i-chat"/></svg><span><b>梳理附件工作流</b></span><time>09:16</time></button>
+          </div>
+          <div class="thread-group"><div class="section-label">昨天</div>
+            <button class="thread" data-thread="设计方案对照"><svg><use href="#i-chat"/></svg><span><b>设计方案对照</b></span></button>
+            <button class="thread" data-thread="长历史分页讨论"><svg><use href="#i-chat"/></svg><span><b>长历史分页讨论</b></span></button>
+          </div>
+          <button class="archive-link" data-demo="查看归档"><svg><use href="#i-folder"/></svg>已归档会话<svg><use href="#i-chevron"/></svg></button>
+        </div>
+        <div class="navigation-footer"><button class="settings-link" id="settings-button"><svg><use href="#i-settings"/></svg>连接与外观<svg><use href="#i-chevron"/></svg></button><div class="connection-summary"><span class="status-dot"></span><span id="connection-summary">本机 Gateway · 示例已连接</span><span class="version-label">2.0</span></div></div>
+      </nav>
+      <main class="conversation" id="main-content">
+        <header class="conversation-header"><div class="breadcrumb"><svg><use href="#i-folder"/></svg><span>Atlas Studio</span><span>/</span><b id="thread-title">重构会话恢复流程</b></div><div class="header-actions"><button class="icon-button" aria-label="会话操作（静态预览）" data-demo="会话操作：重命名、归档、分叉、回退、删除"><svg><use href="#i-more"/></svg></button><button class="icon-button active" id="inspector-toggle" aria-label="收起 Inspector" aria-expanded="true"><svg><use href="#i-panel"/></svg></button></div></header>
+        <div id="connection-banner" class="connection-banner" hidden></div>
+        <section class="conversation-scroll" id="conversation-content" aria-label="样例对话"></section>
+        <div class="composer-area" id="composer-area">
+          <div class="composer-state" id="composer-state"><span class="status-dot"></span><span>本轮已完成</span><span class="composer-state-detail">模型与权限：原生已确认 · 样例</span></div>
+          <div class="composer"><label for="composer-input" class="sr-only">消息草稿（仅当前预览页面）</label><textarea id="composer-input" rows="2" placeholder="继续思考，或开始新的问题…"></textarea><div class="composer-toolbar"><div class="composer-tools"><button class="icon-button" data-demo="添加图片、文档或项目文件" aria-label="添加附件（静态预览）"><svg><use href="#i-plus"/></svg></button><button class="composer-option" data-demo="选择模型"><span>GPT-6</span><svg><use href="#i-down"/></svg></button><button class="composer-option" data-demo="选择思考强度">High<svg><use href="#i-down"/></svg></button><span class="toolbar-separator"></span><button class="composer-option" data-demo="查看已确认权限与待应用设置"><svg><use href="#i-shield"/></svg>工作区写入<svg><use href="#i-down"/></svg></button></div><button class="send-button" id="send-button" disabled title="静态预览不会发送消息" aria-label="发送（静态原型不可用）"><svg><use href="#i-arrow"/></svg></button></div></div>
+          <div class="composer-hint"><span><kbd>Ctrl ↵</kbd> 发送 · Enter 换行</span><span id="draft-hint">静态预览 · 输入不持久保存</span></div>
+        </div>
+      </main>
+      <aside class="inspector" id="inspector" aria-label="Inspector 会话详情">
+        <header class="inspector-header"><b>Inspector</b><span id="inspector-context">当前会话</span></header>
+        <div class="inspector-tabs" role="tablist" aria-label="Inspector 内容"><button role="tab" id="tab-diff" data-panel="diff" aria-selected="true" aria-controls="inspector-content">变更</button><button role="tab" id="tab-files" data-panel="files" aria-selected="false" aria-controls="inspector-content" tabindex="-1">文件</button><button role="tab" id="tab-process" data-panel="process" aria-selected="false" aria-controls="inspector-content" tabindex="-1">执行</button><button role="tab" id="tab-usage" data-panel="usage" aria-selected="false" aria-controls="inspector-content" tabindex="-1">用量</button><button role="tab" id="tab-extensions" data-panel="extensions" aria-selected="false" aria-controls="inspector-content" tabindex="-1">扩展</button></div>
+        <div id="inspector-content" class="inspector-scroll" role="tabpanel" aria-labelledby="tab-diff" tabindex="0"></div>
+        <div class="inspector-footnote">静态样例 · 所有文件与状态均为演示</div>
+      </aside>
+    </div>
+  </div>
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+</body>
+</html>
