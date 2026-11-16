@@ -4,6 +4,7 @@ import { APP_ENTRY } from './bundle';
 import { IPC } from './ipc-channels';
 import type { ProfileKind } from './profile';
 import type { PreferencesStore } from './preferences';
+import type { DesktopWorkspace } from './workspace';
 
 type Frame = { url: string; detached: boolean; isDestroyed(): boolean };
 type Sender = { mainFrame: Frame; getURL(): string; isDestroyed(): boolean };
@@ -18,7 +19,7 @@ export function isTrustedSender(event: { sender: unknown; senderFrame: Frame | n
   } catch { return false; }
 }
 
-export function registerDesktopIpc(contents: WebContents, preferences: PreferencesStore, kind: ProfileKind): {
+export function registerDesktopIpc(contents: WebContents, preferences: PreferencesStore, kind: ProfileKind, workspace?: DesktopWorkspace): {
   state(): DesktopState;
   publish(): void;
   dispose(): void;
@@ -53,7 +54,17 @@ export function registerDesktopIpc(contents: WebContents, preferences: Preferenc
     publish();
     return state();
   });
+  ipcMain.handle(IPC.getWorkspace, (event, ...args: unknown[]) => {
+    authorized(event); noArguments(args);
+    if (!workspace) throw new Error('WORKSPACE_UNAVAILABLE');
+    return workspace.state();
+  });
+  ipcMain.handle(IPC.workspaceAction, (event, ...args: unknown[]) => {
+    authorized(event);
+    if (!workspace || args.length !== 1) throw new Error('INVALID_ARGUMENTS');
+    return workspace.action(args[0]);
+  });
   return { state, publish, dispose() {
-    for (const channel of [IPC.getState, IPC.setPreferences, IPC.resetAppearance]) ipcMain.removeHandler(channel);
+    for (const channel of [IPC.getState, IPC.setPreferences, IPC.resetAppearance, IPC.getWorkspace, IPC.workspaceAction]) ipcMain.removeHandler(channel);
   } };
 }

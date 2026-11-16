@@ -1,11 +1,16 @@
-import { app, BrowserWindow, dialog, Menu, nativeImage, protocol, session } from 'electron';
+import { app, BrowserWindow, dialog, Menu, nativeImage, protocol, session, safeStorage } from 'electron';
 import { join } from 'node:path';
 import { APP_ENTRY, APP_SCHEME, isBundleRequest, loadBundle, respondToBundleRequest } from './bundle';
 import { registerDesktopIpc } from './ipc';
 import { PreferencesStore } from './preferences';
 import { prepareProfile } from './profile';
+import { CredentialStore } from './credentials';
+import { GatewayTransport } from './gateway-transport';
+import { OperationJournal } from './journal';
+import { DesktopWorkspace } from './workspace';
+import { IPC } from './ipc-channels';
 
-// This entry has no Gateway/Bridge transport, process execution or service lifecycle.
+// Bundled client only: no process execution or Gateway/Bridge service lifecycle.
 app.setName('神谕 Desktop');
 app.setDesktopName('oraculum-desktop.desktop');
 app.enableSandbox();
@@ -75,14 +80,28 @@ async function start(): Promise<void> {
   });
   const currentWindow = window;
   const contents = currentWindow.webContents;
-  const ipc = registerDesktopIpc(contents, preferences, profile.kind);
+  const workspace = new DesktopWorkspace(new GatewayTransport({ credentials: new CredentialStore(profile.directory, safeStorage) }),
+    new OperationJournal(profile.directory), {
+      async chooseUpload() {
+        const result = await dialog.showOpenDialog(currentWindow, { title: '选择要发送的附件', properties: ['openFile'],
+          filters: [{ name: '图片与文档', extensions: ['png', 'jpg', 'jpeg', 'webp', 'pdf', 'docx', 'xlsx', 'pptx', 'txt', 'md', 'csv'] }] });
+        return result.canceled ? undefined : result.filePaths[0];
+      },
+      async chooseDownload(name) {
+        const result = await dialog.showSaveDialog(currentWindow, { title: '保存 Gateway 文件', defaultPath: name });
+        return result.canceled ? undefined : result.filePath;
+      },
+    }, state => {
+      if (!contents.isDestroyed() && contents.getURL() === APP_ENTRY) contents.send(IPC.workspaceChanged, state);
+    }, safeStorage.isEncryptionAvailable() && safeStorage.getSelectedStorageBackend() === 'gnome_libsecret');
+  const ipc = registerDesktopIpc(contents, preferences, profile.kind, workspace);
   contents.setWindowOpenHandler(() => ({ action: 'deny' }));
   contents.on('will-navigate', event => event.preventDefault());
   contents.on('will-frame-navigate', event => event.preventDefault());
   contents.on('will-redirect', event => event.preventDefault());
   contents.on('will-attach-webview', event => event.preventDefault());
   currentWindow.on('page-title-updated', event => event.preventDefault());
-  currentWindow.on('closed', () => { ipc.dispose(); window = undefined; });
+  currentWindow.on('closed', () => { workspace.dispose(); ipc.dispose(); window = undefined; });
 
   const restoreAppearance = (): void => {
     if (currentWindow.isDestroyed()) return;

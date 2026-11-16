@@ -204,6 +204,22 @@ describe('main-only Gateway transport with offline injected IO', () => {
     await expect(f.transport.request('GET', '/projects')).rejects.toMatchObject({ code: 'GATEWAY_REJECTED', message: 'GATEWAY_REJECTED' });
   });
 
+  it('preserves finite Gateway native/history/state error codes without returning their private messages', async () => {
+    const f = fixture(); await f.pair();
+    const known = ['NATIVE_HISTORY_NOT_MATERIALIZED', 'HISTORY_TIMEOUT', 'HISTORY_PROTOCOL', 'NATIVE_PROTOCOL',
+      'NATIVE_TOO_LARGE', 'NATIVE_BUSY', 'NATIVE_REJECTED', 'NATIVE_UNSUPPORTED', 'NATIVE_EXPERIMENTAL',
+      'INVALID_NATIVE_ARGUMENT', 'CURSOR_RESET_REQUIRED', 'TURN_NOT_ACTIVE', 'THREAD_ACTIVE',
+      'THREAD_LIFECYCLE_UNAVAILABLE', 'THREAD_LIFECYCLE_CHANGED', 'INTERACTION_STALE', 'CONFIRMATION_REQUIRED'];
+    for (const errorCode of known) {
+      f.override(() => failure(503, errorCode));
+      await expect(f.transport.request('POST', '/threads/fresh-thread/snapshot', { projectId: installationId }))
+        .rejects.toMatchObject({ code: errorCode, message: errorCode, status: 503 });
+    }
+    expect(f.calls.filter(call => call.url.pathname.endsWith('/snapshot'))).toHaveLength(known.length);
+    f.override(() => failure(503, 'NATIVE_PRIVATE_CREDENTIAL_VALUE'));
+    await expect(f.transport.request('GET', '/projects')).rejects.toMatchObject({ code: 'GATEWAY_REJECTED', message: 'GATEWAY_REJECTED' });
+  });
+
   it('cancels in-flight IO on disconnect and ignores a late result', async () => {
     const f = fixture(); let resolve: ((value: ByteResponse) => void) | undefined;
     f.override(() => new Promise<ByteResponse>(done => { resolve = done; }));

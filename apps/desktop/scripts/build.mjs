@@ -40,11 +40,11 @@ async function inventory(relative = '') {
 await inventory();
 await writeFile(join(dist, 'renderer-manifest.json'), JSON.stringify({ version: 1, files }, null, 2) + '\n');
 await writeFile(join(dist, 'package.json'), JSON.stringify({
-  name: 'oraculum-desktop', productName: '神谕', version: '2.0.0-dev.p41',
+  name: 'oraculum-desktop', productName: '神谕', version: '2.0.0-dev.p42',
   private: true, main: 'main/index.cjs',
 }, null, 2) + '\n');
 await writeFile(join(dist, 'build-info.json'), JSON.stringify({
-  component: 'oraculum-desktop', stage: 'P4.1',
+  component: 'oraculum-desktop', stage: 'P4.2',
   sourceRevision: execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim(),
   sourceDirty: execFileSync('git', ['status', '--porcelain'], { cwd: root, encoding: 'utf8' }).trim().length > 0,
   dependencies: { ...sources.dependencies, ...sources.devDependencies },

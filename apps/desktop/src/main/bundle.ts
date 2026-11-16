@@ -7,7 +7,7 @@ export const APP_ORIGIN = `${APP_SCHEME}://bundle`;
 export const APP_ENTRY = `${APP_ORIGIN}/index.html`;
 export const CONTENT_SECURITY_POLICY = [
   "default-src 'none'", "script-src 'self'", "style-src 'self'",
-  "img-src 'self'", "font-src 'self'", "connect-src 'none'",
+  "img-src 'self' data:", "font-src 'self'", "connect-src 'none'",
   "frame-src 'none'", "frame-ancestors 'none'", "worker-src 'none'",
   "object-src 'none'", "base-uri 'none'", "form-action 'none'",
 ].join('; ');

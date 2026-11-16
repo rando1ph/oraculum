@@ -1,4 +1,5 @@
-/** The entire renderer capability surface for P4.1. No transport or file access. */
+import type { WorkspaceBridge } from './workspace';
+/** Named business intents only. No transport or filesystem capability. */
 export type Theme = 'light' | 'dark' | 'oled';
 
 export interface Preferences {
@@ -12,7 +13,7 @@ export interface DesktopState {
   preferencesRecovered: boolean;
 }
 
-export interface DesktopBridge {
+export interface DesktopBridge extends WorkspaceBridge {
   getState(): Promise<DesktopState>;
   setPreferences(patch: Partial<Preferences>): Promise<DesktopState>;
   resetAppearance(): Promise<DesktopState>;

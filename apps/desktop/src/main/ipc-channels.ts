@@ -4,4 +4,7 @@ export const IPC = Object.freeze({
   setPreferences: 'oraculum-desktop:appearance:set',
   resetAppearance: 'oraculum-desktop:appearance:reset',
   stateChanged: 'oraculum-desktop:state:changed',
+  getWorkspace: 'oraculum-desktop:workspace:get',
+  workspaceAction: 'oraculum-desktop:workspace:action',
+  workspaceChanged: 'oraculum-desktop:workspace:changed',
 });
