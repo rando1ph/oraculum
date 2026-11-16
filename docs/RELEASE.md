@@ -7,6 +7,13 @@ The components continue independently: Gateway `2.0.0~beta.3` (npm
 versionCode `6` uses `android-v2.0.0-beta.2`. Both are GitHub Pre-releases,
 with Latest disabled, built from clean committed main. No Stable is published.
 Gateway protocol remains 2.1 / minClientMinor 0 and state schema remains 1.
+Gateway's HTTP idle timeout is 30 seconds, covering the existing 20-second MCP
+discovery budget plus transport margin. A slow MCP may still return unavailable;
+its timeout must not disconnect the entire Skills/MCP/Apps response. The native
+budget, retry policy, request-size limits and host proxy configuration stay intact.
+The user's release-time correction retains Beta 3 after this minimal fix; only
+this run's unpublished draft and provisional tag are updated. Published Beta 1
+and Beta 2 remain frozen. Android may retain its already verified earlier main SHA.
 
 Publish each component with its own installer, component release manifest,
 `RELEASE_NOTES.md` and `SHA256SUMS`. Download every public asset without

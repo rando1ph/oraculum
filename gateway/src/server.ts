@@ -31,7 +31,9 @@ const statusFor = (error: unknown) => {
 };
 const withoutUndefined = (value: unknown) => JSON.parse(JSON.stringify(value));
 export async function createGatewayServer(service: GatewayService, config: GatewayConfig = service.config) {
-    const app = Fastify({ logger: false, bodyLimit: 128 * 1024, requestTimeout: 120000, connectionTimeout: 15000,
+    // Let the bounded 20s native MCP discovery return its result or timeout
+    // section before an idle HTTP socket closes, with 10s transport margin.
+    const app = Fastify({ logger: false, bodyLimit: 128 * 1024, requestTimeout: 120000, connectionTimeout: 30000,
         ajv: { customOptions: { coerceTypes: false, removeAdditional: false, useDefaults: false } } });
     const base = config.basePath, api = base + 'api/v2';
     const host = `${config.host.includes(':') ? `[${config.host}]` : config.host}:${config.port}`;

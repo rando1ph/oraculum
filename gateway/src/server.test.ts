@@ -27,7 +27,15 @@ class MockCodex extends EventEmitter {
   responses: { id: RpcId; response: unknown }[] = [];
   permissionResult: Record<string, unknown> = {};
   extensionCalls = 0;
-  async readExtensions(kind: string) { this.extensionCalls++; return { status: 'available' as const, data: kind === 'skills' ? { data: [] } : kind === 'mcp' ? { data: [], nextCursor: null } : { apps: [] } }; }
+  mcpTimeoutDelayMs = 0;
+  async readExtensions(kind: string) {
+    this.extensionCalls++;
+    if (kind === 'mcp' && this.mcpTimeoutDelayMs) {
+      await new Promise(resolve => setTimeout(resolve, this.mcpTimeoutDelayMs));
+      return { status: 'unavailable' as const, code: 'NATIVE_TIMEOUT' };
+    }
+    return { status: 'available' as const, data: kind === 'skills' ? { data: [] } : kind === 'mcp' ? { data: [], nextCursor: null } : { apps: [] } };
+  }
   async listModels() { return { data: [{ id: 'fixture', model: 'fixture', displayName: 'Fixture', isDefault: true, supportedReasoningEfforts: [{ reasoningEffort: 'low' }] }], nextCursor: null }; }
   async startThread(input: { cwd: string }) {
     this.calls.startThread++;
@@ -167,6 +175,23 @@ describe('Gateway HTTP authentication and endpoint boundaries', () => {
     expect(missing.status).toBe(409); expect(missing.json.error.code).toBe('PROJECT_UNAVAILABLE');
     expect(f.codex.extensionCalls).toBe(3);
   });
+  it('returns available extension sections after the native MCP timeout budget', async () => {
+    const f = await setup(); const device = await f.pair(); const projectId = await register(f, device);
+    // Exercise a real HTTP socket beyond the former 15s idle timeout. Injected
+    // requests cannot detect the transport closing before the 20s MCP budget.
+    f.codex.mcpTimeoutDelayMs = 20_050;
+    const before = { ...f.codex.calls };
+    const result = await f.request(`/projects/${projectId}/extensions`, { device });
+    expect(result.status).toBe(200);
+    expect(validateContract('ExtensionsSnapshot', result.json.data)).toBe(true);
+    expect(result.json.data.sections).toEqual([
+      { kind: 'skills', status: 'available', entries: [], limited: false },
+      { kind: 'mcp', status: 'unavailable', entries: [], limited: false, reasonCode: 'NATIVE_TIMEOUT' },
+      { kind: 'apps', status: 'available', entries: [], limited: false },
+      { kind: 'plugins', status: 'unavailable', entries: [], limited: false, reasonCode: 'STABILITY_UNVERIFIED' },
+    ]);
+    expect(f.codex.extensionCalls).toBe(3); expect(f.codex.calls).toEqual(before);
+  }, 30_000);
   it('returns native permission observations and invalidates them when a Turn starts', async () => {
     const f = await setup(); const device = await f.pair(); const projectId = await register(f, device);
     f.codex.permissionResult = { sandbox: { type: 'dangerFullAccess' }, approvalPolicy: 'never' };
