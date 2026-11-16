@@ -1,5 +1,7 @@
 # P4.1｜Ubuntu Desktop 独立客户端交付
 
+> 后续状态：P4.1 已获用户接受，P4.2 已授权实施。当前说明见 [P4.2 架构与审阅指南](../p42/README.md)；下文保留 P4.1 交付时的范围与证据，不作为当前功能清单。
+
 本阶段实现 Desktop 自有资源、React 三栏基础、三主题、独立 Profile 与 Electron 安全/恢复。真实会话、配对、Gateway 通信和持久历史不属于本阶段。本页的应用样例均明确标注为本地样例。
 
 依据：[P4.1 当前任务](https://app.notion.com/p/41a5421e690b81e0b07ff1000d8c8abc)、[2.0 正典](https://app.notion.com/p/4135421e690b815eb404c3024c860134)、用户接受的 P4.0 `1feeddded8ad7ccf474f201b17347d7011b0c02e`。任务保持 **In progress**，交付后等待用户审阅，不进入 P4.2。

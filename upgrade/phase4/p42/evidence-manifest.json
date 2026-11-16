@@ -1,0 +1,160 @@
+{
+  "sourceRevision": "7d34e16b54ecc1280656d15b06c8ff87bfc66245",
+  "description": "Sanitized evidence; fixture and real local-Gateway captures are distinct. No credentials, raw private logs or build artifacts.",
+  "files": [
+    {
+      "file": "validation.json",
+      "bytes": 6199,
+      "sha256": "37c086993456a3eebc00ffb62ebd1442f98739e373ffab4b5f960be4540ef7a6"
+    },
+    {
+      "file": "fixture-results.json",
+      "bytes": 6700,
+      "sha256": "7398dd220a9b7acff89de95b0e8cbfb3806522b6cbcd56cc88dbca8a32ff82eb"
+    },
+    {
+      "file": "screenshots/01-fixture-light.png",
+      "bytes": 200896,
+      "sha256": "724a37b821818a0b2b88c6cbaeb5406b5ec8b990a2e896f21b6cb15b6172e458",
+      "width": 2160,
+      "height": 1385,
+      "evidence": "fixture",
+      "stage": "final runtime"
+    },
+    {
+      "file": "screenshots/01-fixture-dark.png",
+      "bytes": 201548,
+      "sha256": "3ae8b91fc67965e2281143a2d5d0e9e36b423b9c61caaa6e0f55821dd838d307",
+      "width": 2160,
+      "height": 1385,
+      "evidence": "fixture",
+      "stage": "final runtime"
+    },
+    {
+      "file": "screenshots/01-fixture-oled.png",
+      "bytes": 202262,
+      "sha256": "73797b2ec6afb33b0716ba6a4fb5ae3caa2849a1ddfc6cffcd11f3ead16e46bf",
+      "width": 2160,
+      "height": 1385,
+      "evidence": "fixture",
+      "stage": "final runtime"
+    },
+    {
+      "file": "screenshots/07-fixture-decoded-image-preview.png",
+      "bytes": 190845,
+      "sha256": "20fe010e7b4e91756b2a7154f3665885de8fce24c2f786d1f90c7dd3cf73b201",
+      "width": 2160,
+      "height": 1385,
+      "evidence": "fixture",
+      "stage": "final runtime"
+    },
+    {
+      "file": "screenshots/02-fixture-offline.png",
+      "bytes": 190034,
+      "sha256": "95f69e52df4c89a38f83bb8ac0caf38a83582b0d1fa3b8319c2c0c9b863650ca",
+      "width": 2160,
+      "height": 1385,
+      "evidence": "fixture",
+      "stage": "final runtime"
+    },
+    {
+      "file": "screenshots/05-fixture-active-controls.png",
+      "bytes": 203832,
+      "sha256": "f1b94f745d3634436384b65a156dfc766258c1a4540b627aa1f1b84f466e04be",
+      "width": 2160,
+      "height": 1385,
+      "evidence": "fixture",
+      "stage": "final runtime"
+    },
+    {
+      "file": "screenshots/03-fixture-restricted-approval.png",
+      "bytes": 212045,
+      "sha256": "d4b2b543e5f2d5557b5cdf705946d2d519dfcff4d1d66798f2ac22314ff161a5",
+      "width": 2160,
+      "height": 1385,
+      "evidence": "fixture",
+      "stage": "final runtime"
+    },
+    {
+      "file": "screenshots/06-fixture-complete-file-approval.png",
+      "bytes": 212493,
+      "sha256": "ccdf1f85ee2d2203831cdecc4f4a0ea9ec399c708e0847e0712a0791b874917f",
+      "width": 2160,
+      "height": 1385,
+      "evidence": "fixture",
+      "stage": "final runtime"
+    },
+    {
+      "file": "screenshots/04-fixture-narrow.png",
+      "bytes": 138866,
+      "sha256": "33939420dfae60181b063fb41b7e9a1aa6302cc04bdaedcd6d25ef5e64a058dc",
+      "width": 1500,
+      "height": 1050,
+      "evidence": "fixture",
+      "stage": "final runtime"
+    },
+    {
+      "file": "screenshots/final-live-light.png",
+      "bytes": 210710,
+      "sha256": "7fbe3b6d823b382dc5f6839f650c3d69d6d4db936123cf593d0a347e366fcf0c",
+      "width": 2160,
+      "height": 1385,
+      "evidence": "real local Gateway and GNOME",
+      "stage": "final runtime"
+    },
+    {
+      "file": "screenshots/final-live-dark.png",
+      "bytes": 209298,
+      "sha256": "aef9cca8e6aa2a740baff4941188bef6c5162dee4e5f779083ae2f9360676ab2",
+      "width": 2160,
+      "height": 1385,
+      "evidence": "real local Gateway and GNOME",
+      "stage": "final runtime"
+    },
+    {
+      "file": "screenshots/final-live-oled.png",
+      "bytes": 209554,
+      "sha256": "b595279c3f354653c227b040531c5741627e952167d0ddeed9adfa98b7a7e0ae",
+      "width": 2160,
+      "height": 1385,
+      "evidence": "real local Gateway and GNOME",
+      "stage": "final runtime"
+    },
+    {
+      "file": "screenshots/final-native-window.png",
+      "bytes": 397057,
+      "sha256": "e2dfbe34db4b5fefefcf353b8e21110a27d5697dd01f6a189743760a010bd55a",
+      "width": 1920,
+      "height": 1280,
+      "evidence": "real local Gateway and GNOME",
+      "stage": "final runtime"
+    },
+    {
+      "file": "screenshots/live-plan-diff.png",
+      "bytes": 242910,
+      "sha256": "9f4e0156c0f70e81faafcaa4e9eae58fc2d1916ae4138627401a839f8d2c83a0",
+      "width": 2160,
+      "height": 1385,
+      "evidence": "real local Gateway and GNOME",
+      "stage": "earlier integration run; final safety fixes verified separately"
+    },
+    {
+      "file": "screenshots/live-archive-menu.png",
+      "bytes": 176030,
+      "sha256": "f1a3d6477ca3cecd95e7d66673daa426b9ae53044a957aff6f52b29bff8fffc7",
+      "width": 2160,
+      "height": 1385,
+      "evidence": "real local Gateway and GNOME",
+      "stage": "earlier integration run; final safety fixes verified separately"
+    },
+    {
+      "file": "screenshots/live-offline-draft.png",
+      "bytes": 211630,
+      "sha256": "9fff3541a7b0da9d623b7d705c01cd2b05624afd4e21a9b752ba42edd63769a0",
+      "width": 2160,
+      "height": 1385,
+      "evidence": "real local Gateway and GNOME",
+      "stage": "earlier integration run; final safety fixes verified separately"
+    }
+  ]
+}

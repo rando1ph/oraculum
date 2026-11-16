@@ -1,0 +1,169 @@
+{
+  "status": "engineering delivery; pending user review",
+  "sourceRevision": "7d34e16b54ecc1280656d15b06c8ff87bfc66245",
+  "date": "2026-11-17",
+  "taskStatus": "In progress",
+  "checks": {
+    "typecheck": "pnpm check passed",
+    "desktopBuild": "pnpm build:desktop passed; no installer",
+    "testFiles": 17,
+    "testsPassed": 814,
+    "testsFailed": 0,
+    "actualElectronFixtureChecks": 16
+  },
+  "runtime": {
+    "versions": {
+      "electron": "44.9.1",
+      "chromium": "152.0.7977.167",
+      "node": "24.22.0"
+    },
+    "preferences": {
+      "sandbox": true,
+      "contextIsolation": true,
+      "nodeIntegration": false,
+      "nodeIntegrationInSubFrames": false,
+      "webSecurity": true,
+      "webviewTag": false
+    },
+    "sandbox": {
+      "seccomp": "2",
+      "noNewPrivileges": "1"
+    },
+    "secureStorage": {
+      "available": true,
+      "backend": "gnome_libsecret"
+    },
+    "helperOverrideUsed": true
+  },
+  "bundleSha256": {
+    "main/index.cjs": "6614218be5f78fff9ff63c899c249f67499beb47eb652450d882f7ef4f1f1527",
+    "preload/index.cjs": "9002cc94e638c442448057574ee541c046f87dbf4f227679e150477af5109731",
+    "renderer-manifest.json": "a5a0bc9703b1b37cb301b72476a30ffd9209d18c57036c31cd2a9197221d55cc"
+  },
+  "realIntegration": {
+    "gatewayVersion": "2.0.0~beta.3",
+    "protocol": "2.1",
+    "transport": "local loopback HTTP/WS only",
+    "deviceIdentitySha256": "339c5874abfcba39ccfa84145088cc5b663f55ec33cf8e656a94fe258591bd08",
+    "sameIdentityAfterRestart": true,
+    "dedicatedProject": "OraculumDesktopP42Test",
+    "profileSlug": "p42-review",
+    "operationCount": 24,
+    "operationStatuses": {
+      "project.register:accepted": 1,
+      "thread.start:accepted": 3,
+      "turn.start:accepted": 7,
+      "attachment.upload:accepted": 2,
+      "turn.steer:accepted": 1,
+      "turn.interrupt:accepted": 1,
+      "thread.name:accepted": 3,
+      "thread.fork:accepted": 1,
+      "thread.revert:accepted": 1,
+      "thread.archive:accepted": 1,
+      "thread.unarchive:accepted": 1,
+      "thread.delete:accepted": 1,
+      "attachment.remove:accepted": 1
+    },
+    "operationIdSetSha256": "f67f89d2d0ca4adf9caf38d59663578ec446da6bf0933f008861121e809fdfce",
+    "operationsBeforeOfflineAfterRestart": [
+      24,
+      24,
+      24,
+      24
+    ],
+    "noWriteReplayOnReconnectOrRestart": true,
+    "nativeHistoryTurnCount": 6,
+    "nativeHistoryStatuses": {
+      "completed": 5,
+      "interrupted": 1
+    },
+    "historyPagination": "5 recent native turns plus next page = 6 unique turns; opaque revision preserved",
+    "textAndAttachmentTurns": "native completion observed",
+    "steerAndInterrupt": "accepted; native turn interrupted; idle recovered",
+    "lifecycle": "name, fork, revert, archive, unarchive and confirmed delete accepted on dedicated test sessions; deleted temporary lifecycle session absent from list",
+    "fileTransfer": {
+      "nativeOpenAndSaveDialogs": true,
+      "downloadBytes": 45,
+      "sourceAndDownloadSha256": "7a61875592c01f6356177dce2f30168b085ca346740a16634a8e05f8efd98c0e",
+      "imageUploadAndRemoval": "accepted",
+      "imagePreview": {
+        "mime": "image/png",
+        "complete": true,
+        "naturalWidth": 32
+      },
+      "nativeCreatedTestFileSha256": "bebc6bbfd4a49a35f525b5367f0f394c9a0e1e2efce778707a8d51c5403987c3"
+    },
+    "extensions": [
+      {
+        "kind": "skills",
+        "status": "available",
+        "limited": false,
+        "count": 84
+      },
+      {
+        "kind": "mcp",
+        "status": "available",
+        "limited": true,
+        "count": 9,
+        "reasonCode": "MCP_RESOURCES_NOT_REQUESTED"
+      },
+      {
+        "kind": "apps",
+        "status": "available",
+        "limited": false,
+        "count": 22
+      },
+      {
+        "kind": "plugins",
+        "status": "unavailable",
+        "limited": false,
+        "count": 0,
+        "reasonCode": "STABILITY_UNVERIFIED"
+      }
+    ],
+    "usage": {
+      "rateLimits": true,
+      "account": true,
+      "limited": false
+    },
+    "gui": "actual sandboxed Electron on GNOME Wayland; AT-SPI native chooser actions, targeted keyboard, xdg-desktop-portal window screenshot",
+    "testClientClosed": true
+  },
+  "gatewayProtection": {
+    "before": {
+      "ActiveState": "active",
+      "SubState": "running",
+      "InvocationID": "b071e3fbc4334776b7b46647a9eda734",
+      "MainPID": "43007",
+      "NRestarts": "0",
+      "ExecMainStartTimestampMonotonic": "2643025385"
+    },
+    "after": {
+      "ActiveState": "active",
+      "SubState": "running",
+      "InvocationID": "b071e3fbc4334776b7b46647a9eda734",
+      "MainPID": "43007",
+      "NRestarts": "0",
+      "ExecMainStartTimestampMonotonic": "2643025385"
+    },
+    "allFieldsIdentical": true,
+    "gatewaySourceConfigAndServiceUnmodified": true,
+    "testGatewayCreated": false
+  },
+  "limitations": [
+    "Real pending native approvals were not reliably triggered; validation and GUI are fixture-only for approvals.",
+    "Real native session reported no Plan tool; Plan event projection and UI are fixture-tested.",
+    "HTTPS/WSS configuration and rejection tests only; no public/TLS live acceptance.",
+    "P4.3 IndexedDB history, persisted drafts and reading restoration remain deferred; endpoint must be reentered after restart.",
+    "Plan/Diff/token event data may be absent after reconnect when protocol snapshots do not supply it.",
+    "Downloads create new files only; interrupted process can leave an incomplete new file.",
+    "No DEB, Release, Gateway/Android update, native share dialog or background Tray.",
+    "Successful acceptance receipts are distinguished from observed native turn execution."
+  ],
+  "retainedTestResources": [
+    "Dedicated review profile with encrypted identity and durable journal",
+    "Dedicated project and primary/fork history, including an initial unmaterialized empty native test thread",
+    "Only the disposable lifecycle acceptance session was deleted through confirmed product UI"
+  ],
+  "tooling": "GNOME computer-use extension setup was required for window targeting; no session logout or Gateway/service changes. Native screenshot and targeted input subsequently worked."
+}

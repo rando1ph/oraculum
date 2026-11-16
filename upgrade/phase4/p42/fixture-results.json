@@ -1,0 +1,191 @@
+{
+  "status": "passed",
+  "phase": "P4.2 fixtures",
+  "manifestHash": "a5a0bc9703b1b37cb301b72476a30ffd9209d18c57036c31cd2a9197221d55cc",
+  "evidence": "Actual sandboxed Electron GNOME/Wayland UI with synthetic display DTOs; no Gateway connection",
+  "runtime": {
+    "versions": {
+      "electron": "44.9.1",
+      "chromium": "152.0.7977.167",
+      "node": "24.22.0"
+    },
+    "preferences": {
+      "sandbox": true,
+      "contextIsolation": true,
+      "nodeIntegration": false,
+      "nodeIntegrationInSubFrames": false,
+      "webSecurity": true,
+      "webviewTag": false
+    },
+    "sandbox": {
+      "seccomp": "2",
+      "noNewPrivileges": "1"
+    },
+    "secureStorage": {
+      "available": true,
+      "backend": "gnome_libsecret"
+    },
+    "helperOverrideUsed": true
+  },
+  "checks": [
+    "unchanged independent bundle and original Outline",
+    "actual sandbox, isolated Profile, secure-storage backend and finite preload API",
+    "real business IPC rejects open RPC, malformed actions and unsafe endpoints without network",
+    "registered IPC rejects synthetic foreign, detached and same-origin forged frames",
+    "actual renderer displays explicit fixtures, GFM and unchanged three-theme Diff",
+    "actual Files preview decodes a valid PNG through the product CSP",
+    "unknown and offline fixture states block writes while preserving the draft",
+    "active synchronizing Turn exposes Stop and Steer while preserving stale and unknown gates",
+    "stale approvals cannot be accepted and missing patch evidence stays restricted",
+    "bounded complete file approval evidence submits its displayed digest to the rejecting real controller",
+    "archive provenance and child-thread lifecycle limitations remain explicit",
+    "narrow layout and Inspector keyboard focus remain usable",
+    "real CSP blocks fetch, WebSocket, inline script and iframe requests",
+    "actual popup, permissions and renderer navigation are denied",
+    "actual renderer download is cancelled before a file is saved",
+    "zero fixture transport calls, unchanged bundle and no resident test client"
+  ],
+  "screenshots": [
+    {
+      "file": "01-fixture-light.png",
+      "sha256": "724a37b821818a0b2b88c6cbaeb5406b5ec8b990a2e896f21b6cb15b6172e458",
+      "width": 2160,
+      "height": 1385,
+      "theme": "light"
+    },
+    {
+      "file": "01-fixture-dark.png",
+      "sha256": "3ae8b91fc67965e2281143a2d5d0e9e36b423b9c61caaa6e0f55821dd838d307",
+      "width": 2160,
+      "height": 1385,
+      "theme": "dark"
+    },
+    {
+      "file": "01-fixture-oled.png",
+      "sha256": "73797b2ec6afb33b0716ba6a4fb5ae3caa2849a1ddfc6cffcd11f3ead16e46bf",
+      "width": 2160,
+      "height": 1385,
+      "theme": "oled"
+    },
+    {
+      "file": "07-fixture-decoded-image-preview.png",
+      "sha256": "20fe010e7b4e91756b2a7154f3665885de8fce24c2f786d1f90c7dd3cf73b201",
+      "width": 2160,
+      "height": 1385,
+      "theme": "oled"
+    },
+    {
+      "file": "02-fixture-offline.png",
+      "sha256": "95f69e52df4c89a38f83bb8ac0caf38a83582b0d1fa3b8319c2c0c9b863650ca",
+      "width": 2160,
+      "height": 1385,
+      "theme": "oled"
+    },
+    {
+      "file": "05-fixture-active-controls.png",
+      "sha256": "f1b94f745d3634436384b65a156dfc766258c1a4540b627aa1f1b84f466e04be",
+      "width": 2160,
+      "height": 1385,
+      "theme": "oled"
+    },
+    {
+      "file": "03-fixture-restricted-approval.png",
+      "sha256": "d4b2b543e5f2d5557b5cdf705946d2d519dfcff4d1d66798f2ac22314ff161a5",
+      "width": 2160,
+      "height": 1385,
+      "theme": "oled"
+    },
+    {
+      "file": "06-fixture-complete-file-approval.png",
+      "sha256": "ccdf1f85ee2d2203831cdecc4f4a0ea9ec399c708e0847e0712a0791b874917f",
+      "width": 2160,
+      "height": 1385,
+      "theme": "oled"
+    },
+    {
+      "file": "04-fixture-narrow.png",
+      "sha256": "33939420dfae60181b063fb41b7e9a1aa6302cc04bdaedcd6d25ef5e64a058dc",
+      "width": 1500,
+      "height": 1050,
+      "theme": "oled"
+    }
+  ],
+  "mainTcpAttemptsAfterLaunch": 0,
+  "ordinaryRendererExternalRequestsAfterLaunch": 0,
+  "fixtureActionsForwardedToRealController": [
+    {
+      "action": {
+        "type": "interrupt"
+      },
+      "completed": true,
+      "result": {
+        "status": "idle",
+        "endpoint": "",
+        "operationCount": 0,
+        "notice": "CONNECTION_NOT_READY"
+      }
+    },
+    {
+      "action": {
+        "type": "steer",
+        "text": "fixture 插话内容"
+      },
+      "completed": true,
+      "result": {
+        "status": "idle",
+        "endpoint": "",
+        "operationCount": 0,
+        "notice": "CONNECTION_NOT_READY"
+      }
+    },
+    {
+      "action": {
+        "type": "answer",
+        "interactionId": "55555555-5555-4555-8555-555555555555",
+        "generation": 1,
+        "epoch": "22222222-2222-4222-8222-222222222222",
+        "response": {
+          "type": "approval",
+          "decision": "accept"
+        }
+      },
+      "completed": true,
+      "result": {
+        "status": "idle",
+        "endpoint": "",
+        "operationCount": 0,
+        "notice": "CONNECTION_NOT_READY"
+      }
+    },
+    {
+      "action": {
+        "type": "answer",
+        "interactionId": "88888888-8888-4888-8888-888888888888",
+        "generation": 2,
+        "epoch": "22222222-2222-4222-8222-222222222222",
+        "response": {
+          "type": "approval",
+          "decision": "accept"
+        },
+        "contextDigest": "ceab8dd2e507b95d47cb58647c4cb009f093b519cd573df7926c3879416f05fe"
+      },
+      "completed": true,
+      "result": {
+        "status": "idle",
+        "endpoint": "",
+        "operationCount": 0,
+        "notice": "CONNECTION_NOT_READY"
+      }
+    }
+  ],
+  "limitations": [
+    "Business state, approval cards and unknown-operation data are fixtures, not native Codex execution.",
+    "Fixture DTOs are sent through the real main-to-preload event; no authentication or HTTP/WS handshake is claimed.",
+    "Stop, Steer and approval clicks reach the original real IPC handler; the unconfigured controller rejects them. Enabled fixture UI is not native action success.",
+    "The file approval digest is synthetic fixture evidence; its exact IPC submission is checked, not accepted as a native Codex proof.",
+    "Foreign-frame IPC rejection invokes the real registered handler with synthetic event identities.",
+    "Network guards and request observers attach after Playwright launch; startup isolation also relies on the fresh empty Profile and product policy.",
+    "Playwright debugger loopback endpoints are automation plumbing, not a test Gateway.",
+    "No HTTPS/TLS, production Gateway, formal package or physical desktop input acceptance was performed."
+  ]
+}
