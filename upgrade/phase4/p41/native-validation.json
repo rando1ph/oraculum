@@ -1,0 +1,21 @@
+{
+  "environment": "Ubuntu 26.04.1, GNOME Wayland, 150% display scale",
+  "capture": "xdg-desktop-portal, native application window, 2160x1440 pixels",
+  "input": "AT-SPI semantic theme actions; system keyboard through ydotool with exact window focus verification",
+  "checks": [
+    "native Light connection screen, Dark and OLED sample screens visually reviewed",
+    "Ctrl+Shift+0 changed OLED to Light and reset to unconfigured screen; confirmed AT-SPI pressed state and appearance.json readback",
+    "Alt+F4 closed last window, launcher exit code 0; recorded application PID absent afterwards"
+  ],
+  "limitations": [
+    "Native shortcut test directly proves theme recovery; zoom recovery was checked separately in the automated menu test",
+    "No Gateway or business connection; no package installation"
+  ],
+  "screenshots": [
+    "07-native-light-connect.png",
+    "08-native-dark-preview.png",
+    "09-native-oled-preview.png",
+    "10-native-restored.png"
+  ],
+  "gatewayGuard": "Read-only service metadata unchanged: active/running, same MainPID, InvocationID, NRestarts=0 and monotonic start timestamp; no requests sent to Gateway"
+}

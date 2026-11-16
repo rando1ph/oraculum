@@ -1,0 +1,654 @@
+{
+  "status": "passed",
+  "stage": "P4.1",
+  "evidence": "Real sandboxed Electron on GNOME/Wayland; renderer sample data only",
+  "versions": {
+    "electron": "44.9.1",
+    "chromium": "152.0.7977.167",
+    "node": "24.22.0"
+  },
+  "osSandbox": {
+    "seccomp": "2",
+    "noNewPrivileges": "1",
+    "helperOverrideUsed": true
+  },
+  "display": {
+    "workAreaSize": {
+      "width": 1920,
+      "height": 1200
+    },
+    "bounds": {
+      "x": 0,
+      "y": 0,
+      "width": 1920,
+      "height": 1200
+    },
+    "scaleFactor": 1.5,
+    "windowBounds": {
+      "x": 22,
+      "y": 19,
+      "width": 1440,
+      "height": 960
+    },
+    "contentBounds": {
+      "x": 22,
+      "y": 56,
+      "width": 1440,
+      "height": 923
+    }
+  },
+  "checks": [
+    "bundle manifest and original Outline bytes",
+    "real sandboxed Electron and isolated development profile",
+    "unconfigured startup and three authentic themes",
+    "single instance stays within the selected isolated profile",
+    "keyboard skip link keeps the fixed document origin and working IPC",
+    "explicit local preview, Outline, Diff and responsive layout",
+    "appearance IPC rejects malformed and oversized requests",
+    "CSP blocks remote fetch, WebSocket, inline script and frames",
+    "new windows, external navigation and permissions are denied",
+    "renderer download is cancelled before saving",
+    "theme and Inspector persist across normal window close",
+    "programmatic native menu action restores appearance and zoom",
+    "corrupt appearance safely falls back and preserves original bytes",
+    "no observed UI network requests, uncaught errors or resident client"
+  ],
+  "screenshots": [
+    "01-connect-dark.png",
+    "01-connect-light.png",
+    "01-connect-oled.png",
+    "02-preview-dark.png",
+    "02-preview-light.png",
+    "02-preview-oled.png",
+    "03-layout-1000-1.25.png",
+    "03-layout-1000-1.png",
+    "03-layout-1280-1.png",
+    "03-layout-1600-1.png",
+    "04-restored.png"
+  ],
+  "screenshotEvidence": [
+    {
+      "file": "01-connect-light.png",
+      "theme": "light",
+      "sha256": "8e16ce5491bb8727a0662c854ce411c3c49ad6927ab91eb41b8e1790b4a24e54",
+      "width": 2160,
+      "height": 1385,
+      "attempts": 1,
+      "samples": [
+        {
+          "column": "navigation",
+          "expected": [
+            240,
+            242,
+            236,
+            255
+          ],
+          "actual": [
+            239,
+            242,
+            236,
+            255
+          ]
+        },
+        {
+          "column": "conversation",
+          "expected": [
+            251,
+            252,
+            249,
+            255
+          ],
+          "actual": [
+            251,
+            252,
+            249,
+            255
+          ]
+        },
+        {
+          "column": "inspector",
+          "expected": [
+            245,
+            246,
+            242,
+            255
+          ],
+          "actual": [
+            245,
+            246,
+            242,
+            255
+          ]
+        }
+      ]
+    },
+    {
+      "file": "01-connect-dark.png",
+      "theme": "dark",
+      "sha256": "89cbe14ec80945b70fb9e33907f60111a5cbc3d7ca6b7bc453ff80b3ee2123fc",
+      "width": 2160,
+      "height": 1385,
+      "attempts": 1,
+      "samples": [
+        {
+          "column": "navigation",
+          "expected": [
+            17,
+            21,
+            15,
+            255
+          ],
+          "actual": [
+            17,
+            21,
+            14,
+            255
+          ]
+        },
+        {
+          "column": "conversation",
+          "expected": [
+            23,
+            27,
+            22,
+            255
+          ],
+          "actual": [
+            23,
+            27,
+            21,
+            255
+          ]
+        },
+        {
+          "column": "inspector",
+          "expected": [
+            28,
+            33,
+            26,
+            255
+          ],
+          "actual": [
+            28,
+            33,
+            26,
+            255
+          ]
+        }
+      ]
+    },
+    {
+      "file": "01-connect-oled.png",
+      "theme": "oled",
+      "sha256": "3890767244275406117e55726f8ad0ec2dd0cc5ab3dceb46c7709ddc4b89b298",
+      "width": 2160,
+      "height": 1385,
+      "attempts": 1,
+      "samples": [
+        {
+          "column": "navigation",
+          "expected": [
+            0,
+            0,
+            0,
+            255
+          ],
+          "actual": [
+            0,
+            0,
+            0,
+            255
+          ]
+        },
+        {
+          "column": "conversation",
+          "expected": [
+            0,
+            0,
+            0,
+            255
+          ],
+          "actual": [
+            0,
+            0,
+            0,
+            255
+          ]
+        },
+        {
+          "column": "inspector",
+          "expected": [
+            0,
+            0,
+            0,
+            255
+          ],
+          "actual": [
+            0,
+            0,
+            0,
+            255
+          ]
+        }
+      ]
+    },
+    {
+      "file": "02-preview-light.png",
+      "theme": "light",
+      "sha256": "f8654a2f17eb13eab3bbce9d08c29ffa9e3ee1649661612ac021b655b9573e71",
+      "width": 2160,
+      "height": 1385,
+      "attempts": 1,
+      "samples": [
+        {
+          "column": "navigation",
+          "expected": [
+            240,
+            242,
+            236,
+            255
+          ],
+          "actual": [
+            239,
+            242,
+            236,
+            255
+          ]
+        },
+        {
+          "column": "conversation",
+          "expected": [
+            251,
+            252,
+            249,
+            255
+          ],
+          "actual": [
+            251,
+            252,
+            249,
+            255
+          ]
+        },
+        {
+          "column": "inspector",
+          "expected": [
+            245,
+            246,
+            242,
+            255
+          ],
+          "actual": [
+            245,
+            246,
+            242,
+            255
+          ]
+        }
+      ]
+    },
+    {
+      "file": "02-preview-dark.png",
+      "theme": "dark",
+      "sha256": "bb33a0966684650ca9e460955a62f149764ff8807516a424395d8aebee615467",
+      "width": 2160,
+      "height": 1385,
+      "attempts": 1,
+      "samples": [
+        {
+          "column": "navigation",
+          "expected": [
+            17,
+            21,
+            15,
+            255
+          ],
+          "actual": [
+            17,
+            21,
+            14,
+            255
+          ]
+        },
+        {
+          "column": "conversation",
+          "expected": [
+            23,
+            27,
+            22,
+            255
+          ],
+          "actual": [
+            23,
+            27,
+            21,
+            255
+          ]
+        },
+        {
+          "column": "inspector",
+          "expected": [
+            28,
+            33,
+            26,
+            255
+          ],
+          "actual": [
+            28,
+            33,
+            26,
+            255
+          ]
+        }
+      ]
+    },
+    {
+      "file": "02-preview-oled.png",
+      "theme": "oled",
+      "sha256": "57ef1a1e393fc73bdfc4faea9b77a283251efbcd85798e6098299e886a872624",
+      "width": 2160,
+      "height": 1385,
+      "attempts": 1,
+      "samples": [
+        {
+          "column": "navigation",
+          "expected": [
+            0,
+            0,
+            0,
+            255
+          ],
+          "actual": [
+            0,
+            0,
+            0,
+            255
+          ]
+        },
+        {
+          "column": "conversation",
+          "expected": [
+            0,
+            0,
+            0,
+            255
+          ],
+          "actual": [
+            0,
+            0,
+            0,
+            255
+          ]
+        },
+        {
+          "column": "inspector",
+          "expected": [
+            0,
+            0,
+            0,
+            255
+          ],
+          "actual": [
+            0,
+            0,
+            0,
+            255
+          ]
+        }
+      ]
+    },
+    {
+      "file": "03-layout-1600-1.png",
+      "theme": "oled",
+      "sha256": "29da0f7ccc2eca8052ca20b60c577b55864fd83cfb60d023e5666837129a3a51",
+      "width": 2400,
+      "height": 1500,
+      "attempts": 1,
+      "samples": [
+        {
+          "column": "navigation",
+          "expected": [
+            0,
+            0,
+            0,
+            255
+          ],
+          "actual": [
+            0,
+            0,
+            0,
+            255
+          ]
+        },
+        {
+          "column": "conversation",
+          "expected": [
+            0,
+            0,
+            0,
+            255
+          ],
+          "actual": [
+            0,
+            0,
+            0,
+            255
+          ]
+        },
+        {
+          "column": "inspector",
+          "expected": [
+            0,
+            0,
+            0,
+            255
+          ],
+          "actual": [
+            0,
+            0,
+            0,
+            255
+          ]
+        }
+      ]
+    },
+    {
+      "file": "03-layout-1280-1.png",
+      "theme": "oled",
+      "sha256": "d9fd7403e9342a5faa77017064e7a1532b72f53953ca4e842332aac41613c01f",
+      "width": 1920,
+      "height": 1200,
+      "attempts": 1,
+      "samples": [
+        {
+          "column": "navigation",
+          "expected": [
+            0,
+            0,
+            0,
+            255
+          ],
+          "actual": [
+            0,
+            0,
+            0,
+            255
+          ]
+        },
+        {
+          "column": "conversation",
+          "expected": [
+            0,
+            0,
+            0,
+            255
+          ],
+          "actual": [
+            0,
+            0,
+            0,
+            255
+          ]
+        },
+        {
+          "column": "inspector",
+          "expected": [
+            0,
+            0,
+            0,
+            255
+          ],
+          "actual": [
+            0,
+            0,
+            0,
+            255
+          ]
+        }
+      ]
+    },
+    {
+      "file": "03-layout-1000-1.png",
+      "theme": "oled",
+      "sha256": "2a486ad2daaa69feff841f056579149cd7679d88a8a5aedfc19022baae3d29b1",
+      "width": 1500,
+      "height": 1020,
+      "attempts": 1,
+      "samples": [
+        {
+          "column": "navigation",
+          "expected": [
+            0,
+            0,
+            0,
+            255
+          ],
+          "actual": [
+            0,
+            0,
+            0,
+            255
+          ]
+        },
+        {
+          "column": "conversation",
+          "expected": [
+            0,
+            0,
+            0,
+            255
+          ],
+          "actual": [
+            0,
+            0,
+            0,
+            255
+          ]
+        }
+      ]
+    },
+    {
+      "file": "03-layout-1000-1.25.png",
+      "theme": "oled",
+      "sha256": "1c1e9d9cd5df5a19a8d6887d174010ccb557bc434686828a3536b8700b6e44e7",
+      "width": 1500,
+      "height": 1020,
+      "attempts": 1,
+      "samples": [
+        {
+          "column": "navigation",
+          "expected": [
+            0,
+            0,
+            0,
+            255
+          ],
+          "actual": [
+            0,
+            0,
+            0,
+            255
+          ]
+        },
+        {
+          "column": "conversation",
+          "expected": [
+            0,
+            0,
+            0,
+            255
+          ],
+          "actual": [
+            0,
+            0,
+            0,
+            255
+          ]
+        }
+      ]
+    },
+    {
+      "file": "04-restored.png",
+      "theme": "light",
+      "sha256": "fd24922b3cdb1b79a3abc1f2fe697ceee6377de2b09cefd1356e42fa81c49af2",
+      "width": 2160,
+      "height": 1385,
+      "attempts": 1,
+      "samples": [
+        {
+          "column": "navigation",
+          "expected": [
+            240,
+            242,
+            236,
+            255
+          ],
+          "actual": [
+            239,
+            242,
+            236,
+            255
+          ]
+        },
+        {
+          "column": "conversation",
+          "expected": [
+            251,
+            252,
+            249,
+            255
+          ],
+          "actual": [
+            251,
+            252,
+            249,
+            255
+          ]
+        },
+        {
+          "column": "inspector",
+          "expected": [
+            245,
+            246,
+            242,
+            255
+          ],
+          "actual": [
+            245,
+            246,
+            242,
+            255
+          ]
+        }
+      ]
+    }
+  ],
+  "limitations": [
+    "No Gateway/HTTP/WS pairing or business traffic",
+    "No HTTPS/TLS or package installation",
+    "Request observation starts after Playwright launch returns; startup protection also relies on resource/session policy and unit tests",
+    "Redirect/frame navigation handler emission is synthetic; the external anchor click is a real renderer action",
+    "Native recovery menu handler is invoked programmatically; physical Ctrl+Shift+0 is verified separately because CDP does not emit before-input-event on this host",
+    "Compositor screenshots and native input acceptance are recorded separately"
+  ]
+}

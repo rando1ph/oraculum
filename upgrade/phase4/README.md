@@ -1,6 +1,6 @@
 # Oraculum 2.0 Ubuntu Desktop｜P4.0 审阅包
 
-**总体架构与视觉方向已获基本认可；原版 Outline 标志修正已交付，等待用户最终确认。Task 保持 In progress，不进入 P4.1。**
+**2026-11-17 最新决定：用户已最终接受 P4.0（含完整 Outline 标志修正），Notion P4.0 已结项。P4.1 独立客户端已获授权实施；当前工程说明见 [Desktop README](../../apps/desktop/README.md)。以下保留 P4.0 设计与原型的历史交付记录，其中“等待确认/不进入 P4.1”仅描述当时状态。**
 
 来源：[P4.0 任务](https://app.notion.com/p/41a5421e690b813b8004c9495eed1027)、[2.0 项目正典](https://app.notion.com/p/4135421e690b815eb404c3024c860134)、根 [AGENTS.md](../../AGENTS.md)。完整读取于 2026-11-17（上海时间）；源码研究基线为 `3c7a7787b31c3fc007c19c993e0b9f8f78f12923`，开始时 main 与新获取的 origin/main 一致、工作区干净。
 

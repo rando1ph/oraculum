@@ -1,0 +1,109 @@
+{
+  "images": [
+    {
+      "file": "screenshots/07-native-light-connect.png",
+      "width": 2160,
+      "height": 1440,
+      "bytes": 366618,
+      "sha256": "b9b8029e340ad0a51744d28fc097863df12b7e067208426713eead0cc598d35c"
+    },
+    {
+      "file": "screenshots/08-native-dark-preview.png",
+      "width": 2160,
+      "height": 1440,
+      "bytes": 449783,
+      "sha256": "7834c2c0e47c28e814ac3a0e9ce882207c7de81cd094e49fd40f8d1f358f0f34"
+    },
+    {
+      "file": "screenshots/09-native-oled-preview.png",
+      "width": 2160,
+      "height": 1440,
+      "bytes": 458968,
+      "sha256": "ea62da46f5a3a8f05678d343fd28d7b8deb80be2d425d8d0e0d738ded60be1d8"
+    },
+    {
+      "file": "screenshots/10-native-restored.png",
+      "width": 2160,
+      "height": 1440,
+      "bytes": 366859,
+      "sha256": "759f47e7b33281b5e4f23877e6b33613799bcbbbb1763aba26cd560cfee95092"
+    },
+    {
+      "file": "screenshots/automated/01-connect-dark.png",
+      "width": 2160,
+      "height": 1385,
+      "bytes": 249168,
+      "sha256": "89cbe14ec80945b70fb9e33907f60111a5cbc3d7ca6b7bc453ff80b3ee2123fc"
+    },
+    {
+      "file": "screenshots/automated/01-connect-light.png",
+      "width": 2160,
+      "height": 1385,
+      "bytes": 246676,
+      "sha256": "8e16ce5491bb8727a0662c854ce411c3c49ad6927ab91eb41b8e1790b4a24e54"
+    },
+    {
+      "file": "screenshots/automated/01-connect-oled.png",
+      "width": 2160,
+      "height": 1385,
+      "bytes": 250296,
+      "sha256": "3890767244275406117e55726f8ad0ec2dd0cc5ab3dceb46c7709ddc4b89b298"
+    },
+    {
+      "file": "screenshots/automated/02-preview-dark.png",
+      "width": 2160,
+      "height": 1385,
+      "bytes": 309329,
+      "sha256": "bb33a0966684650ca9e460955a62f149764ff8807516a424395d8aebee615467"
+    },
+    {
+      "file": "screenshots/automated/02-preview-light.png",
+      "width": 2160,
+      "height": 1385,
+      "bytes": 311203,
+      "sha256": "f8654a2f17eb13eab3bbce9d08c29ffa9e3ee1649661612ac021b655b9573e71"
+    },
+    {
+      "file": "screenshots/automated/02-preview-oled.png",
+      "width": 2160,
+      "height": 1385,
+      "bytes": 309313,
+      "sha256": "57ef1a1e393fc73bdfc4faea9b77a283251efbcd85798e6098299e886a872624"
+    },
+    {
+      "file": "screenshots/automated/03-layout-1000-1.25.png",
+      "width": 1500,
+      "height": 1020,
+      "bytes": 183546,
+      "sha256": "1c1e9d9cd5df5a19a8d6887d174010ccb557bc434686828a3536b8700b6e44e7"
+    },
+    {
+      "file": "screenshots/automated/03-layout-1000-1.png",
+      "width": 1500,
+      "height": 1020,
+      "bytes": 170110,
+      "sha256": "2a486ad2daaa69feff841f056579149cd7679d88a8a5aedfc19022baae3d29b1"
+    },
+    {
+      "file": "screenshots/automated/03-layout-1280-1.png",
+      "width": 1920,
+      "height": 1200,
+      "bytes": 274888,
+      "sha256": "d9fd7403e9342a5faa77017064e7a1532b72f53953ca4e842332aac41613c01f"
+    },
+    {
+      "file": "screenshots/automated/03-layout-1600-1.png",
+      "width": 2400,
+      "height": 1500,
+      "bytes": 342092,
+      "sha256": "29da0f7ccc2eca8052ca20b60c577b55864fd83cfb60d023e5666837129a3a51"
+    },
+    {
+      "file": "screenshots/automated/04-restored.png",
+      "width": 2160,
+      "height": 1385,
+      "bytes": 246875,
+      "sha256": "fd24922b3cdb1b79a3abc1f2fe697ceee6377de2b09cefd1356e42fa81c49af2"
+    }
+  ]
+}
