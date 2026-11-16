@@ -1,10 +1,12 @@
 # Oraculum 2.0 Ubuntu Desktop｜P4.0 审阅包
 
-**研究、设计与静态原型已交付，等待用户审阅。Task 保持 In progress，不进入 P4.1。**
+**总体架构与视觉方向已获基本认可；原版 Outline 标志修正已交付，等待用户最终确认。Task 保持 In progress，不进入 P4.1。**
 
 来源：[P4.0 任务](https://app.notion.com/p/41a5421e690b813b8004c9495eed1027)、[2.0 项目正典](https://app.notion.com/p/4135421e690b815eb404c3024c860134)、根 [AGENTS.md](../../AGENTS.md)。完整读取于 2026-11-17（上海时间）；源码研究基线为 `3c7a7787b31c3fc007c19c993e0b9f8f78f12923`，开始时 main 与新获取的 origin/main 一致、工作区干净。
 
-最新 Notion 决定覆盖本地历史资料中“Desktop 暂缓”“旧主题可选复用”“可另起测试 Gateway”等冲突建议。本轮只新增本目录文档和设计资产，正式 Desktop/Web/Gateway/Android、历史主题文件与发布基线均不改动。现有 Gateway Beta 3 未连接、重启、修改或部署替代实例。
+最新 Notion 决定覆盖本地历史资料中“Desktop 暂缓”“旧主题可选复用”“可另起测试 Gateway”等冲突建议。交付范围限本目录文档和设计资产，正式 Desktop/Web/Gateway/Android、历史主题文件与发布基线均不改动。现有 Gateway Beta 3 未连接、重启、修改或部署替代实例。
+
+2026-11-17 用户收尾反馈：导航品牌标志与对话头像统一改用原版完整 Outline SVG；连接页沿用同一资产。三主题通过既有 accent 着色，SVG 路径/比例/细节及现有尺寸保留，9 张受影响截图同步更新。Diff 10px 字号与其他已认可 UI 不调整。
 
 ## 审阅入口
 
@@ -45,6 +47,6 @@ python3 -m http.server 0 --bind 127.0.0.1 --directory upgrade/phase4/prototype
 
 - **已定案**：Electron/React/TypeScript、Vite/pnpm、Zustand、IndexedDB、Tailwind/全新 tokens、三栏、Oracle Eye、三主题；旧主题系统完全退出新版；main 管通信与凭据、有限 IPC；仅本机 HTTP/WS 实际联调，HTTPS/WSS 保留入口；无 Tray、无旧应用状态迁移、无 ACP/自建执行循环。
 - **实现建议**：自有资源协议与目录命名、三 IndexedDB 库 + main journal、首次 Light、组件密度/间距、缓存预算与刷新调度。均在文档中标为建议，没有借研究任务冻结新的架构决定。
-- **本次审阅内容**：三栏比例、绿灰品牌方向、正文与 Inspector 密度、三主题、审批与 unknown 的信息层级，以及 API 受限项的用户表达。工程检查不能替代用户视觉接受。
+- **本次最终确认**：原版完整 Outline 标志及对应截图；整体布局、三主题和审美方向已获基本认可，Diff 字号整改建议已由用户撤回。任务结项仍由用户确认。
 
 P4.0 不实现正式 React 页面、Electron 安全运行时/IPC、IndexedDB 数据层或真实写入，不构建/安装/发行 DEB，不修改服务、网络、凭据、原生 Codex 项目/会话或父项目历史。后续只有在用户接受本阶段后，才决定建立/启动 P4.1。

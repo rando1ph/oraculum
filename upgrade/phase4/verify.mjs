@@ -34,6 +34,11 @@ assert(html.includes("form-action 'none'"), 'Prototype must block form submissio
 assert(!/\b(?:fetch|WebSocket|XMLHttpRequest|sendBeacon)\s*\(/.test(js), 'Network operation in prototype');
 assert(!/\b(?:localStorage|sessionStorage|indexedDB)\b/.test(js), 'Prototype unexpectedly persists state');
 assert(!/@import\b|url\(\s*["']?https?:/i.test(css), 'Remote CSS dependency');
+assert(![html, css, js].some(text => text.includes('oracle-eye-compact.svg')), 'Prototype must use the full Outline brand');
+for (const selector of ['.oracle-eye', '.connect-eye']) {
+  const rule = css.split(`${selector} {`)[1]?.split('}')[0];
+  assert(rule?.includes('assets/oracle-eye-outline.svg'), `Full Outline brand missing: ${selector}`);
+}
 for (const match of html.matchAll(/(?:src|href)="([^"#][^"]*)"/g)) {
   assert(!/^[a-z]+:/i.test(match[1]), `Non-local resource: ${match[1]}`);
   assert((await stat(resolve(here, 'prototype', match[1]))).isFile(), 'Missing prototype resource');

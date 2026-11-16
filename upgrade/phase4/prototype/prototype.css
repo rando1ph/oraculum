@@ -33,7 +33,7 @@ code, pre { font-family: var(--font-code); }
 .workspace.inspector-closed { grid-template-columns: var(--nav-width) minmax(420px, 1fr); }
 .navigation { min-height: 0; display: flex; flex-direction: column; padding: 24px 14px 0; background: var(--navigation); border-right: 1px solid var(--line); }
 .brand { display: flex; align-items: center; gap: 11px; padding: 0 5px 26px; }
-.oracle-eye { display: inline-block; width: 38px; height: 38px; flex: 0 0 auto; background: var(--accent); mask: url("assets/oracle-eye-compact.svg") center/contain no-repeat; }
+.oracle-eye { display: inline-block; width: 38px; height: 38px; flex: 0 0 auto; background: var(--accent); mask: url("assets/oracle-eye-outline.svg") center/contain no-repeat; }
 .brand strong { display: block; font-size: 19px; letter-spacing: -.4px; line-height: 1.25; }
 .brand div>span { display: block; color: var(--muted); font-size: 10px; margin-top: 6px; }
 .new-conversation { border: 1px solid var(--control-line); border-radius: var(--radius-control); padding: 10px 11px; display: flex; align-items: center; gap: 10px; background: var(--canvas); font-size: 12px; font-weight: 500; }
