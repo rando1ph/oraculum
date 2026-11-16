@@ -26,6 +26,23 @@ function fixture(files: Record<string, string> = { 'index.html': '<!doctype html
 }
 
 describe('Desktop private resource protocol', () => {
+  it('keeps the actual HTML meta policy aligned with response headers so verified data images can render', () => {
+    const html = readFileSync(new URL('../../index.html', import.meta.url), 'utf8');
+    const content = /<meta\b[^>]*http-equiv="Content-Security-Policy"[^>]*content="([^"]+)"[^>]*>/i.exec(html)?.[1];
+    expect(content).toBeDefined();
+    const directives = (policy: string) => new Map(policy.split(';').map(part => part.trim().split(/\s+/)).filter(parts => parts[0])
+      .map(([name, ...sources]) => [name, sources.sort()]));
+    const meta = directives(content!), header = directives(CONTENT_SECURITY_POLICY);
+    // Browser enforces both policies; widening only the header still blocks an
+    // image. Compare actual source HTML, not another copied fixture policy.
+    expect(meta.get('img-src')).toEqual(["'self'", 'data:']);
+    for (const [name, sources] of meta) expect(sources, `CSP directive ${name}`).toEqual(header.get(name));
+    for (const name of ['script-src', 'style-src', 'connect-src', 'frame-src', 'object-src']) {
+      expect(meta.get(name)).not.toContain('data:');
+      expect(header.get(name)).not.toContain('data:');
+    }
+  });
+
   it('serves a verified snapshot with strict response security headers, independent of subsequent disk content', async () => {
     const { renderer, manifest } = fixture();
     const bundle = loadBundle(renderer, manifest);
