@@ -27,12 +27,13 @@ The [original Oraculum project](https://app.notion.com/p/3ff5421e690b81bdae14c06
 - Follow the user's latest visual feedback and approved Stitch/Oracle Eye assets. Preserve existing functionality and safety semantics; obtain direction before major design or information architecture changes.
 - For user-directed Android Studio visual refinement, read [upgrade/phase3/ANDROID_STUDIO_AGENT_HANDOFF.md](upgrade/phase3/ANDROID_STUDIO_AGENT_HANDOFF.md) and wait for the user's page/item instructions before changing UI.
 
-## Ubuntu Desktop P4.1
+## Ubuntu Desktop P4.2
 
-- Follow the [current P4.1 Task](https://app.notion.com/p/41a5421e690b81e0b07ff1000d8c8abc). P4.0 was accepted on 2026-11-17; its approved three-column layout, Light / Dark / OLED Dark tokens, complete Outline Oracle Eye SVG and original Diff font size remain the visual baseline.
-- P4.1 implements independent bundled resources, the minimal React shell, isolated profiles and Electron safety/recovery. Real Gateway authentication/communication and full business state belong to later approved phases.
+- Follow the [current P4.2 Task](https://app.notion.com/p/41a5421e690b81668bbbd49e17e7d400). P4.0 and P4.1 were accepted on 2026-11-17; their approved three-column layout, Light / Dark / OLED Dark tokens, complete Outline Oracle Eye SVG, original Diff font size and independent Electron security boundary remain the baseline.
+- P4.2 implements main-process Gateway Protocol 2.1 communication, system-protected credentials, durable write receipts, core business functions and recovery. Full IndexedDB history/draft/read-position experience and visual refinement belong to P4.3.
 - The new Desktop does not import legacy themes, Theme API v1, Bridge transport or service lifecycle code. Preserve historical source files without putting them in the new runtime.
-- Do not connect to or change the running Gateway Beta 3 for P4.1, create a test Gateway, install/build a formal DEB, publish a release or advance to P4.2. Use a dedicated client profile for real GNOME/Wayland verification; keep the task In progress pending user review.
+- Use the existing running Gateway Beta 3 only through its formal local loopback HTTP/WS APIs, with an independent Desktop device identity and dedicated test project/sessions. Do not modify, restart, stop, upgrade or replace Gateway, alter private configuration/network/systemd, or deploy a test Gateway. Use fixtures for disruptive failure scenarios. HTTPS/WSS remains configurable but has no real remote/TLS acceptance in P4.2.
+- Use a dedicated client profile for real GNOME/Wayland verification. Do not build/install a formal DEB, publish a release or advance to P4.3. Keep P4.2 In progress pending user review.
 
 ## Engineering Workflow
 
