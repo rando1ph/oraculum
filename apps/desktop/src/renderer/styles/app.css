@@ -266,7 +266,7 @@ select:disabled { color: var(--muted); }
 .thread-filter { display: flex; align-items: center; gap: 6px; padding-right: 2px; margin-bottom: 4px; }
 .thread-filter label { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; font-size: 10px; letter-spacing: 0; }
 .thread-filter input { width: 12px; height: 12px; accent-color: var(--accent); }
-.thread-icon { flex: 0 0 auto; width: 13px; }
+.thread > span.thread-icon { flex: 0 0 13px; width: 13px; }
 .thread-icon svg { width: 13px; }
 .load-more { margin: 10px; }
 .header-actions { display: flex; gap: 8px; align-items: center; }
