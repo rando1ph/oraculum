@@ -111,8 +111,40 @@ to the installed dependency. No helper permissions, AppArmor, system settings
 or shared runtime files were changed. This is development startup evidence,
 not formal DEB installation acceptance.
 
-Clean-source Gateway runtime/package build and final protection/publication
-results are recorded after the cleanup source commit. The full Gateway DEB
-installation verifier includes starting a temporary Gateway, so this cleanup
-uses package assembly and static integrity inspection instead. The large
-GNOME/performance/fault/live Codex matrix is not repeated.
+After source commit [`541b48e`](https://github.com/rando1ph/oraculum/commit/541b48e0353ce6fde3ac2b7c60c921b662205afd),
+`pnpm build` passes for both current products with clean source provenance.
+`node scripts/build-gateway-deb.mjs` successfully assembles the Gateway-only
+package. Static extraction validates all 64 runtime files against the recorded
+size/SHA-256 inventory, 57 bundled dependency notices, package identity/version,
+CLI symlink and unchanged service unit. The bundled Node reports v24.21.0.
+No legacy UI/theme/Bridge payload is present. This is a local validation artifact,
+not a new release or replacement of published Beta assets.
+
+- Local artifact: `oraculum-gateway_2.0.0~beta.3_amd64.deb`
+- Size: 30,205,880 bytes
+- SHA-256: `1318523d53786f0b8e35960162ec486f7a2b991c7aee8ebdaa363866bcdc0e3e`
+
+The clean-source Desktop bundle was also launched in the same isolated sandbox
+and passed the lightweight startup check; its Gateway state is idle with an empty
+Endpoint. Its source SHA and renderer manifest hash are in [validation.json](validation.json).
+
+The full Gateway DEB installation verifier includes starting a temporary Gateway,
+so this cleanup uses package assembly and static integrity inspection instead.
+No host install or service start occurs. The large GNOME/performance/fault/live
+Codex matrix is not repeated.
+
+## Protection and publication
+
+All 325 tracked files under Gateway source, Android app, Desktop source, design,
+Gateway Protocol, Gateway packaging and license notices are byte-identical to
+the accepted baseline. Product package declarations and documentation are the
+only changes outside retired code and repository/build entrypoints. The six
+Gateway service properties (state, substate, PID, invocation, start time and
+restart count) remain equal before/after; the service stays active/running with
+zero restarts. Private service configuration and application/user data are not
+read or modified. Local tag refs remain identical; no Release API was used.
+
+The source commit was pushed normally to `origin/main`, and HEAD, origin/main
+and `git ls-remote` matched `541b48e0353ce6fde3ac2b7c60c921b662205afd`. The final documentation/evidence
+commit and remote SHA are recorded in the linked Notion task after publication.
+The task remains **In progress**, awaiting user review. P4.4 remains unstarted.

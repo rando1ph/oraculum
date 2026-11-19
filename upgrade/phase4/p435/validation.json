@@ -1,0 +1,150 @@
+{
+  "date": "2026-11-19",
+  "task": "P4.3.5",
+  "taskStatus": "In progress; pending user review",
+  "baseline": "1b19e0a5c4f24c9ec08c2d7fd94932235a501c0e",
+  "implementationCommit": "541b48e0353ce6fde3ac2b7c60c921b662205afd",
+  "implementationPushVerified": true,
+  "developmentBranch": "main",
+  "deletedTrackedFiles": {
+    "bridge": 65,
+    "apps/web": 69,
+    "themes": 20,
+    "legacy apps/desktop": 8,
+    "legacy packages/shared": 13,
+    "scripts": 87,
+    "legacy packaging": 6,
+    "legacy workflow": 1,
+    "total": 269
+  },
+  "workspacePackagesIncludingRoot": 5,
+  "obsoleteInstalledDependencyPackagesRemoved": 169,
+  "verification": {
+    "frozenLockfileInstall": {
+      "passed": true
+    },
+    "typescriptRootAndDesktop": {
+      "passed": true
+    },
+    "automatedTests": {
+      "passed": true,
+      "files": 46,
+      "tests": 1425,
+      "desktop": 923,
+      "gateway": 340,
+      "sharedAndProtocol": 143,
+      "scripts": 19,
+      "realServiceOrNativeUserStateUsed": false,
+      "isolation": "existing test fixture state and ephemeral ports/processes"
+    },
+    "gatewayProtocol": {
+      "passed": true,
+      "generatedDtoRoots": 85,
+      "typescriptRoundTrips": 101,
+      "rejectedInvalidFixtures": 37,
+      "kotlinRoundTrips": 101,
+      "generatedDrift": false
+    },
+    "android": {
+      "passed": true,
+      "tasks": [
+        "assembleDebug",
+        "lintDebug",
+        "testDebugUnitTest"
+      ],
+      "jvmSuites": 32,
+      "jvmTests": 237,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 0,
+      "deviceActions": false,
+      "releaseSigning": false
+    },
+    "defaultBuild": {
+      "passed": true,
+      "command": "pnpm build",
+      "products": [
+        "independent Desktop bundle",
+        "Gateway runtime"
+      ],
+      "sourceDirty": false
+    },
+    "desktopBundle": {
+      "passed": true,
+      "version": "2.0.0-dev.p43",
+      "rendererResources": 4,
+      "advisory": "Existing approximately 501 kB minified renderer chunk; no scope expansion for code splitting"
+    },
+    "desktopDebGuards": {
+      "buildExitCode": 1,
+      "verifyExitCode": 1,
+      "expected": true,
+      "reason": "Retired pipeline removed; new packaging pending separately authorized P4.4"
+    },
+    "cleanSourceDesktopStartup": {
+      "passed": true,
+      "sourceRevision": "541b48e0353ce6fde3ac2b7c60c921b662205afd",
+      "sourceDirty": false,
+      "surface": "GNOME/Wayland",
+      "columns": 3,
+      "rendererErrors": 0,
+      "sandbox": true,
+      "contextIsolation": true,
+      "nodeIntegration": false,
+      "seccomp": 2,
+      "noNewPrivileges": 1,
+      "isolatedProfile": true,
+      "rendererResources": 4,
+      "manifestSha256": "226481844d5b9d502d9d9d3b29fccb747b88496287aaea52d234923e1815082e",
+      "originalOutlineBytes": true,
+      "gatewayConnection": "idle",
+      "gatewayEndpointEmpty": true,
+      "existingSandboxHelper": true
+    },
+    "gatewayPackageStaticInspection": {
+      "passed": true,
+      "kind": "static package inspection and bundled Node version only",
+      "sourceGit": "541b48e0353ce6fde3ac2b7c60c921b662205afd",
+      "sourceDirty": false,
+      "package": "oraculum-gateway",
+      "version": "2.0.0~beta.3",
+      "architecture": "amd64",
+      "artifact": "oraculum-gateway_2.0.0~beta.3_amd64.deb",
+      "size": 30205880,
+      "sha256": "1318523d53786f0b8e35960162ec486f7a2b991c7aee8ebdaa363866bcdc0e3e",
+      "runtimeFiles": 64,
+      "bundledDependencies": 57,
+      "nodeVersion": "v24.21.0",
+      "allRuntimeBytesMatchManifest": true,
+      "licenseManifestMatches": true,
+      "serviceUnitUnchanged": true,
+      "legacyPayloadAbsent": true,
+      "hostInstallation": false,
+      "serviceStart": false,
+      "temporaryGatewayStart": false
+    }
+  },
+  "protection": {
+    "baseline": "1b19e0a5c4f24c9ec08c2d7fd94932235a501c0e",
+    "protectedFilesByteEqual": 325,
+    "prefixes": [
+      "gateway/src",
+      "apps/android/app",
+      "apps/desktop/src",
+      "design",
+      "packages/gateway-protocol",
+      "packaging/gateway",
+      "packaging/licenses"
+    ],
+    "gatewayServicePropertiesUnchanged": true,
+    "tagRefsUnchanged": true
+  },
+  "limitations": [
+    "No formal Desktop DEB build/install or Release",
+    "No P4.4 implementation",
+    "No large GNOME/performance/fault/live Codex matrix repeated",
+    "Full Gateway DEB installation verifier not run because it starts a temporary Gateway; static payload and hash inspection performed",
+    "Default npm Electron launch needs host sandbox setup; existing byte-identical P4.1 runtime and root-owned helper reused without system modification"
+  ],
+  "publication": "Implementation source push verified; final evidence commit and final remote SHA are recorded in the Notion task after publication."
+}
