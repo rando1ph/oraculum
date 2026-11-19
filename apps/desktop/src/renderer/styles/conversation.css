@@ -1,0 +1,10 @@
+/* The viewport restores native item anchors itself; browser anchoring would
+   otherwise apply a second adjustment when measured message heights change. */
+.conversation-scroll:has(.conversation-window) { overflow-anchor: none; }
+.conversation-window { position: relative; }
+.conversation-row { display: flow-root; }
+.conversation-window-spacer { pointer-events: none; }
+.conversation-latest { position: sticky; bottom: 0; display: flex; align-items: flex-start; justify-content: center; height: 0; z-index: 2; }
+.conversation-latest > button { flex-shrink: 0; min-height: 32px; transform: translateY(-100%); background: var(--canvas); box-shadow: var(--shadow); }
+.expandable-text .output-more { display: block; margin: 6px 0; color: var(--accent); }
+.expandable-text .output-collapse { display: block; margin: 6px 0; }
