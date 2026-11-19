@@ -1,0 +1,117 @@
+{
+  "status": "passed",
+  "phase": "P4.2 performance baseline",
+  "source": {
+    "component": "oraculum-desktop",
+    "stage": "P4.2",
+    "sourceRevision": "85b303c1777f50932ade33525eec19880c033683",
+    "sourceDirty": false,
+    "dependencies": {
+      "react": "19.3.1",
+      "react-dom": "19.3.1",
+      "react-markdown": "10.1.0",
+      "remark-gfm": "4.0.1",
+      "zustand": "5.0.15",
+      "@tailwindcss/vite": "4.3.3",
+      "@types/react": "19.3.0",
+      "@types/react-dom": "19.3.0",
+      "@vitejs/plugin-react": "6.1.2",
+      "electron": "44.9.1",
+      "tailwindcss": "4.3.3",
+      "vite": "8.3.4"
+    }
+  },
+  "manifestHash": "a5a0bc9703b1b37cb301b72476a30ffd9209d18c57036c31cd2a9197221d55cc",
+  "evidence": "Actual sandboxed Electron on GNOME/Wayland with generated fixtures; no Gateway connection",
+  "runtime": {
+    "versions": {
+      "electron": "44.9.1",
+      "chromium": "152.0.7977.167",
+      "node": "24.22.0"
+    },
+    "preferences": {
+      "sandbox": true,
+      "contextIsolation": true,
+      "nodeIntegration": false,
+      "webSecurity": true,
+      "webviewTag": false
+    },
+    "sandbox": {
+      "seccomp": "2",
+      "noNewPrivileges": "1"
+    },
+    "secureStorage": {
+      "available": true,
+      "backend": "gnome_libsecret"
+    },
+    "helperOverrideUsed": true
+  },
+  "checks": [
+    "real GNOME Wayland sandbox and isolated fixture Profile",
+    "actual 1000-message render scroll DOM and memory measurement",
+    "zero Gateway traffic and unchanged built resources"
+  ],
+  "performance": {
+    "longHistory": {
+      "datasetMessages": 1000,
+      "serializedBytes": 1667378,
+      "renderMs": 750,
+      "dom": {
+        "documents": 2,
+        "nodes": 24950,
+        "jsEventListeners": 534
+      },
+      "heap": {
+        "Nodes": 24950,
+        "LayoutDuration": 0,
+        "RecalcStyleDuration": 0,
+        "JSHeapUsedSize": 9533660,
+        "JSHeapTotalSize": 28381184
+      },
+      "scroll": {
+        "frames": 60,
+        "p50Ms": 16.699999999953434,
+        "p95Ms": 17,
+        "maxMs": 89.69999999995343,
+        "mountedMessages": 1000,
+        "elements": 9499,
+        "scrollHeight": 279026
+      },
+      "storage": {
+        "quota": 16255500288,
+        "usage": 0,
+        "usageDetails": {}
+      }
+    },
+    "samplingCaveats": [
+      "The baseline was measured before product rebuilding, against the recorded clean P4.2 source and manifest with the same 1000-message generated workload.",
+      "The early baseline enabled the Performance domain after rendering. LayoutDuration and RecalcStyleDuration zero entries are unavailable measurements and must not be compared to final P4.3 duration deltas.",
+      "Initial DOM/heap are point-in-time Chromium counters; no forced GC and no steady-state RSS claim. Baseline did not record heapAfterScroll.",
+      "One run per bundle is descriptive evidence, not a statistically controlled benchmark. Render, mounted elements and worst scroll frame improved in this sample, while p95 scroll time did not."
+    ]
+  },
+  "mainTcpAttemptsAfterLaunch": 0,
+  "ordinaryRendererExternalRequestsAfterLaunch": 0,
+  "limitations": [
+    "All histories and identities are generated test data, not native Codex execution.",
+    "Fixtures enter through the real main/preload event; credentials and Gateway handshake are not simulated as successes.",
+    "Network guard attaches after launch; the Profile starts empty and product policy also blocks renderer networking.",
+    "Playwright debugger loopback endpoints are automation plumbing, not a test Gateway.",
+    "Scripted composition events exercise IME guards; physical input method acceptance requires the separate Computer Use check.",
+    "No TLS/public network, production service changes, DEB or release work."
+  ],
+  "archive": {
+    "sourceResultsSha256": "822e4f18b93b3b481b605e814667a24427f96c589d04d5566ab7556be5937444",
+    "sanitization": "Generated fixture data only. Original baseline numeric evidence retained; no private profile or absolute host path included. Only final P4.3/P4.2 screenshots are archived in this package."
+  },
+  "unarchivedScreenshotManifest": [
+    {
+      "file": "baseline-long-history.png",
+      "sha256": "74f89f430e68cf70178c448aeb35f7890dbdef0c821af9521b10326123bad352",
+      "width": 2160,
+      "height": 1385,
+      "theme": "light"
+    }
+  ],
+  "screenshots": []
+}

@@ -1,0 +1,150 @@
+{
+  "schema": 1,
+  "date": "2026-11-19",
+  "status": "implementation-and-agent-verification-complete-awaiting-user-review",
+  "notionTask": "https://app.notion.com/p/41d5421e690b81f1a436d23dc3f30ba7",
+  "notionStatus": "In progress",
+  "source": {
+    "baseline": "85b303c1777f50932ade33525eec19880c033683",
+    "coreRecovery": "9b3b2775c2b737545459a72101ad7ccf69cb4198",
+    "finalProduct": "f2e7b67f08303b8dd2ebce260c97fa43b6a8181a",
+    "branch": "main",
+    "testedBuildDirty": true,
+    "dirtyExplanation": "Pending harness, README and evidence files; product source was committed and frozen. No generated bundles are committed.",
+    "publication": "Final evidence commit, exact origin/main readback and clean rebuild comparison are recorded in the linked Notion task after publication."
+  },
+  "checks": [
+    {
+      "command": "pnpm check",
+      "exitCode": 0,
+      "source": "9b3b277"
+    },
+    {
+      "command": "pnpm check:desktop",
+      "exitCode": 0,
+      "source": "f2e7b67"
+    },
+    {
+      "command": "pnpm exec vitest run apps/desktop/src",
+      "exitCode": 0,
+      "files": 23,
+      "tests": 923,
+      "source": "f2e7b67",
+      "persistenceRaceTests": 24
+    },
+    {
+      "command": "pnpm build:desktop",
+      "exitCode": 0,
+      "source": "f2e7b67",
+      "kind": "development bundle only",
+      "warning": "Renderer chunk 500.97kB exceeds default 500kB size advisory; no build error."
+    },
+    {
+      "command": "scripts/desktop-p43-fixtures.ts",
+      "passed": 31,
+      "source": "f2e7b67",
+      "evidence": "fixture-results.json"
+    },
+    {
+      "command": "scripts/desktop-p42-fixtures.ts",
+      "passed": 16,
+      "source": "f2e7b67",
+      "evidence": "p42-regression.json"
+    }
+  ],
+  "runtime": {
+    "versions": {
+      "electron": "44.9.1",
+      "chromium": "152.0.7977.167",
+      "node": "24.22.0"
+    },
+    "preferences": {
+      "sandbox": true,
+      "contextIsolation": true,
+      "nodeIntegration": false,
+      "webSecurity": true,
+      "webviewTag": false
+    },
+    "sandbox": {
+      "seccomp": "2",
+      "noNewPrivileges": "1"
+    },
+    "secureStorage": {
+      "available": true,
+      "backend": "gnome_libsecret"
+    },
+    "helperOverrideUsed": true
+  },
+  "testedBundle": {
+    "build-info.json": {
+      "sha256": "86d54ea4cb7a75f3b8de03c8cc0a1aa7f62d6a3f94a1277270fa8abaad3c14bb",
+      "size": 512
+    },
+    "icon.png": {
+      "sha256": "ba7ae9da47164872c6ab0785bc18c84edf2f912bc65c0c1b9642a4f704713655",
+      "size": 23181
+    },
+    "main/index.cjs": {
+      "sha256": "302f4b8380d60cb4a7b9261682d42abf65c19670f7546957bda9298574e7f4d7",
+      "size": 675847
+    },
+    "package.json": {
+      "sha256": "fa4e57df675f3a2ddad2a4c35abb17e3081f18c954c5ee7df194d5256ed6c688",
+      "size": 137
+    },
+    "preload/index.cjs": {
+      "sha256": "f8dc675a406c3c501db8a49efa4124e0a881166b605ff397ee81ccce73d7a58b",
+      "size": 2625
+    },
+    "renderer/assets/index-BKaT3V7i.css": {
+      "sha256": "78e8c1f59cc28a2958590a5a5c7e6398c530ac9c7fac18f8a0c689822b4b756b",
+      "size": 38076
+    },
+    "renderer/assets/index-BVh1Teuo.js": {
+      "sha256": "7f06ef00077f6ef3c54d1ad601dfa52f0f4e2b8128bac34423800ab7b2721c1a",
+      "size": 500970
+    },
+    "renderer/assets/oracle-eye-outline.svg": {
+      "sha256": "e0a6f6929764743544dbde7f39f1086b2fc922c64d482a62f7233ae2c69d7ba6",
+      "size": 2878
+    },
+    "renderer/index.html": {
+      "sha256": "52501a53f6141b575c7813d984b4216f45d3af822c70fb0e076fab4c6aebba57",
+      "size": 676
+    },
+    "renderer-manifest.json": {
+      "sha256": "697ac0aa2606c89f2175f58d050291dcd5d853ac045563286d85d4d9fab101d2",
+      "size": 606
+    }
+  },
+  "realAcceptance": "live-results.json",
+  "performance": {
+    "baseline": "performance-baseline.json",
+    "final": "fixture-results.json",
+    "sameSyntheticMessages": 1000,
+    "caveats": [
+      "Single samples; final p95 and initial heap did not improve.",
+      "No forced GC; not a steady-state memory or RSS guarantee.",
+      "Only already-committed drafts are recoverable after abrupt process termination."
+    ]
+  },
+  "scopeProtection": {
+    "gatewayMetadataUnchanged": true,
+    "gatewayAndroidProtocolSourceChanged": false,
+    "newGatewayDeployed": false,
+    "debBuiltInstalled": false,
+    "releasePublished": false,
+    "phase44Started": false,
+    "dedicatedResourcesRetained": true,
+    "testClientExited": true,
+    "inputEngineRestored": "xkb:us::eng"
+  },
+  "limits": [
+    "Loopback HTTP/WS only; no remote TLS acceptance.",
+    "No real pending approval or Plan tool induced; prior and new fixtures cover unavailable cases.",
+    "Physical lock/unlock/suspend was not separately exercised.",
+    "Synthetic 1000-message performance and IndexedDB faults are in fixture-results.json, not real Codex traffic.",
+    "Screenshots are original captured pixels; product redacts host paths in message display."
+  ],
+  "visualReview": "Independent agent reviewed real GNOME, original-size screenshots and final fixture themes; final minor icon spacing and synchronization copy were corrected."
+}

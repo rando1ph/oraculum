@@ -90,7 +90,12 @@ async function publish(state: WorkspaceState) {
 async function observeRejectedAction(index: number, expected: WorkspaceAction): Promise<void> {
   await expect.poll(() => app!.evaluate(() => (globalThis as DiagnosticGlobal).p42FixtureDiagnostics!.actions?.filter(item => item.completed).length ?? 0)).toBe(index + 1);
   const observation = await app!.evaluate((_, position) => (globalThis as DiagnosticGlobal).p42FixtureDiagnostics!.actions![position], index);
-  assert.deepEqual(observation.action, expected, 'The actual renderer intent must carry the displayed scope/digest.');
+  if (expected.type === 'steer' && observation.action.type === 'steer') {
+    const { clientDraftId, draftRevision, ...intent } = observation.action;
+    assert.match(clientDraftId ?? '', /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+    assert.ok(Number.isSafeInteger(draftRevision) && draftRevision! > 0, 'P4.3 submits the persisted local draft revision.');
+    assert.deepEqual(intent, expected, 'The actual renderer intent must carry the displayed scope/digest.');
+  } else assert.deepEqual(observation.action, expected, 'The actual renderer intent must carry the displayed scope/digest.');
   assert.equal(observation.error, undefined);
   assert.deepEqual(observation.result, { status: 'idle', endpoint: '', operationCount: 0, notice: 'CONNECTION_NOT_READY' },
     'The real unconfigured controller must reject fixture actions, never report native business success.');
@@ -180,7 +185,7 @@ try {
       return { methods: Object.keys(api).sort(), frozen: Object.isFrozen(api), node: typeof native.require, process: typeof native.process,
         workspace: await api.getWorkspace() };
     });
-    assert.deepEqual(exposed.methods, ['getState', 'getWorkspace', 'onStateChanged', 'onWorkspaceChanged', 'resetAppearance', 'setPreferences', 'workspaceAction'].sort());
+    assert.deepEqual(exposed.methods, ['getState', 'getWorkspace', 'onStateChanged', 'onWorkspaceChanged', 'onBeforeClose', 'resetAppearance', 'setPreferences', 'workspaceAction'].sort());
     assert.equal(exposed.frozen, true); assert.equal(exposed.node, 'undefined'); assert.equal(exposed.process, 'undefined');
     assert.equal(exposed.workspace.connection.status, 'idle'); assert.equal(exposed.workspace.connection.endpoint, '');
     assert.equal(exposed.workspace.connection.secureStorage, true);
@@ -450,7 +455,8 @@ try {
     assert.deepEqual(ordinaryExternalRequests, []); assert.deepEqual(pageErrors, []);
     assert.equal(createHash('sha256').update(await readFile(join(bundle, 'renderer-manifest.json'))).digest('hex'), manifestHash, 'Do not rebuild concurrently with this script.');
     const processHandle = app!.process(), closed = app!.waitForEvent('close', { timeout: 15000 });
-    await page.close(); await closed; assert.notEqual(processHandle.exitCode, null); app = undefined;
+    await app!.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].close());
+    await closed; assert.notEqual(processHandle.exitCode, null); app = undefined;
   });
   await writeFile(join(output, 'results.json'), JSON.stringify({ status: 'passed', phase: 'P4.2 fixtures', manifestHash,
     evidence: 'Actual sandboxed Electron GNOME/Wayland UI with synthetic display DTOs; no Gateway connection', runtime, checks: passed, screenshots,

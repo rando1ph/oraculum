@@ -1,0 +1,220 @@
+{
+  "status": "passed",
+  "phase": "P4.2 fixtures",
+  "manifestHash": "697ac0aa2606c89f2175f58d050291dcd5d853ac045563286d85d4d9fab101d2",
+  "evidence": "Actual sandboxed Electron GNOME/Wayland UI with synthetic display DTOs; no Gateway connection",
+  "runtime": {
+    "versions": {
+      "electron": "44.9.1",
+      "chromium": "152.0.7977.167",
+      "node": "24.22.0"
+    },
+    "preferences": {
+      "sandbox": true,
+      "contextIsolation": true,
+      "nodeIntegration": false,
+      "nodeIntegrationInSubFrames": false,
+      "webSecurity": true,
+      "webviewTag": false
+    },
+    "sandbox": {
+      "seccomp": "2",
+      "noNewPrivileges": "1"
+    },
+    "secureStorage": {
+      "available": true,
+      "backend": "gnome_libsecret"
+    },
+    "helperOverrideUsed": true
+  },
+  "checks": [
+    "unchanged independent bundle and original Outline",
+    "actual sandbox, isolated Profile, secure-storage backend and finite preload API",
+    "real business IPC rejects open RPC, malformed actions and unsafe endpoints without network",
+    "registered IPC rejects synthetic foreign, detached and same-origin forged frames",
+    "actual renderer displays explicit fixtures, GFM and unchanged three-theme Diff",
+    "actual Files preview decodes a valid PNG through the product CSP",
+    "unknown and offline fixture states block writes while preserving the draft",
+    "active synchronizing Turn exposes Stop and Steer while preserving stale and unknown gates",
+    "stale approvals cannot be accepted and missing patch evidence stays restricted",
+    "bounded complete file approval evidence submits its displayed digest to the rejecting real controller",
+    "archive provenance and child-thread lifecycle limitations remain explicit",
+    "narrow layout and Inspector keyboard focus remain usable",
+    "real CSP blocks fetch, WebSocket, inline script and iframe requests",
+    "actual popup, permissions and renderer navigation are denied",
+    "actual renderer download is cancelled before a file is saved",
+    "zero fixture transport calls, unchanged bundle and no resident test client"
+  ],
+  "screenshots": [
+    {
+      "file": "screenshots/fixture-p42-01-light.png",
+      "sha256": "2245c4a9e169b132cf07fefe070f509acf918750ec66d3a3e8a216e0d20db4c6",
+      "width": 2160,
+      "height": 1385,
+      "theme": "light"
+    },
+    {
+      "file": "screenshots/fixture-p42-01-dark.png",
+      "sha256": "3ce2aa2014ec8f7cfd461d578bdbb288da64981e8aa9b4fbd04c13049cbb4ece",
+      "width": 2160,
+      "height": 1385,
+      "theme": "dark"
+    },
+    {
+      "file": "screenshots/fixture-p42-01-oled.png",
+      "sha256": "dc531d3927feca01549b36acd469ec0e4dfe66b3084c963c7b7cbfc8a3c6bd52",
+      "width": 2160,
+      "height": 1385,
+      "theme": "oled"
+    },
+    {
+      "file": "screenshots/fixture-p42-07-decoded-image-preview.png",
+      "sha256": "ee29f0ea811797310fb66bd37ba7f435c39e385739ed6f8c438f1e2802fe6bbd",
+      "width": 2160,
+      "height": 1385,
+      "theme": "oled"
+    },
+    {
+      "file": "screenshots/fixture-p42-02-offline.png",
+      "sha256": "5f51cc7bfed2c79866306f054ee75388a89c6c356be3559fd6c601ef46659b86",
+      "width": 2160,
+      "height": 1385,
+      "theme": "oled"
+    },
+    {
+      "file": "screenshots/fixture-p42-05-active-controls.png",
+      "sha256": "6695e95eab621968f4f23675e6717162d492544e115cdbf4817a312f3703b7fe",
+      "width": 2160,
+      "height": 1385,
+      "theme": "oled"
+    },
+    {
+      "file": "screenshots/fixture-p42-03-restricted-approval.png",
+      "sha256": "d44a36e248cc926f9827184304998ea09ba30e17ebf2317741678d056506ca4f",
+      "width": 2160,
+      "height": 1385,
+      "theme": "oled"
+    },
+    {
+      "file": "screenshots/fixture-p42-06-complete-file-approval.png",
+      "sha256": "e3d0204b8bf35e73bd2a7b8e5cd28d5de98efd1fd21b8f1861f9785fc3ed85da",
+      "width": 2160,
+      "height": 1385,
+      "theme": "oled"
+    },
+    {
+      "file": "screenshots/fixture-p42-04-narrow.png",
+      "sha256": "c579523cc2fb70140a88a2a697cafc274e24a885df8176603dd28e38ea648151",
+      "width": 1500,
+      "height": 1050,
+      "theme": "oled"
+    }
+  ],
+  "mainTcpAttemptsAfterLaunch": 0,
+  "ordinaryRendererExternalRequestsAfterLaunch": 0,
+  "fixtureActionsForwardedToRealController": [
+    {
+      "action": {
+        "type": "interrupt"
+      },
+      "completed": true,
+      "result": {
+        "status": "idle",
+        "endpoint": "",
+        "operationCount": 0,
+        "notice": "CONNECTION_NOT_READY"
+      }
+    },
+    {
+      "action": {
+        "type": "steer",
+        "text": "fixture 插话内容",
+        "clientDraftId": "44cf8886-ec9e-4ba9-844d-c8da01b572a8",
+        "draftRevision": 2
+      },
+      "completed": true,
+      "result": {
+        "status": "idle",
+        "endpoint": "",
+        "operationCount": 0,
+        "notice": "CONNECTION_NOT_READY"
+      }
+    },
+    {
+      "action": {
+        "type": "answer",
+        "interactionId": "55555555-5555-4555-8555-555555555555",
+        "generation": 1,
+        "epoch": "22222222-2222-4222-8222-222222222222",
+        "response": {
+          "type": "approval",
+          "decision": "accept"
+        }
+      },
+      "completed": true,
+      "result": {
+        "status": "idle",
+        "endpoint": "",
+        "operationCount": 0,
+        "notice": "CONNECTION_NOT_READY"
+      }
+    },
+    {
+      "action": {
+        "type": "answer",
+        "interactionId": "88888888-8888-4888-8888-888888888888",
+        "generation": 2,
+        "epoch": "22222222-2222-4222-8222-222222222222",
+        "response": {
+          "type": "approval",
+          "decision": "accept"
+        },
+        "contextDigest": "ceab8dd2e507b95d47cb58647c4cb009f093b519cd573df7926c3879416f05fe"
+      },
+      "completed": true,
+      "result": {
+        "status": "idle",
+        "endpoint": "",
+        "operationCount": 0,
+        "notice": "CONNECTION_NOT_READY"
+      }
+    }
+  ],
+  "limitations": [
+    "Business state, approval cards and unknown-operation data are fixtures, not native Codex execution.",
+    "Fixture DTOs are sent through the real main-to-preload event; no authentication or HTTP/WS handshake is claimed.",
+    "Stop, Steer and approval clicks reach the original real IPC handler; the unconfigured controller rejects them. Enabled fixture UI is not native action success.",
+    "The file approval digest is synthetic fixture evidence; its exact IPC submission is checked, not accepted as a native Codex proof.",
+    "Foreign-frame IPC rejection invokes the real registered handler with synthetic event identities.",
+    "Network guards and request observers attach after Playwright launch; startup isolation also relies on the fresh empty Profile and product policy.",
+    "Playwright debugger loopback endpoints are automation plumbing, not a test Gateway.",
+    "No HTTPS/TLS, production Gateway, formal package or physical desktop input acceptance was performed."
+  ],
+  "archive": {
+    "sourceResultsSha256": "5e6088b2979a303c8f54be98f369d106b23ab9e7743f33506291629c7c79a2a6",
+    "harnessFile": "scripts/desktop-p42-fixtures.ts",
+    "harnessSha256": "e362eb1a0947a0d1a82d41d3793d02f3a304b1e1700a709b071a6e2ddc8aecbe",
+    "sanitization": "Generated fixture identities and test action data only. Screenshots copied byte-for-byte from the latest passing result manifest; filenames made repository-relative. No private profile, credentials, native user history, or previous failure artifacts included.",
+    "sourceProvenance": "Inherited from the P4.3 result for the same unchanged built bundle; both executions verify the identical renderer manifest hash. P4.2 harness itself records manifestHash rather than build-info."
+  },
+  "source": {
+    "component": "oraculum-desktop",
+    "stage": "P4.3",
+    "sourceRevision": "f2e7b67f08303b8dd2ebce260c97fa43b6a8181a",
+    "sourceDirty": true,
+    "dependencies": {
+      "react": "19.3.1",
+      "react-dom": "19.3.1",
+      "react-markdown": "10.1.0",
+      "remark-gfm": "4.0.1",
+      "zustand": "5.0.15",
+      "@tailwindcss/vite": "4.3.3",
+      "@types/react": "19.3.0",
+      "@types/react-dom": "19.3.0",
+      "@vitejs/plugin-react": "6.1.2",
+      "electron": "44.9.1",
+      "tailwindcss": "4.3.3",
+      "vite": "8.3.4"
+    }
+  }
+}

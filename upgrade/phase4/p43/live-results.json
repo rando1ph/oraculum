@@ -1,0 +1,576 @@
+{
+  "schema": 1,
+  "date": "2026-11-19",
+  "kind": "real-local-HTTP-WS-and-native-GNOME-Wayland",
+  "productSource": "9b3b2775c2b737545459a72101ad7ccf69cb4198",
+  "profile": "dedicated p42-review",
+  "testProject": "OraculumDesktopP42Test",
+  "gatewayVersion": "2.0.0~beta.3",
+  "initialOperations": 24,
+  "finalOperations": 27,
+  "newOperations": [
+    "thread.start",
+    "thread.name",
+    "turn.start"
+  ],
+  "draftReceipt": {
+    "clientDraftRevision": 1,
+    "status": "accepted",
+    "laterEditRetained": true
+  },
+  "checks": {
+    "previousReceiptRecordsRetained": true,
+    "realCodexResponse": true,
+    "onlineEndpointIdentityAndThreadRestored": true,
+    "offlineStartupDoesNotConnect": true,
+    "offlineTwoThreadsHaveIndependentDrafts": true,
+    "offlineReadingPositionPx": 400,
+    "offlineSendDisabled": true,
+    "offlineSelectedThreadRestoredOnReconnect": true,
+    "operationCountAndFingerprintUnchangedAcrossReconnect": true,
+    "nativeAltF4FlushAndRelaunch": true
+  },
+  "snapshots": {
+    "live-codex-accepted": {
+      "status": "connected",
+      "endpointRestored": true,
+      "scopeRestored": true,
+      "deviceFingerprint": "5418471b9438f87081e341ee150594d15663599cf4c90f223d73baf977c6aa3f",
+      "gateway": "2.0.0~beta.3",
+      "selectedTestProject": "OraculumDesktopP42Test",
+      "threadTitle": "P4.3 恢复验收",
+      "threadFingerprint": "ee45041fcaf687949058bfbec92ff859281417fda6f8134721baa383e384b577",
+      "projectFingerprint": "c040639a3505305ba1055e67056fbaef47bf11b05a8746c7f084e0b52c987ddb",
+      "synchronization": "current",
+      "busy": false,
+      "active": false,
+      "notice": "GATEWAY_ACCEPTED",
+      "operations": 27,
+      "operationFingerprint": "105f3f22776763d62f0e7de5e0190ce51fd8d059cab6f98e5db66b2b1b4076f9",
+      "pending": 0,
+      "draftLinked": [
+        {
+          "kind": "turn.start",
+          "status": "accepted",
+          "revision": 1
+        }
+      ],
+      "historyTurns": 1,
+      "historyMore": false,
+      "ui": {
+        "text": "已连接 Gateway · 原生状态已同步刷新状态",
+        "draft": "P4.3 会话 B：发送后继续写的新草稿，收到旧回执也不得清空。",
+        "scroll": 0,
+        "rows": 2,
+        "theme": "light"
+      }
+    },
+    "live-thread-a-restored": {
+      "status": "connected",
+      "endpointRestored": true,
+      "scopeRestored": true,
+      "deviceFingerprint": "5418471b9438f87081e341ee150594d15663599cf4c90f223d73baf977c6aa3f",
+      "gateway": "2.0.0~beta.3",
+      "selectedTestProject": "OraculumDesktopP42Test",
+      "threadTitle": "P4.2 真实桌面验收",
+      "threadFingerprint": "85c3cd4cb8dfac61376d5708ad7b9b0a6c99ef8b28e7b0eac73d001e0788413b",
+      "projectFingerprint": "c040639a3505305ba1055e67056fbaef47bf11b05a8746c7f084e0b52c987ddb",
+      "synchronization": "current",
+      "busy": false,
+      "active": false,
+      "operations": 27,
+      "operationFingerprint": "105f3f22776763d62f0e7de5e0190ce51fd8d059cab6f98e5db66b2b1b4076f9",
+      "pending": 0,
+      "draftLinked": [
+        {
+          "kind": "turn.start",
+          "status": "accepted",
+          "revision": 1
+        }
+      ],
+      "historyTurns": 5,
+      "historyMore": true,
+      "ui": {
+        "text": "已连接 Gateway · 原生状态已同步刷新状态",
+        "draft": "P4.3 会话 A 草稿：保留旧会话阅读位置，不发送。",
+        "scroll": 400,
+        "rows": 22,
+        "theme": "oled"
+      }
+    },
+    "live-offline-relaunch": {
+      "status": "offline",
+      "endpointRestored": true,
+      "scopeRestored": true,
+      "deviceFingerprint": "5418471b9438f87081e341ee150594d15663599cf4c90f223d73baf977c6aa3f",
+      "threadFingerprint": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "projectFingerprint": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "synchronization": "stale",
+      "busy": false,
+      "active": false,
+      "operations": 27,
+      "operationFingerprint": "105f3f22776763d62f0e7de5e0190ce51fd8d059cab6f98e5db66b2b1b4076f9",
+      "pending": 0,
+      "draftLinked": [
+        {
+          "kind": "turn.start",
+          "status": "accepted",
+          "revision": 1
+        }
+      ],
+      "historyMore": false,
+      "ui": {
+        "text": "上次可见的内容 · 离线只读 · 11/19/2026, 12:37:03 PM重新连接",
+        "breadcrumb": "OraculumDesktopP42Test/P4.3 恢复验收",
+        "draftSaved": "草稿已保存到这台电脑",
+        "sendDisabled": true,
+        "draft": "P4.3 离线 B 草稿：你好，重启后保留此文本；连接恢复后仍由我决定发送。",
+        "scroll": 0,
+        "rows": 2,
+        "theme": "oled"
+      }
+    },
+    "live-offline-a-relaunch": {
+      "status": "offline",
+      "endpointRestored": true,
+      "scopeRestored": true,
+      "deviceFingerprint": "5418471b9438f87081e341ee150594d15663599cf4c90f223d73baf977c6aa3f",
+      "threadFingerprint": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "projectFingerprint": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "synchronization": "stale",
+      "busy": false,
+      "active": false,
+      "operations": 27,
+      "operationFingerprint": "105f3f22776763d62f0e7de5e0190ce51fd8d059cab6f98e5db66b2b1b4076f9",
+      "pending": 0,
+      "draftLinked": [
+        {
+          "kind": "turn.start",
+          "status": "accepted",
+          "revision": 1
+        }
+      ],
+      "historyMore": false,
+      "ui": {
+        "text": "上次可见的内容 · 离线只读 · 11/19/2026, 12:37:08 PM重新连接",
+        "breadcrumb": "OraculumDesktopP42Test/P4.2 真实桌面验收",
+        "draftSaved": "草稿已保存到这台电脑",
+        "sendDisabled": true,
+        "draft": "P4.3 会话 A 草稿：保留旧会话阅读位置，不发送。",
+        "scroll": 400,
+        "rows": 22,
+        "theme": "oled"
+      }
+    },
+    "live-reconnected-settled": {
+      "status": "connected",
+      "endpointRestored": true,
+      "scopeRestored": true,
+      "deviceFingerprint": "5418471b9438f87081e341ee150594d15663599cf4c90f223d73baf977c6aa3f",
+      "gateway": "2.0.0~beta.3",
+      "selectedTestProject": "OraculumDesktopP42Test",
+      "threadTitle": "P4.3 恢复验收",
+      "threadFingerprint": "ee45041fcaf687949058bfbec92ff859281417fda6f8134721baa383e384b577",
+      "projectFingerprint": "c040639a3505305ba1055e67056fbaef47bf11b05a8746c7f084e0b52c987ddb",
+      "synchronization": "current",
+      "busy": false,
+      "active": false,
+      "operations": 27,
+      "operationFingerprint": "105f3f22776763d62f0e7de5e0190ce51fd8d059cab6f98e5db66b2b1b4076f9",
+      "pending": 0,
+      "draftLinked": [
+        {
+          "kind": "turn.start",
+          "status": "accepted",
+          "revision": 1
+        }
+      ],
+      "historyTurns": 1,
+      "historyMore": false,
+      "ui": {
+        "text": "已连接 Gateway · 原生状态已同步刷新状态",
+        "breadcrumb": "OraculumDesktopP42Test/P4.3 恢复验收",
+        "draftSaved": "草稿已保存到这台电脑",
+        "sendDisabled": false,
+        "draft": "P4.3 离线 B 草稿：你好，重启后保留此文本；连接恢复后仍由我决定发送。",
+        "scroll": 0,
+        "rows": 2,
+        "theme": "oled"
+      }
+    },
+    "live-ime-no-send": {
+      "status": "connected",
+      "endpointRestored": true,
+      "scopeRestored": true,
+      "deviceFingerprint": "5418471b9438f87081e341ee150594d15663599cf4c90f223d73baf977c6aa3f",
+      "gateway": "2.0.0~beta.3",
+      "selectedTestProject": "OraculumDesktopP42Test",
+      "threadTitle": "P4.3 恢复验收",
+      "threadFingerprint": "ee45041fcaf687949058bfbec92ff859281417fda6f8134721baa383e384b577",
+      "projectFingerprint": "c040639a3505305ba1055e67056fbaef47bf11b05a8746c7f084e0b52c987ddb",
+      "synchronization": "current",
+      "busy": false,
+      "active": false,
+      "operations": 27,
+      "operationFingerprint": "105f3f22776763d62f0e7de5e0190ce51fd8d059cab6f98e5db66b2b1b4076f9",
+      "pending": 0,
+      "draftLinked": [
+        {
+          "kind": "turn.start",
+          "status": "accepted",
+          "revision": 1
+        }
+      ],
+      "historyTurns": 1,
+      "historyMore": false,
+      "ui": {
+        "text": "已连接 Gateway · 原生状态已同步刷新状态",
+        "draft": "P4.3 会话 B：发送后继续写的新草稿，收到旧回执也不得清空。 ni hao",
+        "scroll": 0,
+        "rows": 2,
+        "theme": "light"
+      }
+    },
+    "live-ime-chinese": {
+      "status": "connected",
+      "endpointRestored": true,
+      "scopeRestored": true,
+      "deviceFingerprint": "5418471b9438f87081e341ee150594d15663599cf4c90f223d73baf977c6aa3f",
+      "gateway": "2.0.0~beta.3",
+      "selectedTestProject": "OraculumDesktopP42Test",
+      "threadTitle": "P4.3 恢复验收",
+      "threadFingerprint": "ee45041fcaf687949058bfbec92ff859281417fda6f8134721baa383e384b577",
+      "projectFingerprint": "c040639a3505305ba1055e67056fbaef47bf11b05a8746c7f084e0b52c987ddb",
+      "synchronization": "current",
+      "busy": false,
+      "active": false,
+      "operations": 27,
+      "operationFingerprint": "105f3f22776763d62f0e7de5e0190ce51fd8d059cab6f98e5db66b2b1b4076f9",
+      "pending": 0,
+      "draftLinked": [
+        {
+          "kind": "turn.start",
+          "status": "accepted",
+          "revision": 1
+        }
+      ],
+      "historyTurns": 1,
+      "historyMore": false,
+      "ui": {
+        "text": "已连接 Gateway · 原生状态已同步刷新状态",
+        "draft": "P4.3 会话 B：发送后继续写的新草稿，收到旧回执也不得清空。 ni hao你好",
+        "scroll": 0,
+        "rows": 2,
+        "theme": "light"
+      }
+    },
+    "live-native-reset": {
+      "status": "connected",
+      "endpointRestored": true,
+      "scopeRestored": true,
+      "deviceFingerprint": "5418471b9438f87081e341ee150594d15663599cf4c90f223d73baf977c6aa3f",
+      "gateway": "2.0.0~beta.3",
+      "selectedTestProject": "OraculumDesktopP42Test",
+      "threadTitle": "P4.3 恢复验收",
+      "threadFingerprint": "ee45041fcaf687949058bfbec92ff859281417fda6f8134721baa383e384b577",
+      "projectFingerprint": "c040639a3505305ba1055e67056fbaef47bf11b05a8746c7f084e0b52c987ddb",
+      "synchronization": "current",
+      "busy": false,
+      "active": false,
+      "notice": "GATEWAY_ACCEPTED",
+      "operations": 27,
+      "operationFingerprint": "105f3f22776763d62f0e7de5e0190ce51fd8d059cab6f98e5db66b2b1b4076f9",
+      "pending": 0,
+      "draftLinked": [
+        {
+          "kind": "turn.start",
+          "status": "accepted",
+          "revision": 1
+        }
+      ],
+      "historyTurns": 1,
+      "historyMore": false,
+      "ui": {
+        "text": "已连接 Gateway · 原生状态已同步刷新状态",
+        "draft": "P4.3 会话 B：发送后继续写的新草稿，收到旧回执也不得清空。",
+        "scroll": 0,
+        "rows": 2,
+        "theme": "light"
+      }
+    },
+    "live-dark-collapsed": {
+      "status": "connected",
+      "endpointRestored": true,
+      "scopeRestored": true,
+      "deviceFingerprint": "5418471b9438f87081e341ee150594d15663599cf4c90f223d73baf977c6aa3f",
+      "gateway": "2.0.0~beta.3",
+      "selectedTestProject": "OraculumDesktopP42Test",
+      "threadTitle": "P4.3 恢复验收",
+      "threadFingerprint": "ee45041fcaf687949058bfbec92ff859281417fda6f8134721baa383e384b577",
+      "projectFingerprint": "c040639a3505305ba1055e67056fbaef47bf11b05a8746c7f084e0b52c987ddb",
+      "synchronization": "current",
+      "busy": false,
+      "active": false,
+      "notice": "GATEWAY_ACCEPTED",
+      "operations": 27,
+      "operationFingerprint": "105f3f22776763d62f0e7de5e0190ce51fd8d059cab6f98e5db66b2b1b4076f9",
+      "pending": 0,
+      "draftLinked": [
+        {
+          "kind": "turn.start",
+          "status": "accepted",
+          "revision": 1
+        }
+      ],
+      "historyTurns": 1,
+      "historyMore": false,
+      "ui": {
+        "text": "已连接 Gateway · 原生状态已同步刷新状态",
+        "draft": "P4.3 会话 B：发送后继续写的新草稿，收到旧回执也不得清空。",
+        "scroll": 0,
+        "rows": 2,
+        "theme": "dark"
+      }
+    }
+  },
+  "nativeInput": {
+    "backend": "computer-use-linux AT-SPI + ydotool with exact GNOME window focus; screenshot xdg-desktop-portal",
+    "windowSizesLogicalPx": [
+      [
+        1440,
+        960
+      ],
+      [
+        1000,
+        760
+      ]
+    ],
+    "ctrlShift0": "Dark and collapsed Inspector -> Light and default panels; draft retained",
+    "ctrlK": "focused editable 搜索会话 after synchronization",
+    "ctrlIAndEscape": "opened narrow Inspector then escaped, focus returned to toggle",
+    "ime": "real IBus Rime, physical key sequence n i h a o; compositionstart/update; Ctrl+Enter ended composition as ni hao with no operation; second sequence + Space committed 你好",
+    "imeCompositionEvidence": [
+      "compositionstart",
+      "compositionupdate 你好",
+      "keydown Control isComposing=true",
+      "compositionend ni hao",
+      "compositionstart",
+      "compositionupdate 你好",
+      "compositionend 你好"
+    ],
+    "operationCountBeforeAfterIme": [
+      27,
+      27
+    ],
+    "restoredInputEngine": "xkb:us::eng"
+  },
+  "gatewayProtection": {
+    "equal": true,
+    "compared": [
+      "ActiveState",
+      "SubState",
+      "MainPID",
+      "InvocationID",
+      "NRestarts",
+      "ExecMainStartTimestamp"
+    ],
+    "serviceMetadataSha256": "17c3934fc9a2b5aaab4d38848fb4b1ae30dee3b2096cd6a07a817ea7484eaa10",
+    "active": true,
+    "restarts": 0,
+    "serviceChanged": false,
+    "finalComparisonAfterVisualVerification": true
+  },
+  "screenshots": [
+    "screenshots/live-codex-accepted.png",
+    "screenshots/live-thread-a-restored.png",
+    "screenshots/live-offline-relaunch.png",
+    "screenshots/live-offline-a-relaunch.png",
+    "screenshots/live-reconnected-settled.png",
+    "screenshots/live-ime-no-send.png",
+    "screenshots/live-ime-chinese.png",
+    "screenshots/live-native-reset.png",
+    "screenshots/live-dark-collapsed.png",
+    "screenshots/native-live-final.png",
+    "screenshots/native-live-narrow.png",
+    "screenshots/native-live-oled.png",
+    "screenshots/native-ime-preedit.png"
+  ],
+  "cleanup": {
+    "testClientExited": true,
+    "retainedTestProfileProjectThreadsAndReceipts": true,
+    "inputEngineRestored": true
+  },
+  "limits": [
+    "Loopback HTTP/WS only; no remote TLS acceptance.",
+    "No real pending approval or Plan tool induced; prior and new fixtures cover unavailable cases.",
+    "Physical lock/unlock/suspend was not separately exercised.",
+    "Synthetic 1000-message performance and IndexedDB faults are in fixture-results.json, not real Codex traffic.",
+    "Screenshots are original captured pixels; product redacts host paths in message display."
+  ],
+  "visualRevisionVerification": {
+    "source": "f2e7b67f08303b8dd2ebce260c97fa43b6a8181a",
+    "manifestSha256": "697ac0aa2606c89f2175f58d050291dcd5d853ac045563286d85d4d9fab101d2",
+    "changes": "Only navigation icon flex and cached synchronization placeholder/hint changed after initial real recovery and IME run.",
+    "checks": {
+      "autoEndpointIdentityThreadAndDraftRestored": true,
+      "same27OperationFingerprint": true,
+      "themesLightDarkOled": true,
+      "offlineNarrowDraftAndCachedHistory": true,
+      "connectedCachedHintMatchesSynchronizingState": true,
+      "nativeAppearanceResetKeepsDraft": true,
+      "normalCloseCompleted": true
+    },
+    "snapshots": {
+      "reviewed-live-light": {
+        "status": "connected",
+        "endpointRestored": true,
+        "scopeRestored": true,
+        "deviceFingerprint": "5418471b9438f87081e341ee150594d15663599cf4c90f223d73baf977c6aa3f",
+        "gateway": "2.0.0~beta.3",
+        "selectedTestProject": "OraculumDesktopP42Test",
+        "threadFingerprint": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "projectFingerprint": "c040639a3505305ba1055e67056fbaef47bf11b05a8746c7f084e0b52c987ddb",
+        "synchronization": "stale",
+        "busy": true,
+        "active": false,
+        "operations": 27,
+        "operationFingerprint": "105f3f22776763d62f0e7de5e0190ce51fd8d059cab6f98e5db66b2b1b4076f9",
+        "pending": 0,
+        "draftLinked": [
+          {
+            "kind": "turn.start",
+            "status": "accepted",
+            "revision": 1
+          }
+        ],
+        "historyMore": false,
+        "ui": {
+          "text": "上次可见的内容 · 正在核对，仅供阅读 · 11/19/2026, 12:38:38 PM刷新状态",
+          "breadcrumb": "OraculumDesktopP42Test/P4.3 恢复验收",
+          "draftSaved": "草稿已保存到这台电脑",
+          "sendDisabled": true,
+          "draft": "P4.3 离线 B 草稿：你好，重启后保留此文本；连接恢复后仍由我决定发送。",
+          "scroll": 0,
+          "rows": 2,
+          "theme": "light"
+        }
+      },
+      "reviewed-live-settled": {
+        "status": "connected",
+        "endpointRestored": true,
+        "scopeRestored": true,
+        "deviceFingerprint": "5418471b9438f87081e341ee150594d15663599cf4c90f223d73baf977c6aa3f",
+        "gateway": "2.0.0~beta.3",
+        "selectedTestProject": "OraculumDesktopP42Test",
+        "threadTitle": "P4.3 恢复验收",
+        "threadFingerprint": "ee45041fcaf687949058bfbec92ff859281417fda6f8134721baa383e384b577",
+        "projectFingerprint": "c040639a3505305ba1055e67056fbaef47bf11b05a8746c7f084e0b52c987ddb",
+        "synchronization": "current",
+        "busy": false,
+        "active": false,
+        "operations": 27,
+        "operationFingerprint": "105f3f22776763d62f0e7de5e0190ce51fd8d059cab6f98e5db66b2b1b4076f9",
+        "pending": 0,
+        "draftLinked": [
+          {
+            "kind": "turn.start",
+            "status": "accepted",
+            "revision": 1
+          }
+        ],
+        "historyTurns": 1,
+        "historyMore": false,
+        "ui": {
+          "text": "已连接 Gateway · 原生状态已同步刷新状态",
+          "breadcrumb": "OraculumDesktopP42Test/P4.3 恢复验收",
+          "draftSaved": "草稿已保存到这台电脑",
+          "sendDisabled": false,
+          "draft": "P4.3 离线 B 草稿：你好，重启后保留此文本；连接恢复后仍由我决定发送。",
+          "scroll": 0,
+          "rows": 2,
+          "theme": "light"
+        }
+      },
+      "reviewed-offline-a": {
+        "status": "offline",
+        "endpointRestored": true,
+        "scopeRestored": true,
+        "deviceFingerprint": "5418471b9438f87081e341ee150594d15663599cf4c90f223d73baf977c6aa3f",
+        "gateway": "2.0.0~beta.3",
+        "selectedTestProject": "OraculumDesktopP42Test",
+        "threadTitle": "P4.2 真实桌面验收",
+        "threadFingerprint": "85c3cd4cb8dfac61376d5708ad7b9b0a6c99ef8b28e7b0eac73d001e0788413b",
+        "projectFingerprint": "c040639a3505305ba1055e67056fbaef47bf11b05a8746c7f084e0b52c987ddb",
+        "synchronization": "stale",
+        "busy": false,
+        "active": false,
+        "operations": 27,
+        "operationFingerprint": "105f3f22776763d62f0e7de5e0190ce51fd8d059cab6f98e5db66b2b1b4076f9",
+        "pending": 0,
+        "draftLinked": [
+          {
+            "kind": "turn.start",
+            "status": "accepted",
+            "revision": 1
+          }
+        ],
+        "historyTurns": 5,
+        "historyMore": true,
+        "ui": {
+          "text": "连接已断开重新连接",
+          "breadcrumb": "OraculumDesktopP42Test/P4.2 真实桌面验收",
+          "draftSaved": "草稿已保存到这台电脑",
+          "sendDisabled": true,
+          "draft": "P4.3 会话 A 草稿：保留旧会话阅读位置，不发送。",
+          "scroll": 232,
+          "rows": 20,
+          "theme": "oled"
+        }
+      },
+      "reviewed-live-final": {
+        "status": "connected",
+        "endpointRestored": true,
+        "scopeRestored": true,
+        "deviceFingerprint": "5418471b9438f87081e341ee150594d15663599cf4c90f223d73baf977c6aa3f",
+        "gateway": "2.0.0~beta.3",
+        "selectedTestProject": "OraculumDesktopP42Test",
+        "threadTitle": "P4.3 恢复验收",
+        "threadFingerprint": "ee45041fcaf687949058bfbec92ff859281417fda6f8134721baa383e384b577",
+        "projectFingerprint": "c040639a3505305ba1055e67056fbaef47bf11b05a8746c7f084e0b52c987ddb",
+        "synchronization": "current",
+        "busy": false,
+        "active": false,
+        "operations": 27,
+        "operationFingerprint": "105f3f22776763d62f0e7de5e0190ce51fd8d059cab6f98e5db66b2b1b4076f9",
+        "pending": 0,
+        "draftLinked": [
+          {
+            "kind": "turn.start",
+            "status": "accepted",
+            "revision": 1
+          }
+        ],
+        "historyTurns": 1,
+        "historyMore": false,
+        "ui": {
+          "text": "已连接 Gateway · 原生状态已同步刷新状态",
+          "breadcrumb": "OraculumDesktopP42Test/P4.3 恢复验收",
+          "draftSaved": "草稿已保存到这台电脑",
+          "sendDisabled": false,
+          "draft": "P4.3 离线 B 草稿：你好，重启后保留此文本；连接恢复后仍由我决定发送。",
+          "scroll": 0,
+          "rows": 2,
+          "theme": "light"
+        }
+      }
+    },
+    "screenshots": [
+      "screenshots/reviewed-native-light.png",
+      "screenshots/reviewed-native-dark.png",
+      "screenshots/reviewed-native-oled.png",
+      "screenshots/reviewed-native-offline-narrow.png",
+      "screenshots/reviewed-live-light.png",
+      "screenshots/reviewed-live-final.png"
+    ]
+  }
+}

@@ -1,0 +1,345 @@
+{
+  "status": "passed",
+  "phase": "P4.3 fixtures",
+  "source": {
+    "component": "oraculum-desktop",
+    "stage": "P4.3",
+    "sourceRevision": "f2e7b67f08303b8dd2ebce260c97fa43b6a8181a",
+    "sourceDirty": true,
+    "dependencies": {
+      "react": "19.3.1",
+      "react-dom": "19.3.1",
+      "react-markdown": "10.1.0",
+      "remark-gfm": "4.0.1",
+      "zustand": "5.0.15",
+      "@tailwindcss/vite": "4.3.3",
+      "@types/react": "19.3.0",
+      "@types/react-dom": "19.3.0",
+      "@vitejs/plugin-react": "6.1.2",
+      "electron": "44.9.1",
+      "tailwindcss": "4.3.3",
+      "vite": "8.3.4"
+    }
+  },
+  "manifestHash": "697ac0aa2606c89f2175f58d050291dcd5d853ac045563286d85d4d9fab101d2",
+  "evidence": "Actual sandboxed Electron on GNOME/Wayland with generated fixtures; no Gateway connection",
+  "runtime": {
+    "versions": {
+      "electron": "44.9.1",
+      "chromium": "152.0.7977.167",
+      "node": "24.22.0"
+    },
+    "preferences": {
+      "sandbox": true,
+      "contextIsolation": true,
+      "nodeIntegration": false,
+      "webSecurity": true,
+      "webviewTag": false
+    },
+    "sandbox": {
+      "seccomp": "2",
+      "noNewPrivileges": "1"
+    },
+    "secureStorage": {
+      "available": true,
+      "backend": "gnome_libsecret"
+    },
+    "helperOverrideUsed": true
+  },
+  "checks": [
+    "real GNOME Wayland sandbox and isolated fixture Profile",
+    "actual 1000-message render scroll DOM and memory measurement",
+    "reading old messages stays anchored across live append and history prepend",
+    "switching between long conversations restores each independent native bookmark",
+    "normal close and new Electron process restore offline history draft and reading position",
+    "forced client process termination preserves acknowledged local draft without sending",
+    "offline navigation and scope changes preserve separate drafts without IPC writes",
+    "quota fault preserves editor and committed draft, blocks send, and explicit retry saves",
+    "Chinese composition Enter and keyCode 229 never dispatch send",
+    "unknown operation locks send while keeping the stored draft readable",
+    "long tool output is lazy bounded expandable and readable offline without native requests",
+    "three themes preserve full Outline OLED black and approved Diff size",
+    "panel shortcuts separators menus and narrow modal focus are usable",
+    "programmatic native appearance menu resets layout while keeping conversation and drafts",
+    "offline clear-history confirmation retains the drafts and navigation needed to edit them",
+    "IndexedDB: strict committed IndexedDB draft survives reopen and complete additive schema",
+    "IndexedDB: endpoint Base Path installation device project and thread isolation",
+    "IndexedDB: concurrent draft compare-and-swap preserves one winning edit",
+    "IndexedDB: unknown receipt preserves pending draft and rejects another operation ID",
+    "IndexedDB: accepted receipt clears matching revision and preserves concurrent newer edits",
+    "IndexedDB: definitive rejection and not-dispatched proof preserve text for explicit revised retry",
+    "IndexedDB: clear history preserves drafts navigation layout and other identity namespaces",
+    "IndexedDB: bounded history LRU evicts display data while preserving drafts and bookmarks",
+    "IndexedDB: quota failure aborts transaction without clearing last committed draft",
+    "IndexedDB: corrupt checksum reports failure and retains the original record",
+    "IndexedDB: future schema safely fails without downgrading or deleting data",
+    "IndexedDB: incomplete schema fails without destructive automatic repair",
+    "IndexedDB: close during pending open rejects old work and safely opens a new generation",
+    "IndexedDB: real blocked upgrade aborts late migration and preserves original version and records",
+    "real IndexedDB faults and recovery preserve data invariants",
+    "zero Gateway traffic and unchanged built resources"
+  ],
+  "performance": {
+    "longHistory": {
+      "datasetMessages": 1000,
+      "serializedBytes": 1667378,
+      "renderMs": 340,
+      "dom": {
+        "documents": 4,
+        "nodes": 12995,
+        "jsEventListeners": 377
+      },
+      "heap": {
+        "Nodes": 12995,
+        "JSHeapUsedSize": 10041228,
+        "JSHeapTotalSize": 16322560
+      },
+      "heapAfterScroll": {
+        "Nodes": 15076,
+        "JSHeapUsedSize": 15473540,
+        "JSHeapTotalSize": 37294080
+      },
+      "durations": {
+        "LayoutDuration": {
+          "renderMs": 21.823,
+          "scrollMs": 142.318
+        },
+        "RecalcStyleDuration": {
+          "renderMs": 5.05,
+          "scrollMs": 56.257000000000005
+        }
+      },
+      "scroll": {
+        "frames": 60,
+        "p50Ms": 16.700000000186265,
+        "p95Ms": 23.600000000093132,
+        "maxMs": 43.700000000186265,
+        "mountedMessages": 5,
+        "elements": 1228,
+        "scrollHeight": 240572
+      },
+      "storage": {
+        "quota": 16254630957,
+        "usage": 101421,
+        "usageDetails": {
+          "indexedDB": 101421
+        }
+      },
+      "sampling": "heap and DOM are sampled after initial render; heapAfterScroll after 60 scripted scroll frames. No forced GC; these are not steady-state RSS measurements."
+    },
+    "anchor": {
+      "original": {
+        "key": "[\"long-turn-237\",\"long-item-237\"]",
+        "offset": -187.94791793823242
+      },
+      "afterLiveAppend": {
+        "key": "[\"long-turn-237\",\"long-item-237\"]",
+        "offset": -187.94791793823242
+      },
+      "afterHistoryPrepend": {
+        "key": "[\"long-turn-237\",\"long-item-237\"]",
+        "offset": -188.01041793823242
+      }
+    },
+    "switchBookmarks": {
+      "a": {
+        "before": {
+          "key": "[\"long-turn-237\",\"long-item-237\"]",
+          "offset": -188.01041793823242
+        },
+        "after": {
+          "key": "[\"long-turn-237\",\"long-item-237\"]",
+          "offset": -187.77083587646484
+        }
+      },
+      "b": {
+        "before": {
+          "key": "[\"long-turn-149\",\"long-item-149\"]",
+          "offset": -128.0625
+        },
+        "after": {
+          "key": "[\"long-turn-149\",\"long-item-149\"]",
+          "offset": -128.0625
+        }
+      }
+    },
+    "restartDiagnostic": {
+      "beforeClose": {
+        "visibleScope": [
+          "44444444-4444-4444-8444-444444444444",
+          "p43-fixture-thread"
+        ],
+        "navigation": [
+          {
+            "projectId": "44444444-4444-4444-8444-444444444444",
+            "threadId": "bookmark-thread-b"
+          }
+        ],
+        "drafts": [
+          {
+            "scope": [
+              "44444444-4444-4444-8444-444444444444",
+              "p43-fixture-thread"
+            ],
+            "knownText": true,
+            "revision": 1
+          }
+        ]
+      },
+      "afterCloseBeforeHydration": {
+        "navigation": [
+          {
+            "projectId": "44444444-4444-4444-8444-444444444444",
+            "threadId": "p43-fixture-thread"
+          }
+        ],
+        "drafts": [
+          {
+            "scope": [
+              "44444444-4444-4444-8444-444444444444",
+              "p43-fixture-thread"
+            ],
+            "knownText": true,
+            "revision": 1
+          }
+        ]
+      }
+    },
+    "nativeCloseEvents": [
+      {
+        "method": "BrowserWindow.close",
+        "prevented": true
+      },
+      {
+        "method": "BrowserWindow.close",
+        "prevented": false
+      },
+      {
+        "method": "BrowserWindow.close",
+        "prevented": true
+      },
+      {
+        "method": "BrowserWindow.close",
+        "prevented": false
+      },
+      {
+        "method": "BrowserWindow.close",
+        "prevented": true
+      },
+      {
+        "method": "BrowserWindow.close",
+        "prevented": false
+      }
+    ],
+    "offlineRestart": {
+      "elapsedMs": 1082,
+      "before": {
+        "key": "[\"long-turn-237\",\"long-item-237\"]",
+        "offset": -187.77083587646484
+      },
+      "after": {
+        "key": "[\"long-turn-237\",\"long-item-237\"]",
+        "offset": -187.81250762939453
+      }
+    },
+    "storageFaultModule": {
+      "sources": [
+        {
+          "file": "apps/desktop/src/renderer/persistence/local-data.ts",
+          "sha256": "a98c346ff7a9baccc070b7d19f947ccb094cbb9683906fb556bef2c126d71529"
+        },
+        {
+          "file": "apps/desktop/src/renderer/persistence/types.ts",
+          "sha256": "cb6b00a1dc59d036ea3a3ad1235a005139d6afbf9601dc6cb9bc444fe873b36c"
+        }
+      ],
+      "compiledSha256": "d4ad3b1aaf7848cb3a4fb6edc1a25abf9d93ae32e33056f2324997a458a02b8a",
+      "note": "Test-only module built from these exact sources; GUI bundle identity is recorded separately."
+    }
+  },
+  "screenshots": [
+    {
+      "file": "screenshots/fixture-p43-long-history.png",
+      "sha256": "33becab97d14e9f15669bb4b8f570d8506537d5592428873292493f1aee78baa",
+      "width": 2160,
+      "height": 1385,
+      "theme": "light"
+    },
+    {
+      "file": "screenshots/fixture-p43-offline-restart.png",
+      "sha256": "3d603cae3877fa7f403681e50fbe157348998ce04de9e38fa1358b5def88195c",
+      "width": 2160,
+      "height": 1385,
+      "theme": "light"
+    },
+    {
+      "file": "screenshots/fixture-p43-storage-failure.png",
+      "sha256": "cdbf5af486ca1264fdcefd631ab10669be7f20e5721bb65e3677e9a605052558",
+      "width": 2160,
+      "height": 1385,
+      "theme": "light"
+    },
+    {
+      "file": "screenshots/fixture-p43-light.png",
+      "sha256": "a7cf70f680cfd44cb690bea3c0ab8b1b068e4005775cc1ed443e64d25ad6e90f",
+      "width": 2160,
+      "height": 1385,
+      "theme": "light"
+    },
+    {
+      "file": "screenshots/fixture-p43-dark.png",
+      "sha256": "6f3754f611d537d1a6178ceeff9f73aa6ae6bdaac2d8d10f464a30b13ffb31de",
+      "width": 2160,
+      "height": 1385,
+      "theme": "dark"
+    },
+    {
+      "file": "screenshots/fixture-p43-oled.png",
+      "sha256": "9d8314eba57dbb8724ebc135fc778d1acbfeeeda0d672a8d597da61ee515e768",
+      "width": 2160,
+      "height": 1385,
+      "theme": "oled"
+    },
+    {
+      "file": "screenshots/fixture-p43-narrow-inspector.png",
+      "sha256": "fd0f29146b4356abaab1282094645bc420abe192bce83d182a9160dbcc3b620f",
+      "width": 1500,
+      "height": 1050,
+      "theme": "oled"
+    }
+  ],
+  "mainTcpAttemptsAfterLaunch": 0,
+  "ordinaryRendererExternalRequestsAfterLaunch": 0,
+  "limitations": [
+    "All histories and identities are generated test data, not native Codex execution.",
+    "Fixtures enter through the real main/preload event; credentials and Gateway handshake are not simulated as successes.",
+    "Network guard attaches after launch; the Profile starts empty and product policy also blocks renderer networking.",
+    "Playwright debugger loopback endpoints are automation plumbing, not a test Gateway.",
+    "Scripted composition events exercise IME guards; physical input method acceptance requires the separate Computer Use check.",
+    "Native appearance recovery invokes the real menu handler programmatically; CDP bypasses Electron before-input-event, so physical Ctrl+Shift+0 is a separate check.",
+    "No TLS/public network, production service changes, DEB or release work."
+  ],
+  "archive": {
+    "sourceResultsSha256": "bfe364efcefd0e2a1a350783206aa1a5de9caf487524601487de55a87b7801fc",
+    "harnessFile": "scripts/desktop-p43-fixtures.ts",
+    "harnessSha256": "2abfe6f20eecad85b405d7f38d55f9ea0b15db63a83a3e6b36567c547863f4c6",
+    "sanitization": "Generated fixture identities and test action data only. Screenshots copied byte-for-byte from the latest passing result manifest; filenames made repository-relative. No private profile, credentials, native user history, or previous failure artifacts included."
+  },
+  "reviewVerification": {
+    "storageModuleProvenance": {
+      "status": "passed",
+      "evidence": "performance.storageFaultModule records exact source SHA-256 for local-data.ts/types.ts and the compiled test-only module. These source hashes were independently checked again before archival. GUI build provenance remains separate in source/manifestHash."
+    },
+    "performanceSampling": {
+      "status": "passed",
+      "evidence": "Performance collection is enabled before initial render. performance.longHistory contains render/scroll LayoutDuration and RecalcStyleDuration deltas, initial heap, heapAfterScroll, and an explicit no-GC/non-RSS sampling caveat."
+    },
+    "blockedUpgradePreservation": {
+      "status": "passed",
+      "evidence": "IndexedDB: real blocked upgrade aborts late migration and preserves original version and records",
+      "assertions": "The executed harness creates a version-1 database and writes a sentinel, provokes a blocked version-2 open, then verifies version remains 1 and the original sentinel record is unchanged after the late upgrade is cancelled.",
+      "sentinelKey": "sentinel",
+      "sentinelValue": "blocked upgrade sentinel"
+    }
+  }
+}

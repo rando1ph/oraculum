@@ -1,0 +1,362 @@
+{
+  "schema": 1,
+  "date": "2026-11-19",
+  "note": "Hashes cover original PNG files and review documents; this manifest excludes itself. Renderer/main runtime hashes are in validation.json.",
+  "files": [
+    {
+      "path": "README.md",
+      "bytes": 21387,
+      "sha256": "74914024ab6f414a148293d5951eb19e079e271bec481e26c8f2cdb892d63608"
+    },
+    {
+      "path": "fixture-results.json",
+      "bytes": 12969,
+      "sha256": "babc123e96a7e8a8ec7e5c5727b2516d619eeaf4622a17c8bec4b11320729214"
+    },
+    {
+      "path": "live-results.json",
+      "bytes": 21758,
+      "sha256": "7fde068e32a3f3d6d3149200b83ecabed71c10dd92a2b28e193b6c0daf2c1962"
+    },
+    {
+      "path": "p42-regression.json",
+      "bytes": 8261,
+      "sha256": "13b7ec9b855b6904706e32af9003dfea1f33d0fe52f17f65fe6dccb1265cc4d6"
+    },
+    {
+      "path": "performance-baseline.json",
+      "bytes": 4379,
+      "sha256": "717020aa4fe619c65a1a64cbb7935896bd807c177260facebad69a03d92ce9c2"
+    },
+    {
+      "path": "screenshots/fixture-p42-01-dark.png",
+      "bytes": 201206,
+      "sha256": "3ce2aa2014ec8f7cfd461d578bdbb288da64981e8aa9b4fbd04c13049cbb4ece",
+      "width": 2160,
+      "height": 1385,
+      "mode": "RGB",
+      "kind": "fixture"
+    },
+    {
+      "path": "screenshots/fixture-p42-01-light.png",
+      "bytes": 200467,
+      "sha256": "2245c4a9e169b132cf07fefe070f509acf918750ec66d3a3e8a216e0d20db4c6",
+      "width": 2160,
+      "height": 1385,
+      "mode": "RGB",
+      "kind": "fixture"
+    },
+    {
+      "path": "screenshots/fixture-p42-01-oled.png",
+      "bytes": 201367,
+      "sha256": "dc531d3927feca01549b36acd469ec0e4dfe66b3084c963c7b7cbfc8a3c6bd52",
+      "width": 2160,
+      "height": 1385,
+      "mode": "RGB",
+      "kind": "fixture"
+    },
+    {
+      "path": "screenshots/fixture-p42-02-offline.png",
+      "bytes": 200223,
+      "sha256": "5f51cc7bfed2c79866306f054ee75388a89c6c356be3559fd6c601ef46659b86",
+      "width": 2160,
+      "height": 1385,
+      "mode": "RGB",
+      "kind": "fixture"
+    },
+    {
+      "path": "screenshots/fixture-p42-03-restricted-approval.png",
+      "bytes": 217944,
+      "sha256": "d44a36e248cc926f9827184304998ea09ba30e17ebf2317741678d056506ca4f",
+      "width": 2160,
+      "height": 1385,
+      "mode": "RGB",
+      "kind": "fixture"
+    },
+    {
+      "path": "screenshots/fixture-p42-04-narrow.png",
+      "bytes": 144369,
+      "sha256": "c579523cc2fb70140a88a2a697cafc274e24a885df8176603dd28e38ea648151",
+      "width": 1500,
+      "height": 1050,
+      "mode": "RGB",
+      "kind": "fixture"
+    },
+    {
+      "path": "screenshots/fixture-p42-05-active-controls.png",
+      "bytes": 203486,
+      "sha256": "6695e95eab621968f4f23675e6717162d492544e115cdbf4817a312f3703b7fe",
+      "width": 2160,
+      "height": 1385,
+      "mode": "RGB",
+      "kind": "fixture"
+    },
+    {
+      "path": "screenshots/fixture-p42-06-complete-file-approval.png",
+      "bytes": 212943,
+      "sha256": "e3d0204b8bf35e73bd2a7b8e5cd28d5de98efd1fd21b8f1861f9785fc3ed85da",
+      "width": 2160,
+      "height": 1385,
+      "mode": "RGB",
+      "kind": "fixture"
+    },
+    {
+      "path": "screenshots/fixture-p42-07-decoded-image-preview.png",
+      "bytes": 189993,
+      "sha256": "ee29f0ea811797310fb66bd37ba7f435c39e385739ed6f8c438f1e2802fe6bbd",
+      "width": 2160,
+      "height": 1385,
+      "mode": "RGB",
+      "kind": "fixture"
+    },
+    {
+      "path": "screenshots/fixture-p43-dark.png",
+      "bytes": 230826,
+      "sha256": "6f3754f611d537d1a6178ceeff9f73aa6ae6bdaac2d8d10f464a30b13ffb31de",
+      "width": 2160,
+      "height": 1385,
+      "mode": "RGB",
+      "kind": "fixture"
+    },
+    {
+      "path": "screenshots/fixture-p43-light.png",
+      "bytes": 228491,
+      "sha256": "a7cf70f680cfd44cb690bea3c0ab8b1b068e4005775cc1ed443e64d25ad6e90f",
+      "width": 2160,
+      "height": 1385,
+      "mode": "RGB",
+      "kind": "fixture"
+    },
+    {
+      "path": "screenshots/fixture-p43-long-history.png",
+      "bytes": 291908,
+      "sha256": "33becab97d14e9f15669bb4b8f570d8506537d5592428873292493f1aee78baa",
+      "width": 2160,
+      "height": 1385,
+      "mode": "RGB",
+      "kind": "fixture"
+    },
+    {
+      "path": "screenshots/fixture-p43-narrow-inspector.png",
+      "bytes": 188873,
+      "sha256": "fd0f29146b4356abaab1282094645bc420abe192bce83d182a9160dbcc3b620f",
+      "width": 1500,
+      "height": 1050,
+      "mode": "RGB",
+      "kind": "fixture"
+    },
+    {
+      "path": "screenshots/fixture-p43-offline-restart.png",
+      "bytes": 296576,
+      "sha256": "3d603cae3877fa7f403681e50fbe157348998ce04de9e38fa1358b5def88195c",
+      "width": 2160,
+      "height": 1385,
+      "mode": "RGB",
+      "kind": "fixture"
+    },
+    {
+      "path": "screenshots/fixture-p43-oled.png",
+      "bytes": 230022,
+      "sha256": "9d8314eba57dbb8724ebc135fc778d1acbfeeeda0d672a8d597da61ee515e768",
+      "width": 2160,
+      "height": 1385,
+      "mode": "RGB",
+      "kind": "fixture"
+    },
+    {
+      "path": "screenshots/fixture-p43-storage-failure.png",
+      "bytes": 236256,
+      "sha256": "cdbf5af486ca1264fdcefd631ab10669be7f20e5721bb65e3677e9a605052558",
+      "width": 2160,
+      "height": 1385,
+      "mode": "RGB",
+      "kind": "fixture"
+    },
+    {
+      "path": "screenshots/live-codex-accepted.png",
+      "bytes": 177728,
+      "sha256": "2f6be6feabd01c2f4a79c403ccb4d347e675dc8f87e6dd6acbd30991b2115873",
+      "width": 2160,
+      "height": 1385,
+      "mode": "RGB",
+      "kind": "real-local-gateway"
+    },
+    {
+      "path": "screenshots/live-dark-collapsed.png",
+      "bytes": 161509,
+      "sha256": "7c0f97c904fc311ab6026dcc8ef1e1f4ff862036413e734a7bde5227c36d8a0a",
+      "width": 2160,
+      "height": 1385,
+      "mode": "RGB",
+      "kind": "real-local-gateway"
+    },
+    {
+      "path": "screenshots/live-ime-chinese.png",
+      "bytes": 169700,
+      "sha256": "f8c36643140a7c57373a436b81d367e4096e05abb80273e4dd0a8284434d6d6c",
+      "width": 2160,
+      "height": 1385,
+      "mode": "RGB",
+      "kind": "real-local-gateway"
+    },
+    {
+      "path": "screenshots/live-ime-no-send.png",
+      "bytes": 168582,
+      "sha256": "45df547e6820a3a447a1c511ff1d7fb0ca1ffc0b16dceb375d1e2e5635498b7d",
+      "width": 2160,
+      "height": 1385,
+      "mode": "RGB",
+      "kind": "real-local-gateway"
+    },
+    {
+      "path": "screenshots/live-native-reset.png",
+      "bytes": 182837,
+      "sha256": "b39077a5d853488d5b2db2d209e190b91a51452d37d709ec441b46a99b280f3e",
+      "width": 2160,
+      "height": 1385,
+      "mode": "RGB",
+      "kind": "real-local-gateway"
+    },
+    {
+      "path": "screenshots/live-offline-a-relaunch.png",
+      "bytes": 216004,
+      "sha256": "3a45d1e98bc98ccddb2ca73c8f8b50f6f5c25402628ef295ebd7246115654a6c",
+      "width": 2160,
+      "height": 1385,
+      "mode": "RGB",
+      "kind": "real-local-gateway"
+    },
+    {
+      "path": "screenshots/live-offline-relaunch.png",
+      "bytes": 188051,
+      "sha256": "35bdcc53573e4d587c8ddfccca92855895bc678b514ea073396a6a4e63f221fd",
+      "width": 2160,
+      "height": 1385,
+      "mode": "RGB",
+      "kind": "real-local-gateway"
+    },
+    {
+      "path": "screenshots/live-reconnected-settled.png",
+      "bytes": 176823,
+      "sha256": "b219237188798e8a511869f8e95b27fa1b009023d209e15aee6c8ab9408e57ab",
+      "width": 2160,
+      "height": 1385,
+      "mode": "RGB",
+      "kind": "real-local-gateway"
+    },
+    {
+      "path": "screenshots/live-thread-a-restored.png",
+      "bytes": 212159,
+      "sha256": "72dc65ecca3335ef6e1c05d514433f45b21460ea42846693ca31c9b1c029be80",
+      "width": 2160,
+      "height": 1385,
+      "mode": "RGB",
+      "kind": "real-local-gateway"
+    },
+    {
+      "path": "screenshots/native-ime-preedit.png",
+      "bytes": 342640,
+      "sha256": "7a7f280c8ed8c806ba0733b1f61c22565e07e7da4c997424e258b8ae86fca117",
+      "width": 1920,
+      "height": 1280,
+      "mode": "RGBA",
+      "kind": "real-local-gateway"
+    },
+    {
+      "path": "screenshots/native-live-final.png",
+      "bytes": 330506,
+      "sha256": "2b71f14c82a2316fa8e5423a901a854253b96e7072be6ae7b6567a395a9de125",
+      "width": 1920,
+      "height": 1280,
+      "mode": "RGBA",
+      "kind": "real-local-gateway"
+    },
+    {
+      "path": "screenshots/native-live-narrow.png",
+      "bytes": 214822,
+      "sha256": "6a3f6a9cc79825062d4a9209930a499e4f0c4a412c7e50af40055f447d48a7c4",
+      "width": 1500,
+      "height": 1140,
+      "mode": "RGBA",
+      "kind": "real-local-gateway"
+    },
+    {
+      "path": "screenshots/native-live-oled.png",
+      "bytes": 340298,
+      "sha256": "fec799dda5c0f246140b9ed25f167c118fddeeee74c4e818dfb700f58435c523",
+      "width": 1920,
+      "height": 1280,
+      "mode": "RGBA",
+      "kind": "real-local-gateway"
+    },
+    {
+      "path": "screenshots/reviewed-live-final.png",
+      "bytes": 178653,
+      "sha256": "9559b1286369162c85064e8ac5c873c84edd2b4e17be382061c89e4413ca51bd",
+      "width": 2160,
+      "height": 1385,
+      "mode": "RGB",
+      "kind": "real-local-gateway"
+    },
+    {
+      "path": "screenshots/reviewed-live-light.png",
+      "bytes": 188910,
+      "sha256": "957cc206c607a7b9706f47fc82379295bf8b9f39e77d7d3d4e485eab85f1c098",
+      "width": 2160,
+      "height": 1385,
+      "mode": "RGB",
+      "kind": "real-local-gateway"
+    },
+    {
+      "path": "screenshots/reviewed-native-dark.png",
+      "bytes": 339970,
+      "sha256": "b5109b43ff00e0703b7ae212cbf9711d5f4f4672863917995519dd78e864782b",
+      "width": 1920,
+      "height": 1280,
+      "mode": "RGBA",
+      "kind": "real-local-gateway"
+    },
+    {
+      "path": "screenshots/reviewed-native-light.png",
+      "bytes": 331959,
+      "sha256": "1521ef6e222845a17971ce82ac0f966a15122c2e0ef7889c53b75f017104f172",
+      "width": 1920,
+      "height": 1280,
+      "mode": "RGBA",
+      "kind": "real-local-gateway"
+    },
+    {
+      "path": "screenshots/reviewed-native-offline-narrow.png",
+      "bytes": 248530,
+      "sha256": "648010577d4c85f5a158ed7610cfe2bb11dbc7e63158ef3cfc0ed4ba8cfecddb",
+      "width": 1500,
+      "height": 1140,
+      "mode": "RGBA",
+      "kind": "real-local-gateway"
+    },
+    {
+      "path": "screenshots/reviewed-native-oled.png",
+      "bytes": 327262,
+      "sha256": "c43e550349137249be05f281419eba2f59990060c7fad15a3f2d49d23015c572",
+      "width": 1920,
+      "height": 1280,
+      "mode": "RGBA",
+      "kind": "real-local-gateway"
+    },
+    {
+      "path": "validation.json",
+      "bytes": 5089,
+      "sha256": "67388ea75a3f9270775f6e7cb39d9f78bb2540a985165f9511a43a65698bc2dd"
+    }
+  ],
+  "harnesses": [
+    {
+      "path": "scripts/desktop-p43-fixtures.ts",
+      "sha256": "2abfe6f20eecad85b405d7f38d55f9ea0b15db63a83a3e6b36567c547863f4c6"
+    },
+    {
+      "path": "scripts/desktop-p42-fixtures.ts",
+      "sha256": "e362eb1a0947a0d1a82d41d3793d02f3a304b1e1700a709b071a6e2ddc8aecbe"
+    }
+  ]
+}
