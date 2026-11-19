@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { WorkspaceAction, WorkspaceState } from '../contracts/workspace';
-import type { CachedHistory, CachedNavigation, DraftContent, DraftReceipt, LocalIdentity, LocalScope, PersistedDraft, ReadingPosition } from './persistence/types';
+import type { CachedHistory, CachedNavigation, DraftContent, DraftReceipt, LocalIdentity, LocalScope, LocalPreferences, PersistedDraft, ReadingPosition } from './persistence/types';
 import type { LocalStorageError as StorageErrorType } from './persistence/types';
 let LocalStorageError: typeof StorageErrorType;
 
@@ -27,7 +27,7 @@ class MemoryStorage {
   navigation = new Map<string, CachedNavigation>(); histories = new Map<string, CachedHistory>(); drafts = new Map<string, PersistedDraft>();
   readNavigation = vi.fn(async (id: LocalIdentity) => copy(this.navigation.get(identityKey(id))));
   saveNavigation = vi.fn(async (id: LocalIdentity, nav: CachedNavigation) => { this.navigation.set(identityKey(id), copy(nav)); });
-  readPreferences = vi.fn(async () => undefined); savePreferences = vi.fn(async () => {});
+  readPreferences = vi.fn(async (): Promise<LocalPreferences | undefined> => undefined); savePreferences = vi.fn(async () => {});
   readHistory = vi.fn(async (scope: LocalScope) => copy(this.histories.get(scopeKey(scope))));
   saveHistory = vi.fn(async (scope: LocalScope, history: CachedHistory) => { this.histories.set(scopeKey(scope), copy(history)); });
   readReading = vi.fn(async (_scope: LocalScope): Promise<ReadingPosition | undefined> => undefined);
@@ -83,10 +83,114 @@ describe('Desktop persistence orchestration races', () => {
     await vi.advanceTimersByTimeAsync(550);
     expect(storage.saveHistory.mock.calls.map(([scope]) => scope.threadId).sort()).toEqual(['a', 'b']);
   });
+  it('flushes the final A selection and its draft after rapid A-B-A history visits', async () => {
+    await initialize(state('a')); await api.useWorkspace.getState().flush();
+    api.useWorkspace.getState().receive(state('b')); await settleMicrotasks();
+    api.useWorkspace.getState().receive(state('a')); await settleMicrotasks();
+    const key = await edit('draft belongs to final A');
+    expect(await api.useWorkspace.getState().flush()).toBe(true);
+    expect(storage.navigation.get(identityKey(identity))).toMatchObject({ projectId: 'project', threadId: 'a' });
+    expect(api.useWorkspace.getState().workspace?.threadId).toBe('a');
+    expect(storage.drafts.get(scopeKey({ ...identity, projectId: 'project', threadId: 'a' }))?.text).toBe('draft belongs to final A');
+    expect(api.useWorkspace.getState().drafts[key].text).toBe('draft belongs to final A');
+  });
+  it('waits for an in-flight history cache write before final A selection is considered flushed', async () => {
+    await initialize(state('a')); await api.useWorkspace.getState().flush();
+    const gate = deferred<void>(), original = storage.saveNavigation.getMockImplementation()!;
+    storage.saveNavigation.mockImplementationOnce(async (...args) => { await gate.promise; return original(...args); });
+    api.useWorkspace.getState().receive(state('b')); await settleMicrotasks(); await vi.advanceTimersByTimeAsync(500);
+    api.useWorkspace.getState().receive(state('a')); await settleMicrotasks(); await edit('A after background cache write');
+    let done = false; const close = api.useWorkspace.getState().flush().then(value => { done = true; return value; });
+    await settleMicrotasks(); expect(done).toBe(false); gate.resolve(); expect(await close).toBe(true);
+    expect(storage.navigation.get(identityKey(identity))?.threadId).toBe('a');
+  });
+  it('keeps close pending until every remaining history in an already-running cache batch commits', async () => {
+    const first = deferred<void>(), second = deferred<void>(), original = storage.saveHistory.getMockImplementation()!;
+    storage.saveHistory.mockImplementation(async (scope, history) => {
+      await (scope.threadId === 'a' ? first.promise : second.promise);
+      return original(scope, history);
+    });
+    await initialize(state('a'));
+    api.useWorkspace.getState().receive(state('b')); await settleMicrotasks();
+    api.useWorkspace.getState().receive(state('a')); await settleMicrotasks();
+    await vi.advanceTimersByTimeAsync(500);
+    expect(storage.saveHistory.mock.calls.map(([scope]) => scope.threadId)).toEqual(['a']);
+    let closed = false;
+    const close = api.useWorkspace.getState().flush().then(value => { closed = true; return value; });
+    await settleMicrotasks(); expect(closed).toBe(false);
+    first.resolve(); await settleMicrotasks(); await settleMicrotasks();
+    expect(storage.saveHistory.mock.calls.map(([scope]) => scope.threadId)).toEqual(['a', 'b']);
+    const closedBeforeFinalCommit = closed;
+    second.resolve(); expect(await close).toBe(true); await settleMicrotasks();
+    expect(closedBeforeFinalCommit).toBe(false);
+    expect(storage.navigation.get(identityKey(identity))?.threadId).toBe('a');
+    expect(storage.histories.has(scopeKey({ ...identity, projectId: 'project', threadId: 'b' }))).toBe(true);
+  });
+  it('does not repopulate cleared history from the remainder of an already-running cache batch', async () => {
+    const first = deferred<void>(), second = deferred<void>(), original = storage.saveHistory.getMockImplementation()!;
+    storage.saveHistory.mockImplementation(async (scope, history) => {
+      await (scope.threadId === 'a' ? first.promise : second.promise); return original(scope, history);
+    });
+    await initialize(state('a'));
+    api.useWorkspace.getState().receive(state('b')); await settleMicrotasks();
+    await vi.advanceTimersByTimeAsync(500);
+    expect(storage.saveHistory.mock.calls.map(([scope]) => scope.threadId)).toEqual(['a']);
+    const clearing = api.useWorkspace.getState().clearHistory(); await settleMicrotasks();
+    first.resolve(); await settleMicrotasks(); await settleMicrotasks();
+    second.resolve(); await clearing; await settleMicrotasks();
+    expect(storage.histories.size).toBe(0);
+  });
   it('keeps the user-selected offline conversation when main repeats its last online selection', async () => {
     await initialize(offline()); await api.useWorkspace.getState().act({ type: 'selectThread', threadId: 'b' });
     api.useWorkspace.getState().receive(offline());
     expect(api.useWorkspace.getState().workspace?.threadId).toBe('b'); expect(api.useWorkspace.getState().cached).toBe(true);
+    expect(invoke).not.toHaveBeenCalled();
+  });
+  it('flushes the visible offline selection while its navigation commit is still pending', async () => {
+    storage.navigation.set(identityKey(identity), { savedAt: 1, projects: state().projects, threadsByProject: { project: state().threads! }, projectId: 'project', threadId: 'a' });
+    await initialize(offline('a')); await api.useWorkspace.getState().flush();
+    const gate = deferred<void>(), original = storage.saveNavigation.getMockImplementation()!;
+    storage.saveNavigation.mockImplementationOnce(async (...args) => { await gate.promise; return original(...args); });
+    const selecting = api.useWorkspace.getState().act({ type: 'selectThread', threadId: 'b' });
+    await settleMicrotasks(); expect(api.useWorkspace.getState().workspace?.threadId).toBe('b');
+    let closed = false; const close = api.useWorkspace.getState().flush().then(value => { closed = true; return value; });
+    await settleMicrotasks(); const closedBeforeSelectionCommit = closed;
+    gate.resolve(); await selecting; expect(await close).toBe(true);
+    expect(closedBeforeSelectionCommit).toBe(false);
+    expect(storage.navigation.get(identityKey(identity))?.threadId).toBe('b');
+  });
+  it('reconciles the offline-selected conversation after main reconnects to its last online selection', async () => {
+    storage.navigation.set(identityKey(identity), { savedAt: 1, projects: state().projects, threadsByProject: { project: state().threads! }, projectId: 'project', threadId: 'a' });
+    storage.histories.set(scopeKey({ ...identity, projectId: 'project', threadId: 'b' }), cached('b'));
+    await initialize(offline('a'));
+    await api.useWorkspace.getState().act({ type: 'selectThread', threadId: 'b' });
+    expect(api.useWorkspace.getState().workspace?.threadId).toBe('b'); expect(api.useWorkspace.getState().cached).toBe(true);
+    invoke.mockImplementation(async action => {
+      if (action.type === 'selectProject') return state('', { threadId: undefined, thread: undefined, history: undefined });
+      if (action.type === 'selectThread') return state(action.threadId);
+      throw new Error(`Unexpected non-read action: ${action.type}`);
+    });
+    // The protected main connection remembers A. Its fresh state must cause a
+    // formal read of the user's B choice, never replace B or send a new turn.
+    api.useWorkspace.getState().receive(state('a')); await settleMicrotasks(); await settleMicrotasks();
+    expect(invoke.mock.calls.some(([action]) => action.type === 'selectThread' && action.threadId === 'b')).toBe(true);
+    expect(invoke.mock.calls.every(([action]) => ['selectProject', 'selectThread'].includes(action.type))).toBe(true);
+    expect(api.useWorkspace.getState().workspace?.threadId).toBe('b'); expect(api.useWorkspace.getState().cached).toBe(false);
+    expect(api.useWorkspace.getState().workspace?.history?.items).toEqual(state('b').history?.items);
+  });
+  it('restores layout while same-identity state events arrive during initial storage loading', async () => {
+    const ui: LocalPreferences = { navigationWidth: 310, inspectorWidth: 420, navigationVisible: false };
+    const gate = deferred<LocalPreferences | undefined>(); storage.readPreferences.mockImplementationOnce(() => gate.promise);
+    api.useWorkspace.getState().receive(offline('a')); await settleMicrotasks();
+    api.useWorkspace.getState().receive(offline('a', { busy: true })); await settleMicrotasks(); gate.resolve(ui); await settleMicrotasks();
+    expect(api.useWorkspace.getState().ui).toEqual(ui); expect(api.useWorkspace.getState().localStatus).not.toBe('loading');
+  });
+  it('restores device layout on an unpaired offline launch without requiring a Gateway identity', async () => {
+    const ui: LocalPreferences = { navigationWidth: 310, inspectorWidth: 420, navigationVisible: false };
+    storage.readPreferences.mockResolvedValueOnce(ui);
+    await initialize(state('', { connection: { status: 'idle', endpoint: '', secureStorage: true }, localScope: undefined,
+      projectId: undefined, threadId: undefined, thread: undefined, history: undefined, projects: [], threads: undefined }));
+    expect(api.useWorkspace.getState().ui).toEqual(ui); expect(api.useWorkspace.getState().localStatus).not.toBe('loading');
     expect(invoke).not.toHaveBeenCalled();
   });
   it('uses current connection metadata when a delayed offline history read completes', async () => {

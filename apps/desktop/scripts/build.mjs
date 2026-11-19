@@ -44,7 +44,7 @@ await writeFile(join(dist, 'package.json'), JSON.stringify({
   private: true, main: 'main/index.cjs',
 }, null, 2) + '\n');
 await writeFile(join(dist, 'build-info.json'), JSON.stringify({
-  component: 'oraculum-desktop', stage: 'P4.2',
+  component: 'oraculum-desktop', stage: 'P4.3',
   sourceRevision: execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim(),
   sourceDirty: execFileSync('git', ['status', '--porcelain'], { cwd: root, encoding: 'utf8' }).trim().length > 0,
   dependencies: { ...sources.dependencies, ...sources.devDependencies },

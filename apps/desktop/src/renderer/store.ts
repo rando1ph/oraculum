@@ -33,9 +33,14 @@ const draftFaults = new Map<string, string>();
 const historyMemory = new Map<string, CachedHistory>();
 let cacheTimer: ReturnType<typeof setTimeout> | undefined;
 const pendingCaches = new Map<string, WorkspaceState>();
+const cacheWork = new Set<Promise<void>>();
+let pausingCache = false;
 let hydration: Promise<void> = Promise.resolve();
 const checkedDrafts = new Set<string>();
 let preparingSend = false;
+let restoringSelection = false;
+let reconnectSelection: { identity: string; projectId?: string; threadId?: string } | undefined;
+let uiRevision = 0;
 const pendingReading = new Map<string, { scope: LocalScope; reading: ReadingPosition }>();
 let readingTimer: ReturnType<typeof setTimeout> | undefined;
 const keyOf = (value: unknown) => JSON.stringify(value);
@@ -149,18 +154,21 @@ async function openCached(projectId?: string, threadId?: string): Promise<void> 
     if (ticket !== selectionRevision || id !== activeIdentity) return;
     if (history && scope) rememberHistory(scopeKey(scope), history);
     useWorkspace.setState({ workspace: cachedView(raw ?? base, navigation, scope, history), cached: true, cachedAt: history?.savedAt ?? navigation?.savedAt, reading, readingReady: true });
-    if (navigation) { navigation = { ...navigation, projectId, threadId }; await db().saveNavigation(identity, navigation); }
+    if (navigation) {
+      const selected = { ...navigation, projectId, threadId }; navigation = selected;
+      await enqueue(`nav:${id}`, () => db().saveNavigation(identity, selected));
+    }
     await settle(base);
     void checkPendingDraft();
   } catch (error) { fail(error); }
 }
 async function hydrate(identity: LocalIdentity): Promise<void> {
-  const id = identityKey(identity);
+  const id = identityKey(identity), layoutRevision = uiRevision;
   try {
     const [nav, ui] = await Promise.all([db().readNavigation(identity), db().readPreferences()]);
     if (id !== activeIdentity) return;
     navigation = nav;
-    useWorkspace.setState({ ui: ui ?? defaultUi, localStatus: 'ready', localError: '' });
+    useWorkspace.setState({ ...(layoutRevision === uiRevision ? { ui: ui ?? defaultUi } : {}), localStatus: 'ready', localError: '' });
     const current = raw;
     if (!current) return;
     if (current.projectId) { await loadSelection(current); queueCache(current); }
@@ -171,14 +179,19 @@ async function hydrate(identity: LocalIdentity): Promise<void> {
   } catch (error) { fail(error); }
 }
 async function restoreSelection(identity: LocalIdentity): Promise<void> {
-  const id = identityKey(identity), nav = navigation;
-  if (restoredIdentity === id || !nav?.projectId || !raw || raw.busy || useWorkspace.getState().pending || raw.connection.status !== 'connected') return;
+  const id = identityKey(identity), requested = reconnectSelection?.identity === id ? reconnectSelection : undefined, nav = requested ?? navigation;
+  if (restoringSelection || !requested && restoredIdentity === id || !nav?.projectId || !raw || raw.busy || useWorkspace.getState().pending || raw.connection.status !== 'connected') return;
   // Only read/select intents are restored; never create or send a turn.
   restoredIdentity = id;
   if (!raw.projects.some(project => project.id === nav.projectId && project.available)) return;
-  await useWorkspace.getState().act({ type: 'selectProject', projectId: nav.projectId });
-  if (nav.threadId && activeIdentity === id && raw?.projectId === nav.projectId && raw.threads?.threads.some(thread => thread.id === nav.threadId))
-    await useWorkspace.getState().act({ type: 'selectThread', threadId: nav.threadId });
+  restoringSelection = true;
+  try {
+    if (raw.projectId !== nav.projectId) await useWorkspace.getState().act({ type: 'selectProject', projectId: nav.projectId });
+    // A saved thread may lie beyond the first list page. Main performs an
+    // authorized direct thread read and rejects deleted/inaccessible selections.
+    if (nav.threadId && activeIdentity === id && raw?.projectId === nav.projectId && raw.threadId !== nav.threadId)
+      await useWorkspace.getState().act({ type: 'selectThread', threadId: nav.threadId });
+  } finally { restoringSelection = false; if (reconnectSelection === requested) reconnectSelection = undefined; }
 }
 async function loadSelection(state: WorkspaceState): Promise<void> {
   const scope = scopeOf(state); if (!scope) return;
@@ -206,10 +219,15 @@ async function loadSelection(state: WorkspaceState): Promise<void> {
   } catch (error) { fail(error); }
 }
 function queueCache(state: WorkspaceState) {
-  if (state.connection.status !== 'connected' || !identityOf(state)) return;
+  if (pausingCache || state.connection.status !== 'connected' || !identityOf(state)) return;
   const scope = scopeOf(state), identity = identityOf(state)!;
   pendingCaches.set(scope ? scopeKey(scope) : identityKey(identity), state);
-  if (!cacheTimer) cacheTimer = setTimeout(() => { cacheTimer = undefined; void persistCache().catch(fail); }, 500);
+  if (!cacheTimer) cacheTimer = setTimeout(() => { cacheTimer = undefined; void runCacheWork().catch(fail); }, 500);
+}
+function runCacheWork(): Promise<void> {
+  const task = persistCache(); cacheWork.add(task);
+  void task.finally(() => cacheWork.delete(task)).catch(() => undefined);
+  return task;
 }
 function rememberHistory(key: string, history: CachedHistory) {
   historyMemory.delete(key); historyMemory.set(key, history);
@@ -258,20 +276,28 @@ export const useWorkspace = create<Store>((set, get) => ({
     raw = state;
     const identity = identityOf(state), id = identity ? identityKey(identity) : '';
     const changed = activeIdentity !== id;
-    if (changed) { activeIdentity = id; restoredIdentity = ''; navigation = undefined; selectionRevision++; set({ reading: undefined, readingReady: false, cached: false, cachedAt: undefined, localStatus: identity ? 'loading' : 'ready' }); }
+    if (changed) { activeIdentity = id; restoredIdentity = ''; navigation = undefined; reconnectSelection = undefined; selectionRevision++; set({ reading: undefined, readingReady: false, cached: false, cachedAt: undefined, localStatus: identity ? 'loading' : 'ready' }); }
     // Cached content may remain visible while an authoritative read is pending,
     // but it is stripped of every capability, permission and interaction.
     const current = get().workspace;
+    if (!changed && get().cached && current && previous?.connection.status !== 'connected' && state.connection.status === 'connected')
+      reconnectSelection = { identity: id, projectId: current.projectId, threadId: current.threadId };
     if (!changed && get().cached && current && identity && (state.connection.status !== 'connected' || !state.threadId || state.threadId === current.threadId && !state.history))
       set({ workspace: { ...current, connection: state.connection, operations: state.operations, busy: state.busy } });
     else set({ workspace: mergeDisplay(state), cached: false, cachedAt: undefined });
-    if (!identity) return;
+    if (!identity) {
+      if (!previous) {
+        const revision = uiRevision;
+        hydration = db().readPreferences().then(ui => { set({ ...(revision === uiRevision ? { ui: ui ?? defaultUi } : {}), localStatus: 'ready' }); }).catch(fail);
+      }
+      return;
+    }
     if (changed) hydration = hydrate(identity);
     else {
       if (state.projectId !== previous?.projectId || state.threadId !== previous?.threadId) { selectionRevision++; set({ reading: undefined, readingReady: false }); void loadSelection(state); }
       void settle(state);
       queueCache(state);
-      if (state.connection.status === 'connected' && !state.projectId && !state.busy) void hydration.then(() => restoreSelection(identity));
+      if (state.connection.status === 'connected' && (!state.projectId || reconnectSelection) && !state.busy) void hydration.then(() => restoreSelection(identity));
     }
   },
   setDraft: (key, patch) => {
@@ -354,16 +380,20 @@ export const useWorkspace = create<Store>((set, get) => ({
     if (!readingTimer) readingTimer = setTimeout(() => { readingTimer = undefined; void persistReading().catch(fail); }, 200);
   },
   patchUi: patch => {
+    uiRevision++;
     const ui = { ...get().ui, ...patch }; set({ ui }); void enqueue('preferences', () => db().savePreferences(ui)).catch(fail);
   },
   clearHistory: async () => {
     const identity = raw && identityOf(raw); if (!identity) return;
+    pausingCache = true;
     if (cacheTimer) clearTimeout(cacheTimer); cacheTimer = undefined; pendingCaches.clear();
     if (readingTimer) clearTimeout(readingTimer); readingTimer = undefined; pendingReading.clear();
-    try { await Promise.allSettled([...writes.values()]); await db().clearHistory(identity); historyMemory.clear();
+    try { await Promise.allSettled([...cacheWork]); await Promise.allSettled([...writes.values()]); await db().clearHistory(identity); historyMemory.clear();
       set({ localError: '', localStatus: 'ready' });
-      if (get().cached && raw) set({ workspace: cachedView(raw, navigation, scopeOf(get().workspace!)), cachedAt: undefined });
+      if (raw?.connection.status !== 'connected') await openCached(get().workspace?.projectId ?? navigation?.projectId, get().workspace?.threadId ?? navigation?.threadId);
+      else if (get().cached && raw) set({ workspace: cachedView(raw, navigation, scopeOf(get().workspace!)), cachedAt: undefined });
     } catch (error) { fail(error); }
+    finally { pausingCache = false; }
   },
   retryLocal: async () => {
     // Retry the user's retained edits; never send them as part of recovery.
@@ -377,10 +407,18 @@ export const useWorkspace = create<Store>((set, get) => ({
   },
   recheckDraft: async () => { checkedDrafts.clear(); await checkPendingDraft(); },
   flush: async () => {
+    pausingCache = true;
     if (cacheTimer) clearTimeout(cacheTimer); cacheTimer = undefined;
     if (readingTimer) clearTimeout(readingTimer); readingTimer = undefined;
-    try { await hydration; await persistReading(); await persistCache(); await Promise.all([...writes.values()]); return !Object.values(get().draftStatus).some(status => status === 'error' || status === 'saving' || status === 'loading'); }
+    try {
+      await hydration; await persistReading(); await runCacheWork(); await Promise.all([...cacheWork]);
+      // A batch schedules further transactions after each await. Wait for its
+      // producer as well as the individual writes before acknowledging close.
+      while (writes.size || pendingReading.size) { await persistReading(); await Promise.all([...writes.values()]); }
+      return !Object.values(get().draftStatus).some(status => status === 'error' || status === 'saving' || status === 'loading');
+    }
     catch (error) { fail(error); return false; }
+    finally { pausingCache = false; }
   },
 }));
 export function hasPendingOperation(state: WorkspaceState, scope: 'thread' | 'project' | 'identity' = 'thread'): boolean {
