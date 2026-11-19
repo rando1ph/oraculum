@@ -128,6 +128,11 @@ export class GatewayTransport {
     const state = this.state;
     return state?.deviceId ? { endpoint: state.endpoint, installationId: state.installationId, deviceId: state.deviceId } : null;
   }
+  /** An encrypted local identity may select an offline cache; it is never authentication. */
+  savedIdentity(input: string): TransportIdentity | null {
+    const metadata = this.options.credentials.metadataForEndpoint(normalizeEndpoint(input));
+    return metadata?.paired ? { endpoint: metadata.endpoint, installationId: metadata.installationId, deviceId: metadata.deviceId } : null;
+  }
   disconnect(): void {
     ++this.generation;
     for (const controller of this.requests) controller.abort();

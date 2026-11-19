@@ -5,6 +5,7 @@ import { IPC } from './ipc-channels';
 import type { ProfileKind } from './profile';
 import type { PreferencesStore } from './preferences';
 import type { DesktopWorkspace } from './workspace';
+import type { CloseGuard } from './close-guard';
 
 type Frame = { url: string; detached: boolean; isDestroyed(): boolean };
 type Sender = { mainFrame: Frame; getURL(): string; isDestroyed(): boolean };
@@ -19,14 +20,14 @@ export function isTrustedSender(event: { sender: unknown; senderFrame: Frame | n
   } catch { return false; }
 }
 
-export function registerDesktopIpc(contents: WebContents, preferences: PreferencesStore, kind: ProfileKind, workspace?: DesktopWorkspace): {
+export function registerDesktopIpc(contents: WebContents, preferences: PreferencesStore, kind: ProfileKind, workspace?: DesktopWorkspace, closeGuard?: CloseGuard): {
   state(): DesktopState;
-  publish(): void;
+  publish(appearanceReset?: boolean): void;
   dispose(): void;
 } {
   const state = (): DesktopState => ({ ...preferences.read(), profile: kind });
-  const publish = (): void => {
-    if (!contents.isDestroyed() && contents.getURL() === APP_ENTRY) contents.send(IPC.stateChanged, state());
+  const publish = (appearanceReset = false): void => {
+    if (!contents.isDestroyed() && contents.getURL() === APP_ENTRY) contents.send(IPC.stateChanged, { ...state(), ...(appearanceReset ? { appearanceReset: true } : {}) });
   };
   const authorized = (event: IpcMainInvokeEvent): void => {
     if (!isTrustedSender(event, contents)) throw new Error('IPC_NOT_AUTHORIZED');
@@ -51,7 +52,7 @@ export function registerDesktopIpc(contents: WebContents, preferences: Preferenc
     noArguments(args);
     preferences.reset();
     contents.setZoomFactor(1);
-    publish();
+    publish(true);
     return state();
   });
   ipcMain.handle(IPC.getWorkspace, (event, ...args: unknown[]) => {
@@ -64,7 +65,12 @@ export function registerDesktopIpc(contents: WebContents, preferences: Preferenc
     if (!workspace || args.length !== 1) throw new Error('INVALID_ARGUMENTS');
     return workspace.action(args[0]);
   });
+  ipcMain.handle(IPC.closeReady, (event, ...args: unknown[]) => {
+    authorized(event);
+    if (!closeGuard || args.length !== 2) throw new Error('INVALID_ARGUMENTS');
+    closeGuard.acknowledge(args[0], args[1]);
+  });
   return { state, publish, dispose() {
-    for (const channel of [IPC.getState, IPC.setPreferences, IPC.resetAppearance, IPC.getWorkspace, IPC.workspaceAction]) ipcMain.removeHandler(channel);
+    for (const channel of [IPC.getState, IPC.setPreferences, IPC.resetAppearance, IPC.getWorkspace, IPC.workspaceAction, IPC.closeReady]) ipcMain.removeHandler(channel);
   } };
 }

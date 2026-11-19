@@ -11,6 +11,8 @@ export interface DesktopState {
   preferences: Preferences;
   profile: 'development' | 'production';
   preferencesRecovered: boolean;
+  /** Transient reset event; does not reload the renderer or touch drafts/history. */
+  appearanceReset?: true;
 }
 
 export interface DesktopBridge extends WorkspaceBridge {
@@ -18,4 +20,5 @@ export interface DesktopBridge extends WorkspaceBridge {
   setPreferences(patch: Partial<Preferences>): Promise<DesktopState>;
   resetAppearance(): Promise<DesktopState>;
   onStateChanged(listener: (state: DesktopState) => void): () => void;
+  onBeforeClose(listener: () => Promise<boolean>): () => void;
 }

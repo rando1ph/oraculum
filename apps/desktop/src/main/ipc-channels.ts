@@ -7,4 +7,6 @@ export const IPC = Object.freeze({
   getWorkspace: 'oraculum-desktop:workspace:get',
   workspaceAction: 'oraculum-desktop:workspace:action',
   workspaceChanged: 'oraculum-desktop:workspace:changed',
+  beforeClose: 'oraculum-desktop:close:prepare',
+  closeReady: 'oraculum-desktop:close:ready',
 });

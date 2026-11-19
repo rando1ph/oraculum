@@ -39,9 +39,9 @@ function fixture() {
 }
 
 describe('registered workspace IPC boundary with no Electron/network process', () => {
-  it('registers only five named business/settings handlers and removes them on disposal', () => {
+  it('registers only named business/settings and close-ack handlers and removes them on disposal', () => {
     const f = fixture();
-    expect([...mocks.handlers.keys()].sort()).toEqual([IPC.getState, IPC.setPreferences, IPC.resetAppearance, IPC.getWorkspace, IPC.workspaceAction].sort());
+    expect([...mocks.handlers.keys()].sort()).toEqual([IPC.getState, IPC.setPreferences, IPC.resetAppearance, IPC.getWorkspace, IPC.workspaceAction, IPC.closeReady].sort());
     for (const generic of ['request', 'rpc', 'fetch', 'readFile', 'execute', 'gateway', 'token', 'credential']) expect(mocks.handlers.has(generic)).toBe(false);
     f.ipc.dispose(); expect(mocks.handlers.size).toBe(0);
   });
@@ -58,6 +58,7 @@ describe('registered workspace IPC boundary with no Electron/network process', (
     if (scenario === 'remote') f.frame.url = 'https://fixture.invalid/';
     expect(() => mocks.handlers.get(IPC.getWorkspace)!(event)).toThrow('IPC_NOT_AUTHORIZED');
     expect(() => mocks.handlers.get(IPC.workspaceAction)!(event, { type: 'upload' })).toThrow('IPC_NOT_AUTHORIZED');
+    expect(() => mocks.handlers.get(IPC.closeReady)!(event, '00000000-0000-4000-8000-000000000000', true)).toThrow('IPC_NOT_AUTHORIZED');
     expect(state).not.toHaveBeenCalled(); expect(action).not.toHaveBeenCalled();
     expect(f.dialogs.chooseUpload).not.toHaveBeenCalled(); expect(f.transport.request).not.toHaveBeenCalled();
   });
@@ -126,7 +127,7 @@ describe('sandbox preload named-method surface', () => {
     if (!main || href !== APP_ENTRY) return;
     const [name, bridge] = mocks.expose.mock.calls[0];
     expect(name).toBe('oraculumDesktop'); expect(Object.isFrozen(bridge)).toBe(true);
-    expect(Object.keys(bridge).sort()).toEqual(['getState', 'setPreferences', 'resetAppearance', 'getWorkspace', 'workspaceAction', 'onWorkspaceChanged', 'onStateChanged'].sort());
+    expect(Object.keys(bridge).sort()).toEqual(['getState', 'setPreferences', 'resetAppearance', 'getWorkspace', 'workspaceAction', 'onWorkspaceChanged', 'onStateChanged', 'onBeforeClose'].sort());
     expect(bridge).not.toHaveProperty('invoke'); expect(bridge).not.toHaveProperty('send'); expect(bridge).not.toHaveProperty('request');
     const listener = vi.fn(); const unsubscribe = bridge.onWorkspaceChanged(listener);
     const [channel, callback] = mocks.on.mock.calls[0];
@@ -134,5 +135,14 @@ describe('sandbox preload named-method surface', () => {
     callback(event, state); expect(listener).toHaveBeenCalledExactlyOnceWith(state);
     expect(channel).toBe(IPC.workspaceChanged); unsubscribe(); expect(mocks.remove).toHaveBeenCalledExactlyOnceWith(channel, callback);
     expect(() => bridge.onWorkspaceChanged({})).toThrow('INVALID_LISTENER');
+    expect(() => bridge.onBeforeClose({})).toThrow('INVALID_LISTENER');
+    const flush = vi.fn(async () => true);
+    const unclose = bridge.onBeforeClose(flush);
+    const [closeChannel, closeCallback] = mocks.on.mock.calls.at(-1)!;
+    expect(closeChannel).toBe(IPC.beforeClose);
+    closeCallback(event, '00000000-0000-4000-8000-000000000000');
+    await vi.waitFor(() => expect(mocks.invoke).toHaveBeenCalledWith(IPC.closeReady, '00000000-0000-4000-8000-000000000000', true));
+    expect(flush).toHaveBeenCalledExactlyOnceWith();
+    unclose(); expect(mocks.remove).toHaveBeenLastCalledWith(closeChannel, closeCallback);
   });
 });

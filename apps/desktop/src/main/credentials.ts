@@ -82,6 +82,21 @@ export class CredentialStore {
 
   load(endpoint: string, installationId: string): DeviceIdentity | null {
     checkBinding(endpoint, installationId);
+    const identity = this.loadEndpoint(endpoint);
+    if (identity && identity.installationId !== installationId) fail('CREDENTIAL_BINDING_MISMATCH');
+    return identity;
+  }
+
+  /** Local display namespace only. This never establishes an authenticated session. */
+  metadataForEndpoint(endpoint: string): DeviceIdentityMetadata | null {
+    const identity = this.loadEndpoint(endpoint);
+    if (!identity) return null;
+    return { endpoint: identity.endpoint, installationId: identity.installationId, deviceId: identity.deviceId, paired: identity.paired };
+  }
+
+  private loadEndpoint(endpoint: string): DeviceIdentity | null {
+    // Validate the endpoint independently, before deriving a file name.
+    checkBinding(endpoint, '00000000-0000-4000-8000-000000000000');
     this.assertStorage();
     this.assertDirectory();
     const file = this.file(endpoint);
@@ -106,7 +121,7 @@ export class CredentialStore {
       if (error instanceof CredentialError) throw error;
       fail('CREDENTIAL_STORAGE_CORRUPT');
     }
-    if (identity.endpoint !== endpoint || identity.installationId !== installationId) fail('CREDENTIAL_BINDING_MISMATCH');
+    if (identity.endpoint !== endpoint) fail('CREDENTIAL_BINDING_MISMATCH');
     return identity;
   }
 

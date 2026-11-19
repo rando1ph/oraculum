@@ -63,6 +63,8 @@ describe('Desktop encrypted device identities', () => {
     restarted.markPaired(identity);
     expect(new CredentialStore(directory, storage).load(ENDPOINT, INSTALLATION)).toEqual({ ...identity, paired: true });
     expect(store.metadata(ENDPOINT, INSTALLATION)).toEqual({ endpoint: ENDPOINT, installationId: INSTALLATION, deviceId: identity.deviceId, paired: true });
+    expect(store.metadataForEndpoint(ENDPOINT)).toEqual({ endpoint: ENDPOINT, installationId: INSTALLATION, deviceId: identity.deviceId, paired: true });
+    expect(JSON.stringify(store.metadataForEndpoint(ENDPOINT))).not.toContain(identity.deviceCredential);
     expect(readdirSync(directory).some(name => name.endsWith('.tmp'))).toBe(false);
   });
 

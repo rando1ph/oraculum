@@ -38,6 +38,8 @@ export interface JournalEntry {
   attachment?: JournalAttachment;
   attachmentIds?: string[];
   draftId?: string;
+  clientDraftId?: string;
+  draftRevision?: number;
 }
 /** Scope belongs to the original request, not a later receipt response envelope.
  * The controller must validate that envelope against its current authenticated session. */
@@ -82,14 +84,20 @@ function attachment(value: unknown): JournalAttachment {
     || typeof value.digest !== 'string' || !SHA256.test(value.digest)) fail('JOURNAL_INVALID_ATTACHMENT');
   return { draftId: value.draftId, name: value.name, mime: value.mime, size: value.size as number, digest: value.digest };
 }
-function operationMetadata(kind: string, intent: unknown): Pick<JournalEntry, 'attachment' | 'attachmentIds' | 'draftId'> {
+function operationMetadata(kind: string, intent: unknown): Pick<JournalEntry, 'attachment' | 'attachmentIds' | 'draftId' | 'clientDraftId' | 'draftRevision'> {
+  const draft: Pick<JournalEntry, 'clientDraftId' | 'draftRevision'> = {};
+  if (object(intent) && (intent.clientDraftId !== undefined || intent.draftRevision !== undefined)) {
+    if (!['turn.start', 'turn.steer'].includes(kind) || typeof intent.clientDraftId !== 'string' || !UUID.test(intent.clientDraftId)
+      || !Number.isSafeInteger(intent.draftRevision) || Number(intent.draftRevision) < 1) fail('JOURNAL_INVALID_DRAFT');
+    draft.clientDraftId = intent.clientDraftId; draft.draftRevision = intent.draftRevision as number;
+  }
   if (kind === 'attachment.upload') return { attachment: attachment(intent) };
-  if (kind !== 'turn.start' || !object(intent) || (intent.attachmentIds === undefined && intent.draftId === undefined)) return {};
+  if (kind !== 'turn.start' || !object(intent) || (intent.attachmentIds === undefined && intent.draftId === undefined)) return draft;
   if (!Array.isArray(intent.attachmentIds) || intent.attachmentIds.length < 1 || intent.attachmentIds.length > 6
     || intent.attachmentIds.some(id => typeof id !== 'string' || !UUID.test(id))
     || new Set(intent.attachmentIds).size !== intent.attachmentIds.length
     || typeof intent.draftId !== 'string' || !UUID.test(intent.draftId)) fail('JOURNAL_INVALID_ATTACHMENT');
-  return { attachmentIds: [...intent.attachmentIds] as string[], draftId: intent.draftId };
+  return { ...draft, attachmentIds: [...intent.attachmentIds] as string[], draftId: intent.draftId };
 }
 function identity(input: JournalIdentity): Pick<JournalEntry, 'endpointKey' | 'installationId' | 'deviceId'> {
   if (!object(input) || !token(input.installationId) || !token(input.deviceId)
@@ -163,7 +171,7 @@ function parseEntries(bytes: Buffer): JournalEntry[] {
       || data.sha256 !== digest(JSON.stringify(data.entries))) fail('JOURNAL_CORRUPT');
     const ids = new Set<string>();
     return data.entries.map(value => {
-      if (!object(value) || !keys(value, ['operationId', 'endpointKey', 'installationId', 'deviceId', 'epoch', 'projectId', 'threadId', 'kind', 'createdAt', 'requestDigest', 'state', 'code', 'receipt', 'attachment', 'attachmentIds', 'draftId'])
+      if (!object(value) || !keys(value, ['operationId', 'endpointKey', 'installationId', 'deviceId', 'epoch', 'projectId', 'threadId', 'kind', 'createdAt', 'requestDigest', 'state', 'code', 'receipt', 'attachment', 'attachmentIds', 'draftId', 'clientDraftId', 'draftRevision'])
         || typeof value.operationId !== 'string' || !UUID.test(value.operationId) || ids.has(value.operationId)
         || typeof value.endpointKey !== 'string' || !SHA256.test(value.endpointKey)
         || !token(value.installationId) || !token(value.deviceId) || !token(value.epoch)
@@ -182,11 +190,11 @@ function parseEntries(bytes: Buffer): JournalEntry[] {
       if (value.state === 'prepared' && (value.receipt !== undefined || value.code !== undefined)) fail('JOURNAL_CORRUPT');
       if (value.kind === 'attachment.upload') {
         if (!value.projectId || !value.threadId || !object(value.attachment) || !keys(value.attachment, ['draftId', 'name', 'mime', 'size', 'digest'])
-          || value.attachmentIds !== undefined || value.draftId !== undefined) fail('JOURNAL_CORRUPT');
+          || value.attachmentIds !== undefined || value.draftId !== undefined || value.clientDraftId !== undefined || value.draftRevision !== undefined) fail('JOURNAL_CORRUPT');
         attachment(value.attachment);
       } else {
         if (value.attachment !== undefined || (value.kind !== 'turn.start' && (value.attachmentIds !== undefined || value.draftId !== undefined))) fail('JOURNAL_CORRUPT');
-        if ((value.attachmentIds !== undefined || value.draftId !== undefined) && (!value.projectId || !value.threadId)) fail('JOURNAL_CORRUPT');
+        if ((value.attachmentIds !== undefined || value.draftId !== undefined || value.clientDraftId !== undefined || value.draftRevision !== undefined) && (!value.projectId || !value.threadId)) fail('JOURNAL_CORRUPT');
         operationMetadata(value.kind, value);
       }
       ids.add(value.operationId);
@@ -230,6 +238,10 @@ export class OperationJournal {
     // Explicit stop/interaction can address an active turn, but cannot repeat an unresolved exception.
     if (pending.some(entry => !EXCEPTIONS.has(kind) || entry.kind === kind)) fail('JOURNAL_SCOPE_PENDING');
     const requestDigest = intentDigest(intent), metadata = operationMetadata(kind, intent);
+    if (metadata.clientDraftId && (!owner.projectId || !owner.threadId)) fail('JOURNAL_INVALID_DRAFT');
+    // An accepted/lost-ACK submission must not acquire a second operation ID after a renderer restart.
+    if (metadata.clientDraftId && this.entries.some(entry => sameIdentity(entry, owner) && entry.projectId === owner.projectId
+      && entry.threadId === owner.threadId && entry.clientDraftId === metadata.clientDraftId && entry.draftRevision === metadata.draftRevision)) fail('DRAFT_ALREADY_SUBMITTED');
     if ((metadata.attachment || metadata.attachmentIds) && (!owner.projectId || !owner.threadId)) fail('JOURNAL_INVALID_ATTACHMENT');
     const entry: JournalEntry = { ...owner, operationId: randomUUID(), kind, createdAt: Date.now(), requestDigest, state: 'prepared', ...metadata };
     this.persist([...this.entries, entry]);

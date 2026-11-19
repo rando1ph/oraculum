@@ -9,6 +9,8 @@ import { GatewayTransport } from './gateway-transport';
 import { OperationJournal } from './journal';
 import { DesktopWorkspace } from './workspace';
 import { IPC } from './ipc-channels';
+import { ConnectionPreferences } from './connection-preferences';
+import { CloseGuard } from './close-guard';
 
 // Bundled client only: no process execution or Gateway/Bridge service lifecycle.
 app.setName('神谕 Desktop');
@@ -93,15 +95,28 @@ async function start(): Promise<void> {
       },
     }, state => {
       if (!contents.isDestroyed() && contents.getURL() === APP_ENTRY) contents.send(IPC.workspaceChanged, state);
-    }, safeStorage.isEncryptionAvailable() && safeStorage.getSelectedStorageBackend() === 'gnome_libsecret');
-  const ipc = registerDesktopIpc(contents, preferences, profile.kind, workspace);
+    }, safeStorage.isEncryptionAvailable() && safeStorage.getSelectedStorageBackend() === 'gnome_libsecret', new ConnectionPreferences(profile.directory));
+  const closeGuard = new CloseGuard(requestId => {
+    if (contents.isDestroyed() || contents.getURL() !== APP_ENTRY) throw new Error('RENDERER_UNAVAILABLE');
+    contents.send(IPC.beforeClose, requestId);
+  }, async () => {
+    const result = await dialog.showMessageBox(currentWindow, { type: 'warning', title: '草稿尚未确认保存',
+      message: '本地草稿尚未完成保存。继续退出可能丢失最近的编辑；远端执行不会被取消。',
+      buttons: ['取消退出', '仍然退出'], defaultId: 0, cancelId: 0, noLink: true });
+    return result.response === 1;
+  }, () => { if (!currentWindow.isDestroyed()) currentWindow.close(); });
+  const ipc = registerDesktopIpc(contents, preferences, profile.kind, workspace, closeGuard);
   contents.setWindowOpenHandler(() => ({ action: 'deny' }));
   contents.on('will-navigate', event => event.preventDefault());
   contents.on('will-frame-navigate', event => event.preventDefault());
   contents.on('will-redirect', event => event.preventDefault());
   contents.on('will-attach-webview', event => event.preventDefault());
   currentWindow.on('page-title-updated', event => event.preventDefault());
-  currentWindow.on('closed', () => { workspace.dispose(); ipc.dispose(); window = undefined; });
+  currentWindow.on('close', event => {
+    if (closeGuard.canClose) return;
+    event.preventDefault(); closeGuard.request();
+  });
+  currentWindow.on('closed', () => { closeGuard.dispose(); workspace.dispose(); ipc.dispose(); window = undefined; });
 
   const restoreAppearance = (): void => {
     if (currentWindow.isDestroyed()) return;
@@ -109,8 +124,7 @@ async function start(): Promise<void> {
       preferences.reset();
       contents.setZoomFactor(1);
       currentWindow.setBackgroundColor('#fbfcf9');
-      ipc.publish();
-      void contents.loadURL(APP_ENTRY).catch(() => startupFailure());
+      ipc.publish(true);
     } catch {
       dialog.showErrorBox('外观尚未保存', '无法写入 Desktop 的外观设置。原有文件已保留，请检查专用配置目录的权限后重试。');
     }
@@ -137,7 +151,7 @@ async function start(): Promise<void> {
   contents.on('render-process-gone', () => {
     if (currentWindow.isDestroyed() || failureReported) return;
     void dialog.showMessageBox(currentWindow, {
-      type: 'error', title: '界面已停止响应', message: '神谕界面意外退出。可以重新加载本地界面，或退出应用。',
+      type: 'error', title: '界面已停止响应', message: '神谕界面意外退出。重新加载后恢复已保存草稿；崩溃前尚未保存的最近编辑可能缺失。远端执行不会被取消。',
       buttons: ['重新加载', '退出'], defaultId: 0, cancelId: 1,
     }).then(({ response }) => {
       if (response === 0 && !currentWindow.isDestroyed()) void contents.loadURL(APP_ENTRY).catch(() => startupFailure());
@@ -146,6 +160,7 @@ async function start(): Promise<void> {
   });
   await contents.loadURL(APP_ENTRY);
   currentWindow.show();
+  void workspace.restoreConnection().catch(() => {});
 }
 
 app.on('window-all-closed', () => app.quit());

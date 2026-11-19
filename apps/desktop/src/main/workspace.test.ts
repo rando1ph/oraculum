@@ -9,6 +9,7 @@ import type { Snapshot, WorkspaceState } from '../contracts/workspace';
 import type { GatewayTransport, TransportIdentity } from './gateway-transport';
 import { JOURNAL_FILE, OperationJournal, type JournalScope } from './journal';
 import { DesktopWorkspace } from './workspace';
+import { ConnectionPreferences } from './connection-preferences';
 
 const installationId = '11111111-1111-4111-8111-111111111111';
 const epoch = '22222222-2222-4222-8222-222222222222';
@@ -33,7 +34,7 @@ function pendingApproval(currentEpoch = epoch): Interaction {
   return { interactionId, projectId, threadId, turnId: 'turn-1', epoch: currentEpoch, generation: 1, kind: 'command', status: 'pending',
     request: { threadId, turnId: 'turn-1', itemId: 'command-1', command: 'pwd', cwd: '/private/fixture/project', availableDecisions: ['accept', 'decline'] } };
 }
-function fixture(existingDirectory?: string) {
+function fixture(existingDirectory?: string, connectionPreferences?: ConnectionPreferences) {
   const directory = existingDirectory ?? mkdtempSync(join(tmpdir(), 'oraculum-workspace-fixture-'));
   if (!existingDirectory) temporary.push(directory);
   const journal = new OperationJournal(directory);
@@ -59,6 +60,7 @@ function fixture(existingDirectory?: string) {
   };
   const transport = {
     get identity() { return connected ? currentIdentity() : null; },
+    savedIdentity() { return currentIdentity(); },
     async connect(input: string) {
       connected = true; currentEndpoint = input;
       const capabilities = fixtureValue<Capabilities>('Capabilities');
@@ -109,7 +111,7 @@ function fixture(existingDirectory?: string) {
     },
   };
   const dialogs = { chooseUpload: vi.fn<() => Promise<string | undefined>>(async () => undefined), chooseDownload: vi.fn<() => Promise<string | undefined>>(async () => undefined) };
-  const workspace = new DesktopWorkspace(transport as unknown as GatewayTransport, journal, dialogs, state => published.push(state), true);
+  const workspace = new DesktopWorkspace(transport as unknown as GatewayTransport, journal, dialogs, state => published.push(state), true, connectionPreferences);
   workspaces.push(workspace);
   return { directory, journal, workspace, transport, calls, published, events, dialogs, envelope, operation, snapshot, uploaded,
     identity: currentIdentity, scope: (): JournalScope => ({ ...currentIdentity(), epoch: currentEpoch, projectId, threadId }),
@@ -138,6 +140,68 @@ function fixture(existingDirectory?: string) {
 }
 
 describe('Desktop controller reliable writes with offline fixtures', () => {
+  it('restores endpoint and offline namespace without granting permission or sending writes', async () => {
+    const f = fixture(); f.workspace.dispose();
+    const preferences = new ConnectionPreferences(f.directory); preferences.save(endpoint, true);
+    const restored = fixture(f.directory, new ConnectionPreferences(f.directory));
+    expect(restored.workspace.state()).toMatchObject({ connection: { endpoint, status: 'offline' }, localScope: { endpoint, installationId, deviceId }, synchronization: 'stale' });
+    expect(restored.calls).toHaveLength(0);
+    const rejected = await restored.workspace.action({ type: 'send', text: 'must remain local' });
+    expect(rejected.notice).toBe('CONNECTION_NOT_READY'); expect(restored.writes()).toHaveLength(0);
+    await restored.workspace.restoreConnection(); expect(restored.workspace.state().connection.status).toBe('connected'); expect(restored.writes()).toHaveLength(0);
+  });
+  it('manual disconnect remains offline across restart while explicit logout hides local scope', async () => {
+    const f = fixture(); f.workspace.dispose(); const preferences = new ConnectionPreferences(f.directory); preferences.save(endpoint, true);
+    const live = fixture(f.directory, preferences); await live.connect(); await live.workspace.action({ type: 'disconnect' }); live.workspace.dispose();
+    const offline = fixture(f.directory, new ConnectionPreferences(f.directory)); await offline.workspace.restoreConnection();
+    expect(offline.workspace.state().connection.status).toBe('offline'); expect(offline.calls).toHaveLength(0); expect(offline.workspace.state().localScope).toBeDefined();
+    await offline.connect(); const result = await offline.workspace.action({ type: 'logout' });
+    expect(result.localScope).toBeUndefined(); expect(result.projects).toHaveLength(0); expect(result.history).toBeUndefined(); offline.workspace.dispose();
+    const signedOut = fixture(f.directory, new ConnectionPreferences(f.directory)); await signedOut.workspace.restoreConnection();
+    expect(signedOut.workspace.state().localScope).toBeUndefined(); expect(signedOut.calls).toHaveLength(0);
+  });
+  it('startup connection failure preserves only local display namespace; revoked identity hides it and does not auto-reconnect', async () => {
+    const f = fixture(); f.workspace.dispose(); const preferences = new ConnectionPreferences(f.directory); preferences.save(endpoint, true);
+    const restored = fixture(f.directory, preferences);
+    vi.spyOn(restored.transport, 'connect').mockRejectedValueOnce(gatewayError('CONNECTION_FAILED'));
+    await restored.workspace.restoreConnection();
+    expect(restored.workspace.state()).toMatchObject({ connection: { status: 'offline' }, localScope: { endpoint, installationId, deviceId }, synchronization: 'stale' });
+    expect(restored.writes()).toHaveLength(0);
+    vi.spyOn(restored.transport, 'connect').mockRejectedValueOnce(gatewayError('CREDENTIAL_BINDING_MISMATCH'));
+    const revoked = await restored.workspace.action({ type: 'reconnect' });
+    expect(revoked.localScope).toBeUndefined(); expect(revoked.connection.status).toBe('revoked'); expect(revoked.history).toBeUndefined();
+    expect(new ConnectionPreferences(f.directory).read()).toMatchObject({ autoConnect: false, signedOut: true });
+  });
+  it('links drafts to durable operation metadata without passing local metadata to Gateway or replaying accepted revisions', async () => {
+    const f = fixture(); await f.connect();
+    const draft = { clientDraftId: '99999999-9999-4999-8999-999999999999', draftRevision: 2 };
+    const state = await f.workspace.action({ type: 'send', text: 'send once', ...draft });
+    expect(state.operations[0]).toMatchObject({ ...draft, status: 'accepted' }); expect(state.draftDispatch).toBeUndefined();
+    expect(f.writes()[0].body).not.toHaveProperty('clientDraftId'); expect(f.writes()[0].body).not.toHaveProperty('draftRevision');
+    await f.workspace.action({ type: 'refresh' });
+    const duplicate = await f.workspace.action({ type: 'send', text: 'send once', ...draft });
+    expect(duplicate.notice).toBe('DRAFT_ALREADY_SUBMITTED'); expect(duplicate.draftDispatch).toBeUndefined(); expect(f.writes()).toHaveLength(1);
+  });
+  it('returns negative journal proof for a pre-dispatch failure but not unknown or unreadable journal state', async () => {
+    const f = fixture(); await f.connect();
+    const draft = { clientDraftId: '99999999-9999-4999-8999-999999999999', draftRevision: 2 };
+    const absent = await f.workspace.action({ type: 'checkDraft', ...draft }); expect(absent.draftDispatch).toEqual({ ...draft, status: 'not-dispatched' });
+    f.override(call => { if (call.body?.operationId) throw gatewayError('CONNECTION_FAILED'); });
+    const unknown = await f.workspace.action({ type: 'send', text: 'unknown', ...draft });
+    expect(unknown.operations[0]).toMatchObject({ ...draft, status: 'unknown' }); expect(unknown.draftDispatch).toBeUndefined();
+    const lookup = await f.workspace.action({ type: 'checkDraft', ...draft }); expect(lookup.draftDispatch).toBeUndefined();
+    vi.spyOn(f.journal, 'list').mockImplementation(() => { throw new Error('JOURNAL_UNAVAILABLE'); });
+    const unavailable = await f.workspace.action({ type: 'checkDraft', ...draft, draftRevision: 3 }); expect(unavailable.draftDispatch).toBeUndefined();
+  });
+  it('accepts cached history cursor only for the exact current live revision', async () => {
+    const f = fixture(); await f.connect();
+    const count = f.calls.length;
+    const stale = await f.workspace.action({ type: 'historyMore', cursor: 'older-cached-page', historyRevision: 'old-revision' });
+    expect(stale.notice).toBe('HISTORY_STALE'); expect(f.calls).toHaveLength(count);
+    f.override(call => call.path.endsWith('/history/query') ? f.envelope({ epoch, historyRevision: 'revision-1', source: 'native-pagination', items: [], nextCursor: null, complete: true, truncated: false }) : undefined);
+    await f.workspace.action({ type: 'historyMore', cursor: 'older-cached-page', historyRevision: 'revision-1' });
+    expect(f.calls.at(-1)?.body).toMatchObject({ cursor: 'older-cached-page', projectId }); expect(f.writes()).toHaveLength(0);
+  });
   it('durably prepares the main-only journal before dispatch and exposes accepted as delivery, not completed execution', async () => {
     const f = fixture(); await f.connect();
     f.override(call => {

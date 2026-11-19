@@ -41,6 +41,35 @@ function corrupt(file: string, change: (data: { version: number; entries: Record
 }
 
 describe('durable Desktop operation journal', () => {
+  it.each(['turn.start', 'turn.steer'])('persists %s draft revision and blocks duplicate execution after accepted receipt and restart', kind => {
+    const { directory, journal, file } = fixture();
+    const draft = { clientDraftId: '11111111-1111-4111-8111-111111111111', draftRevision: 3, text: 'never persist this text' };
+    const entry = journal.prepare(scope, kind, draft); settle(journal, entry, 'accepted');
+    const restarted = new OperationJournal(directory);
+    expect(restarted.list(scope)[0]).toMatchObject({ clientDraftId: draft.clientDraftId, draftRevision: 3, state: 'accepted' });
+    expect(() => restarted.prepare(scope, kind, draft)).toThrow('DRAFT_ALREADY_SUBMITTED');
+    expect(fs.readFileSync(file, 'utf8')).not.toContain(draft.text);
+    expect(restarted.prepare(scope, kind, { ...draft, draftRevision: 4 }).operationId).not.toBe(entry.operationId);
+  });
+  it('keeps draft associations isolated across endpoint, installation, device and thread', () => {
+    const { journal } = fixture();
+    const draft = { clientDraftId: '11111111-1111-4111-8111-111111111111', draftRevision: 1 };
+    const original = journal.prepare(scope, 'turn.start', draft); settle(journal, original, 'accepted');
+    for (const different of [{ endpoint: 'https://other.invalid/' }, { installationId: 'installation-2' }, { deviceId: 'device-2' }, { threadId: 'thread-2' }]) {
+      const owner = { ...scope, ...different }; const entry = journal.prepare(owner, 'turn.start', draft);
+      expect(entry.operationId).not.toBe(original.operationId); settle(journal, entry, 'accepted', owner);
+    }
+  });
+  it.each([{ clientDraftId: 'bad', draftRevision: 1 }, { draftRevision: 1 }, { clientDraftId: '11111111-1111-4111-8111-111111111111' },
+    { clientDraftId: '11111111-1111-4111-8111-111111111111', draftRevision: 0 }, { clientDraftId: '11111111-1111-4111-8111-111111111111', draftRevision: 1.5 }])('rejects invalid draft association %# without any durable write', draft => {
+    const { journal, file } = fixture(); expect(() => journal.prepare(scope, 'turn.start', draft)).toThrow('JOURNAL_INVALID_DRAFT');
+    expect(fs.existsSync(file)).toBe(false);
+  });
+  it('rejects corrupt draft revision without clearing the journal', () => {
+    const { journal, file, directory } = fixture(); journal.prepare(scope, 'turn.steer', { clientDraftId: '11111111-1111-4111-8111-111111111111', draftRevision: 2 });
+    const bytes = corrupt(file, data => { data.entries[0].draftRevision = -1; });
+    expect(() => new OperationJournal(directory)).toThrow('JOURNAL_CORRUPT'); expect(fs.readFileSync(file)).toEqual(bytes);
+  });
   it('persists and fsyncs private metadata before issuing the operation ID; never persists intent or endpoint', () => {
     const { directory, file, journal } = fixture();
     const entry = prepare(journal);

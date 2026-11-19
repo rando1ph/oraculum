@@ -27,13 +27,13 @@ The [original Oraculum project](https://app.notion.com/p/3ff5421e690b81bdae14c06
 - Follow the user's latest visual feedback and approved Stitch/Oracle Eye assets. Preserve existing functionality and safety semantics; obtain direction before major design or information architecture changes.
 - For user-directed Android Studio visual refinement, read [upgrade/phase3/ANDROID_STUDIO_AGENT_HANDOFF.md](upgrade/phase3/ANDROID_STUDIO_AGENT_HANDOFF.md) and wait for the user's page/item instructions before changing UI.
 
-## Ubuntu Desktop P4.2
+## Ubuntu Desktop P4.3
 
-- Follow the [current P4.2 Task](https://app.notion.com/p/41a5421e690b81668bbbd49e17e7d400). P4.0 and P4.1 were accepted on 2026-11-17; their approved three-column layout, Light / Dark / OLED Dark tokens, complete Outline Oracle Eye SVG, original Diff font size and independent Electron security boundary remain the baseline.
-- P4.2 implements main-process Gateway Protocol 2.1 communication, system-protected credentials, durable write receipts, core business functions and recovery. Full IndexedDB history/draft/read-position experience and visual refinement belong to P4.3.
+- Follow the [current P4.3 Task](https://app.notion.com/p/41d5421e690b81f1a436d23dc3f30ba7). P4.0–P4.2 are accepted, with P4.2 finally accepted on 2026-11-19 at `85b303c`. Their approved three-column layout, Light / Dark / OLED Dark tokens, complete Outline Oracle Eye SVG, original Diff font size and independent Electron security boundary remain the baseline.
+- P4.3 adds IndexedDB history, scoped drafts, reading-position recovery, offline reading, long-conversation performance and mature keyboard/mouse interaction. Preserve P4.2 main-process Gateway Protocol 2.1 communication, system-protected credentials, durable write receipts and recovery. Cache data never grants write or approval authority; unknown writes only query their original operationId and are never automatically replayed.
 - The new Desktop does not import legacy themes, Theme API v1, Bridge transport or service lifecycle code. Preserve historical source files without putting them in the new runtime.
 - Use the existing running Gateway Beta 3 only through its formal local loopback HTTP/WS APIs, with an independent Desktop device identity and dedicated test project/sessions. Do not modify, restart, stop, upgrade or replace Gateway, alter private configuration/network/systemd, or deploy a test Gateway. Use fixtures for disruptive failure scenarios. HTTPS/WSS remains configurable but has no real remote/TLS acceptance in P4.2.
-- Use a dedicated client profile for real GNOME/Wayland verification. Do not build/install a formal DEB, publish a release or advance to P4.3. Keep P4.2 In progress pending user review.
+- Use the dedicated client profile and test resources for real GNOME/Wayland verification. Do not build/install a formal DEB, publish a release or advance to P4.4. Keep P4.3 In progress pending user review. Clear-history and appearance recovery must preserve drafts, credentials and the main journal.
 
 ## Engineering Workflow
 

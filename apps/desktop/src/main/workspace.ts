@@ -1,12 +1,14 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { parseContract, type Attachment, type ContractName, type ContractTypes, type OperationReceipt, type Preset } from '../../../../packages/gateway-protocol/src/index';
-import type { WorkspaceAction, WorkspaceState } from '../contracts/workspace';
+import type { DraftSubmission, WorkspaceAction, WorkspaceState } from '../contracts/workspace';
 import { GatewayTransport } from './gateway-transport';
 import { OperationJournal, type JournalEntry, type JournalScope } from './journal';
 import { Projection } from './projection';
 import { FileChangeContexts } from './file-change-context';
 import { parseWorkspaceAction, validateInteractionAnswer } from './workspace-actions';
 import { filePreview, saveDownload, selectLocalUpload, verifyDownload, type FileDialogs } from './file-transfer';
+import { ConnectionPreferences } from './connection-preferences';
+import { normalizeEndpoint } from './endpoint';
 
 const record = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value);
 const code = (error: unknown): string => {
@@ -73,9 +75,35 @@ export class DesktopWorkspace {
   private details?: { itemId: string; turnId: string; revision: string; digest: string; total: number; bytes: Buffer; cursor?: string };
 
   constructor(private transport: GatewayTransport, private journal: OperationJournal, private dialogs: FileDialogs,
-    private publish: (state: WorkspaceState) => void, secureStorage: boolean) {
+    private publish: (state: WorkspaceState) => void, secureStorage: boolean, private connectionPreferences?: ConnectionPreferences) {
     this.value = { connection: { status: 'idle', endpoint: '', secureStorage }, projects: [], roots: [],
       streamItems: [], interactions: [], synchronization: 'stale', attachments: [], draftId: randomUUID(), operations: [], busy: false };
+    const saved = connectionPreferences?.read();
+    if (saved) {
+      this.value.connection.endpoint = saved.endpoint;
+      this.value.connection.status = saved.signedOut ? 'revoked' : 'offline';
+      if (!saved.signedOut) this.restoreLocalScope(saved.endpoint);
+    } else if (connectionPreferences?.recovered) this.value.notice = 'CONNECTION_PREFERENCES_RECOVERED';
+  }
+  async restoreConnection(): Promise<void> {
+    if (this.connectionPreferences?.read()?.autoConnect) await this.action({ type: 'reconnect' });
+  }
+  private restoreLocalScope(endpoint: string): void {
+    this.value.localScope = undefined; this.lastIdentity = undefined;
+    try {
+      const identity = this.transport.savedIdentity?.(endpoint);
+      if (identity) { this.value.localScope = { ...identity }; this.lastIdentity = { ...identity }; }
+    } catch (error) { this.value.connection.errorCode = code(error); }
+  }
+  private clearIdentityDisplay(): void {
+    this.value.localScope = undefined; this.lastIdentity = undefined;
+    this.projection.initialize('', ''); this.selectionGeneration++;
+    this.value.projects = []; this.value.roots = []; this.value.threads = undefined;
+    this.value.capabilities = undefined; this.value.models = undefined; this.value.defaults = undefined;
+    this.value.directories = undefined; this.value.files = undefined; this.value.preview = undefined;
+    this.value.extensions = undefined; this.value.itemDetails = undefined; this.value.rateLimits = undefined; this.value.accountUsage = undefined;
+    this.value.attachments = []; this.value.operations = []; this.attachmentFacts.clear();
+    this.value.draftId = randomUUID();
   }
   state(): WorkspaceState { this.syncProjection(); return rendererProjection(this.value); }
   private emit(): void { this.publish(this.state()); }
@@ -99,7 +127,8 @@ export class DesktopWorkspace {
     try {
       const entries = identity ? this.journal.list(identity) : [];
       this.value.operations = entries.map(row => ({ operationId: row.operationId, kind: row.kind,
-        projectId: row.projectId, threadId: row.threadId, status: row.state, createdAt: row.createdAt, errorCode: row.code }));
+        projectId: row.projectId, threadId: row.threadId, status: row.state, createdAt: row.createdAt, errorCode: row.code,
+        clientDraftId: row.clientDraftId, draftRevision: row.draftRevision }));
       this.value.attachments = [...this.attachmentFacts.values()].map(attachment => {
         const claim = entries.find(row => row.kind === 'turn.start' && row.state !== 'rejected' && row.projectId === attachment.projectId
           && row.threadId === attachment.threadId && row.attachmentIds?.includes(attachment.id));
@@ -179,7 +208,7 @@ export class DesktopWorkspace {
     return { ...this.identity(), epoch: row.epoch, projectId: row.projectId, threadId: row.threadId };
   }
   private async write(kind: string, path: string, body: Record<string, unknown>, scope: JournalScope, method: 'POST' | 'DELETE' = 'POST',
-    dispatch?: (operationId: string, beforeDispatch: () => void) => Promise<unknown>, contextDigest?: string): Promise<OperationReceipt> {
+    dispatch?: (operationId: string, beforeDispatch: () => void) => Promise<unknown>, contextDigest?: string, draft?: DraftSubmission): Promise<OperationReceipt> {
     this.online();
     if (this.journalFailed) fail('JOURNAL_UNAVAILABLE');
     const generation = this.connectionGeneration;
@@ -209,7 +238,7 @@ export class DesktopWorkspace {
       if (kind.startsWith('thread.') && !['thread.start', 'thread.resume'].includes(kind)) this.ready();
       dispatched = true;
     };
-    const entry = this.journal.prepare(scope, kind, compact(body));
+    const entry = this.journal.prepare(scope, kind, compact({ ...body, ...draft }));
     this.emit();
     // No await between the final scope check and enqueue. The durable entry survives all failures.
     try {
@@ -298,10 +327,18 @@ export class DesktopWorkspace {
     const revoked = ['DEVICE_REVOKED', 'UNAUTHENTICATED', 'IDENTITY_MISMATCH', 'INSTALLATION_CHANGED', 'CREDENTIAL_BINDING_MISMATCH'].includes(reason);
     const terminal = revoked || reason.startsWith('CREDENTIAL_') || ['ENDPOINT_INVALID', 'INSECURE_ENDPOINT', 'PROTOCOL_INCOMPATIBLE'].includes(reason);
     this.value.connection.status = revoked ? 'revoked' : terminal ? 'error' : 'offline';
+    if (revoked) {
+      this.manualOffline = true; this.stopConnection(); this.clearIdentityDisplay();
+      // Persist the authorization boundary before another startup can select cached data.
+      try { this.connectionPreferences?.save(this.value.connection.endpoint, false, true); }
+      catch { this.value.notice = 'CONNECTION_PREFERENCES_SAVE_FAILED'; }
+    }
     this.wsReady = false; this.fileContexts.clear(); this.projection.invalidate(); this.emit();
     if (!terminal) this.scheduleReconnect();
   }
   private async connect(endpoint: string, recovering = false): Promise<void> {
+    endpoint = normalizeEndpoint(endpoint);
+    this.connectionPreferences?.save(endpoint, true);
     const projectId = recovering ? this.value.projectId : undefined, threadId = recovering ? this.value.threadId : undefined;
     this.stopConnection(); this.manualOffline = false;
     const generation = this.connectionGeneration;
@@ -317,14 +354,16 @@ export class DesktopWorkspace {
       this.value.attachments = []; this.value.draftId = randomUUID();
       this.attachmentFacts.clear();
     }
+    if (!recovering || this.value.localScope?.endpoint !== endpoint) this.restoreLocalScope(endpoint);
     this.emit();
     const connection = await this.transport.connect(endpoint);
     if (generation !== this.connectionGeneration) return;
     this.value.connection = { status: connection.paired ? 'connected' : 'pairing', endpoint: connection.endpoint,
       installationId: connection.installationId, deviceId: connection.deviceId ?? undefined, epoch: connection.epoch ?? undefined,
       secureStorage: this.value.connection.secureStorage };
-    if (!connection.paired) { this.emit(); return; }
+    if (!connection.paired) { this.value.localScope = undefined; this.lastIdentity = undefined; this.emit(); return; }
     this.lastIdentity = this.identity();
+    this.value.localScope = { ...this.lastIdentity };
     this.value.capabilities = connection.capabilities ?? undefined;
     if (!recovering || this.projection.installationId !== connection.installationId || this.projection.epoch !== connection.epoch) {
       this.projection.initialize(connection.installationId, connection.epoch!, projectId, threadId);
@@ -508,12 +547,16 @@ export class DesktopWorkspace {
     });
     for (const row of this.journal.list(this.identity()).filter(item => item.projectId === projectId && item.threadId === threadId && item.kind === 'attachment.upload').slice(-30)) await this.reconcileOne(row);
   }
-  private async historyMore(): Promise<void> {
+  private async historyMore(action: Extract<WorkspaceAction, { type: 'historyMore' }>): Promise<void> {
     const { projectId, threadId, history } = this.value;
-    if (!projectId || !threadId || !history?.nextCursor) return;
+    if (!projectId || !threadId || !history) return;
+    // A cached cursor is a read hint only and must match this live native revision.
+    if (action.cursor && (action.historyRevision !== history.historyRevision || this.value.synchronization !== 'current')) fail('HISTORY_STALE');
+    const cursor = action.cursor ?? history.nextCursor;
+    if (!cursor) return;
     const ticket = this.projection.ticket();
     try {
-      const page = await this.read('HistoryPage', 'POST', `/threads/${segment(threadId)}/history/query`, { projectId, cursor: history.nextCursor, limit: 5 });
+      const page = await this.read('HistoryPage', 'POST', `/threads/${segment(threadId)}/history/query`, { projectId, cursor, limit: 5 });
       this.projection.appendHistory(page, ticket);
     } catch (error) {
       if (/CURSOR|HISTORY_STALE/.test(code(error))) { this.projection.invalidate(); await this.refreshSnapshot(); }
@@ -544,13 +587,23 @@ export class DesktopWorkspace {
   async action(raw: unknown): Promise<WorkspaceState> {
     const action = parseWorkspaceAction(raw);
     if (this.value.busy) fail('ACTION_IN_PROGRESS');
+    const draftIdentity = this.transport.identity ?? this.lastIdentity;
     this.value.busy = true; this.value.notice = undefined; this.emit();
     try { await this.perform(action); }
     catch (error) {
       this.value.notice = code(error);
       if (['connect', 'pair', 'reconnect'].includes(action.type) || ['DEVICE_REVOKED', 'UNAUTHENTICATED'].includes(code(error))) this.connectionError(error);
     } finally { this.value.busy = false; this.emit(); }
-    return this.state();
+    const state = this.state();
+    if (['send', 'steer', 'checkDraft'].includes(action.type) && 'clientDraftId' in action && action.clientDraftId && action.draftRevision) {
+      try {
+        const entries = draftIdentity ? this.journal.list(draftIdentity) : [];
+        if ((draftIdentity || action.type !== 'checkDraft') && !this.journalFailed && !entries.some(row => row.clientDraftId === action.clientDraftId && row.draftRevision === action.draftRevision)) {
+          state.draftDispatch = { clientDraftId: action.clientDraftId, draftRevision: action.draftRevision, status: 'not-dispatched' };
+        }
+      } catch { /* No negative proof is issued if the durable journal cannot be read. */ }
+    }
+    return state;
   }
   private async perform(action: WorkspaceAction): Promise<void> {
     if (action.type === 'connect') { await this.connect(action.endpoint); return; }
@@ -558,13 +611,18 @@ export class DesktopWorkspace {
       const result = await this.transport.pair(action.code, action.label);
       await this.connect(result.endpoint); return;
     }
-    if (action.type === 'disconnect') { this.manualOffline = true; this.stopConnection(); this.value.connection.status = 'offline'; return; }
+    if (action.type === 'disconnect') { this.connectionPreferences?.save(this.value.connection.endpoint, false); this.manualOffline = true; this.stopConnection(); this.value.connection.status = 'offline'; return; }
     if (action.type === 'reconnect') { await this.connect(this.value.connection.endpoint, true); return; }
+    if (action.type === 'checkDraft') return; // Read-only journal proof is attached by action(), including offline.
     this.online();
     if (action.type === 'reconcile') { await this.reconcile(); await this.refreshSnapshot(); return; }
     if (action.type === 'logout') {
-      await this.write('auth.logout', '/auth/logout', {}, this.scope(false, false));
-      this.manualOffline = true; this.stopConnection(); this.value.connection.status = 'revoked'; return;
+      this.connectionPreferences?.save(this.value.connection.endpoint, false, true);
+      try { await this.write('auth.logout', '/auth/logout', {}, this.scope(false, false)); }
+      finally {
+        this.manualOffline = true; this.stopConnection(); this.value.connection.status = 'revoked'; this.clearIdentityDisplay();
+      }
+      return;
     }
     if (action.type === 'refresh') { await this.reconcile(); await this.loadProjects(); if (this.value.projectId) await this.loadThreads(false); await this.refreshSnapshot(); return; }
     if (action.type === 'selectProject') { await this.selectProject(action.projectId); return; }
@@ -590,7 +648,7 @@ export class DesktopWorkspace {
       await this.loadThreads(false);
       if (receipt.status === 'accepted' && receipt.nativeThreadId) await this.selectThread(receipt.nativeThreadId, true); return;
     }
-    if (action.type === 'historyMore') { await this.historyMore(); return; }
+    if (action.type === 'historyMore') { await this.historyMore(action); return; }
     if (action.type === 'details') { await this.loadDetails(action); return; }
     if (action.type === 'inspector') {
       if (action.section === 'extensions') this.value.extensions = await this.read('ExtensionsSnapshot', 'GET', `/projects/${segment(this.scope(true, false).projectId!)}/extensions`);
@@ -643,7 +701,8 @@ export class DesktopWorkspace {
       if (action.type === 'steer') this.writableThread();
       const turnId = this.value.activeTurnId ?? fail('ACTIVE_TURN_REQUIRED');
       await this.write(action.type === 'interrupt' ? 'turn.interrupt' : 'turn.steer', `/threads/${segment(scope.threadId!)}/turns/${segment(turnId)}/${action.type === 'interrupt' ? 'interrupt' : 'steer'}`,
-        { ...common, ...(action.type === 'steer' ? { input: [{ type: 'text', text: action.text }] } : {}) }, scope);
+        { ...common, ...(action.type === 'steer' ? { input: [{ type: 'text', text: action.text }] } : {}) }, scope, 'POST', undefined, undefined,
+        action.type === 'steer' && action.clientDraftId ? { clientDraftId: action.clientDraftId, draftRevision: action.draftRevision! } : undefined);
       this.scheduleSnapshot(); return;
     }
     if (action.type === 'send') {
@@ -652,7 +711,8 @@ export class DesktopWorkspace {
       const attachments = this.value.attachments.filter(item => item.draftId === this.value.draftId);
       if (attachments.some(item => item.state !== 'ready')) fail('ATTACHMENT_NOT_READY');
       const result = await this.write('turn.start', `/threads/${segment(scope.threadId!)}/turns`, { ...common, input: [{ type: 'text', text: action.text }], ...this.settings(action),
-        ...(attachments.length ? { attachmentIds: attachments.map(item => item.id), draftId: this.value.draftId } : {}) }, scope);
+        ...(attachments.length ? { attachmentIds: attachments.map(item => item.id), draftId: this.value.draftId } : {}) }, scope, 'POST', undefined, undefined,
+        action.clientDraftId ? { clientDraftId: action.clientDraftId, draftRevision: action.draftRevision! } : undefined);
       if (result.status === 'accepted') { this.value.draftId = randomUUID(); this.attachmentFacts.clear(); }
       this.projection.invalidate(); this.scheduleSnapshot(100); return;
     }

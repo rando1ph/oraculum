@@ -85,6 +85,11 @@ function settings(value: ObjectValue): void {
   optional(value, 'effort', input => { if (typeof input !== 'string' || !/^[a-z][a-z0-9_-]{0,63}$/.test(input)) invalid(); });
   optional(value, 'permissionPreset', input => { if (typeof input !== 'string' || !['read-only', 'auto', 'full-access'].includes(input)) invalid(); });
 }
+function submission(value: ObjectValue): void {
+  if (!Object.hasOwn(value, 'clientDraftId') && !Object.hasOwn(value, 'draftRevision')) return;
+  uuid(value.clientDraftId);
+  if (!Number.isSafeInteger(value.draftRevision) || Number(value.draftRevision) < 1) invalid();
+}
 
 export function parseWorkspaceAction(value: unknown): WorkspaceAction {
   const action = jsonCopy(value);
@@ -97,8 +102,15 @@ export function parseWorkspaceAction(value: unknown): WorkspaceAction {
       if (!/^[A-Z2-7]{32}$/.test(action.code.replace(/[- ]/g, '').toUpperCase()) || !action.label.trim() || CONTROL.test(action.label)) invalid();
       break;
     case 'disconnect': case 'reconnect': case 'refresh': case 'reconcile': case 'logout':
-    case 'resumeThread': case 'historyMore': case 'interrupt': case 'upload':
+    case 'resumeThread': case 'interrupt': case 'upload':
       keys(action, []); break;
+    case 'historyMore':
+      keys(action, [], ['cursor', 'historyRevision']);
+      if (Object.hasOwn(action, 'cursor') || Object.hasOwn(action, 'historyRevision')) {
+        cursor(action.cursor); string(action.historyRevision, 4096);
+        if (CONTROL.test(action.historyRevision)) invalid();
+      }
+      break;
     case 'directories':
       keys(action, ['rootId'], ['path', 'cursor']); identifier(action.rootId);
       optional(action, 'path', input => relativePath(input, true)); optional(action, 'cursor', cursor); break;
@@ -113,8 +125,9 @@ export function parseWorkspaceAction(value: unknown): WorkspaceAction {
     case 'selectThread': keys(action, ['threadId']); identifier(action.threadId); break;
     case 'startThread': keys(action, [], ['model', 'effort', 'permissionPreset']); settings(action); break;
     case 'send':
-      keys(action, ['text'], ['model', 'effort', 'permissionPreset']); string(action.text, 100_000); settings(action); break;
-    case 'steer': keys(action, ['text']); string(action.text, 100_000); break;
+      keys(action, ['text'], ['model', 'effort', 'permissionPreset', 'clientDraftId', 'draftRevision']); string(action.text, 100_000); settings(action); submission(action); break;
+    case 'steer': keys(action, ['text'], ['clientDraftId', 'draftRevision']); string(action.text, 100_000); submission(action); break;
+    case 'checkDraft': keys(action, ['clientDraftId', 'draftRevision']); submission(action); break;
     case 'threadMutation':
       if (action.action === 'name') {
         keys(action, ['action', 'name']); string(action.name, 200);

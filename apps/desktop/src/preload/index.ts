@@ -12,6 +12,15 @@ if (process.isMainFrame && location.href === 'oraculum-app://bundle/index.html')
     resetAppearance: () => ipcRenderer.invoke(IPC.resetAppearance) as Promise<DesktopState>,
     getWorkspace: () => ipcRenderer.invoke(IPC.getWorkspace) as Promise<WorkspaceState>,
     workspaceAction: (action: WorkspaceAction) => ipcRenderer.invoke(IPC.workspaceAction, action) as Promise<WorkspaceState>,
+    onBeforeClose: (listener: () => Promise<boolean>) => {
+      if (typeof listener !== 'function') throw new TypeError('INVALID_LISTENER');
+      const handler = (_event: unknown, requestId: string): void => {
+        void Promise.resolve().then(() => listener()).then(saved => ipcRenderer.invoke(IPC.closeReady, requestId, saved === true),
+          () => ipcRenderer.invoke(IPC.closeReady, requestId, false)).catch(() => {});
+      };
+      ipcRenderer.on(IPC.beforeClose, handler);
+      return () => { ipcRenderer.removeListener(IPC.beforeClose, handler); };
+    },
     onWorkspaceChanged: (listener: (state: WorkspaceState) => void) => {
       if (typeof listener !== 'function') throw new TypeError('INVALID_LISTENER');
       const handler = (_event: unknown, state: WorkspaceState): void => { listener(state); };

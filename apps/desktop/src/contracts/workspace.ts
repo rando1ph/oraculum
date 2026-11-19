@@ -4,13 +4,20 @@ export type ConnectionStatus = 'idle' | 'connecting' | 'pairing' | 'connected' |
 export interface OperationView {
   operationId: string; kind: string; projectId?: string; threadId?: string;
   status: 'prepared' | 'unknown' | 'accepted' | 'rejected'; createdAt: number; errorCode?: string;
+  clientDraftId?: string; draftRevision?: number;
 }
+export interface LocalWorkspaceScope { endpoint: string; installationId: string; deviceId: string }
+export interface DraftSubmission { clientDraftId: string; draftRevision: number }
 export interface FileChangeContext {
   interactionId: string; generation: number; epoch: string; projectId: string; threadId: string;
   turnId: string; itemId: string; digest: string;
   changes: { path: string; kind: string; movePath: string | null; diff: string }[];
 }
 export interface WorkspaceState {
+  /** Display/cache namespace only. Never grants permission to send or approve. */
+  localScope?: LocalWorkspaceScope;
+  /** Explicit negative journal lookup for this one request; never a permission grant. */
+  draftDispatch?: DraftSubmission & { status: 'not-dispatched' };
   connection: { status: ConnectionStatus; endpoint: string; installationId?: string; deviceId?: string; epoch?: string; errorCode?: string; secureStorage: boolean };
   capabilities?: Capabilities;
   projects: { id: string; name: string; rootId: string; available: boolean }[];
@@ -58,9 +65,11 @@ export type WorkspaceAction =
   | { type: 'threads'; search?: string; archived?: boolean; more?: boolean }
   | { type: 'selectThread'; threadId: string }
   | { type: 'startThread'; model?: string; effort?: string; permissionPreset?: Preset }
-  | { type: 'resumeThread' | 'historyMore' | 'interrupt' }
-  | { type: 'send'; text: string; model?: string; effort?: string; permissionPreset?: Preset }
-  | { type: 'steer'; text: string }
+  | { type: 'resumeThread' | 'interrupt' }
+  | { type: 'historyMore'; cursor?: string; historyRevision?: string }
+  | ({ type: 'send'; text: string; model?: string; effort?: string; permissionPreset?: Preset } & Partial<DraftSubmission>)
+  | ({ type: 'steer'; text: string } & Partial<DraftSubmission>)
+  | ({ type: 'checkDraft' } & DraftSubmission)
   | { type: 'threadMutation'; action: 'name' | 'archive' | 'unarchive' | 'delete' | 'fork' | 'revert' | 'compact'; name?: string; beforeTurnId?: string; confirm?: boolean }
   | { type: 'answer'; interactionId: string; generation: number; epoch: string; response: InteractionAnswer; contextDigest?: string }
   | { type: 'details'; turnId: string; itemId: string; cursor?: string }
