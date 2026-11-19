@@ -1,5 +1,7 @@
 # Phase 4D.4 · Codex execution process
 
+> Historical record — retired Bridge/Web UI/Desktop architecture. P4.3.5 removes its runtime and exclusive build/test/release tooling. Commands and source links below describe their original Git revision; do not use them as current instructions. See the [documentation index](README.md) for active Oraculum 2.0 guides.
+
 Authority: [Notion Task](https://app.notion.com/p/4035421e690b81bf8b5aff9264418c63), the latest [Project](https://app.notion.com/p/3ff5421e690b81bdae14c0675f0b3acf), and the user's original DOCX p8–p12. This is an implementation/testing note, not a replacement specification or acceptance decision.
 
 ## Behavior

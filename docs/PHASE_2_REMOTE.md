@@ -1,5 +1,7 @@
 # Phase 2：Android 真机、远程接入与恢复
 
+> Historical record — retired Bridge/Web UI/Desktop architecture. P4.3.5 removes its runtime and exclusive build/test/release tooling. Commands and source links below describe their original Git revision; do not use them as current instructions. See the [documentation index](README.md) for active Oraculum 2.0 guides.
+
 实施日期：2026-10-21（Asia/Shanghai）。**阶段 In progress；2A USB 真机 Smoke 已取得实测通过证据，整体 Phase 2 尚未验收。**
 
 **最新入口决策（取代下文历史记录中的“等待独立域名”）**：用户已决定优先复用 DSH 现有公网 IP:443。新的只读审计、同源风险、精确 Caddy 候选、应用适配、备份／回滚与批准边界见 [IP:443 审阅方案](PHASE_2_IP443_PLAN.md)；[完整候选配置](phase2-ip443.Caddyfile) 未部署。用户已接受同源信任关系，通用产品适配见下方 A 收尾记录及 [配置说明](REMOTE_CONFIGURATION.md)；部署仍待最新现场复核与一次明确批准，不再以缺少域名为阻碍。

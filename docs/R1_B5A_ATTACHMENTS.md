@@ -1,5 +1,7 @@
 # R1-B5-A attachment input
 
+> Historical record — retired Bridge/Web UI/Desktop architecture. P4.3.5 removes its runtime and exclusive build/test/release tooling. Commands and source links below describe their original Git revision; do not use them as current instructions. See the [documentation index](README.md) for active Oraculum 2.0 guides.
+
 This implements input only. B5-B preview/download/share needs separate acceptance
 and authorization. No endpoint in this batch reads arbitrary host files.
 

@@ -9,15 +9,15 @@ The [original Oraculum project](https://app.notion.com/p/3ff5421e690b81bdae14c06
 
 - Read the Notion Project and relevant Task before starting substantive work.
 - Notion takes precedence over historical conversations and local documentation for project decisions.
-- For legacy Desktop/Bridge CSS theme work only, read [docs/THEMING.md](docs/THEMING.md) (Theme API v1 authoring and safety contract); it is not the Android Compose visual development path.
+- Use [README.md](README.md) and [docs/README.md](docs/README.md) for current repository and documentation entrypoints. Legacy Bridge/Web/Theme API v1 documents are historical records, not current implementation instructions.
 - If Notion is inaccessible, report the limitation. Do not invent requirements or alter established architectural decisions.
 
 ## Core Principles
 
-- Oraculum (神谕) 2.0 consists of a native Android Kotlin + Jetpack Compose client, an independent TypeScript/Node Oraculum Gateway connected to the official Codex App Server, and an independent Electron + React + TypeScript Ubuntu Desktop client in development. The old shared Web UI/Desktop/Bridge is legacy. The latest Notion P4.1 authorization supersedes the earlier Desktop deferral.
+- Oraculum (神谕) 2.0 consists of a native Android Kotlin + Jetpack Compose client, an independent TypeScript/Node Oraculum Gateway connected to the official Codex App Server, and an independent Electron + React + TypeScript Ubuntu Desktop client. P4.3.5 retires the old shared Web UI/Desktop/Bridge source and exclusive tooling; do not restore them as compatibility dependencies.
 - The official Codex App Server is the sole execution authority. Never reimplement the agent loop, tool execution, context management, or model orchestration.
 - Prioritize usability, visual quality, stability, and maintainability.
-- Approved Trusted CSS Themes and Theme API v1 apply only to the legacy Desktop/Bridge UI; retain their contracts and documentation while legacy consumers remain. Legacy React/JS changes use the normal reviewed development workflow, not Live UI hot deployment. Live UI hot deployment remains prohibited; Android visual changes use the normal source review workflow.
+- Trusted CSS Themes and Theme API v1 are retired. Preserve useful historical records and approved brand assets without treating them as runtime dependencies. Native Android and independent Desktop use their own approved design systems; visual changes use the normal source review workflow. Live UI hot deployment remains prohibited.
 - Follow the principle of least complexity. Avoid unnecessary abstractions, dependencies, and infrastructure.
 - Keep product configuration portable: HTTPS Origin and Base Path (default `/`) are deployment/build inputs. Never hardcode this user's VPS, IP, proxy, SSH alias, or `/oraculum/` path into product logic; preserve local root-path operation.
 
@@ -27,13 +27,14 @@ The [original Oraculum project](https://app.notion.com/p/3ff5421e690b81bdae14c06
 - Follow the user's latest visual feedback and approved Stitch/Oracle Eye assets. Preserve existing functionality and safety semantics; obtain direction before major design or information architecture changes.
 - For user-directed Android Studio visual refinement, read [upgrade/phase3/ANDROID_STUDIO_AGENT_HANDOFF.md](upgrade/phase3/ANDROID_STUDIO_AGENT_HANDOFF.md) and wait for the user's page/item instructions before changing UI.
 
-## Ubuntu Desktop P4.3
+## Ubuntu Desktop P4.3.5
 
-- Follow the [current P4.3 Task](https://app.notion.com/p/41d5421e690b81f1a436d23dc3f30ba7). P4.0–P4.2 are accepted, with P4.2 finally accepted on 2026-11-19 at `85b303c`. Their approved three-column layout, Light / Dark / OLED Dark tokens, complete Outline Oracle Eye SVG, original Diff font size and independent Electron security boundary remain the baseline.
-- P4.3 adds IndexedDB history, scoped drafts, reading-position recovery, offline reading, long-conversation performance and mature keyboard/mouse interaction. Preserve P4.2 main-process Gateway Protocol 2.1 communication, system-protected credentials, durable write receipts and recovery. Cache data never grants write or approval authority; unknown writes only query their original operationId and are never automatically replayed.
-- The new Desktop does not import legacy themes, Theme API v1, Bridge transport or service lifecycle code. Preserve historical source files without putting them in the new runtime.
+- Follow the [P4.3.5 cleanup Task](https://app.notion.com/p/41d5421e690b81b68ddfc1a1856b5750). P4.0–P4.3 are accepted; the accepted P4.3 baseline is `1b19e0a`. Preserve their three-column layout, Light / Dark / OLED Dark tokens, complete Outline Oracle Eye SVG, original Diff font size and independent Electron security boundary.
+- Preserve P4.3 IndexedDB history, scoped drafts, reading-position recovery, offline reading, long-conversation performance and keyboard/mouse interaction, plus P4.2 main-process Gateway Protocol 2.1 communication, system-protected credentials, durable write receipts and recovery. Cache data never grants write or approval authority; unknown writes only query their original operationId and are never automatically replayed.
+- Remove confirmed dead Bridge/Web/Theme API v1 and old Desktop runtime, build, test and packaging code by actual dependency evidence. Retain shared modules still used by Gateway/Desktop, brand originals and useful historical documentation. Old source remains available in Git history; no extra backup repository or compatibility layer is needed.
+- Do not change Gateway, Android or accepted Desktop business behavior, protocol or credential semantics as part of cleanup. The former Desktop 0.2.0 DEB builder and candidate CI must not remain usable. New Desktop DEB packaging belongs to separately authorized P4.4; do not implement it in P4.3.5.
 - Use the existing running Gateway Beta 3 only through its formal local loopback HTTP/WS APIs, with an independent Desktop device identity and dedicated test project/sessions. Do not modify, restart, stop, upgrade or replace Gateway, alter private configuration/network/systemd, or deploy a test Gateway. Use fixtures for disruptive failure scenarios. HTTPS/WSS remains configurable but has no real remote/TLS acceptance in P4.2.
-- Use the dedicated client profile and test resources for real GNOME/Wayland verification. Do not build/install a formal DEB, publish a release or advance to P4.4. Keep P4.3 In progress pending user review. Clear-history and appearance recovery must preserve drafts, credentials and the main journal.
+- Use relevant type checks, unit tests and current builds for cleanup validation. Do not repeat the large GNOME, performance, failure-injection or live Codex matrix unless an affected interface requires it; use a dedicated profile for any necessary lightweight GUI check. Do not build/install a formal Desktop DEB, publish a release or advance to P4.4. Keep P4.3.5 In progress pending user review. Clear-history and appearance recovery must preserve drafts, credentials and the main journal.
 
 ## Engineering Workflow
 

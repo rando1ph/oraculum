@@ -1,5 +1,7 @@
 # Phase 2 受控部署与收尾证据
 
+> Historical record — retired Bridge/Web UI/Desktop architecture. P4.3.5 removes its runtime and exclusive build/test/release tooling. Commands and source links below describe their original Git revision; do not use them as current instructions. See the [documentation index](README.md) for active Oraculum 2.0 guides.
+
 状态：2026-10-21 15:36–15:55 UTC 执行；实际公网链路和本次隧道恢复通过，提交独立审阅，**Task 保持 In progress，不自行标 Done**。用户本轮明确延期 Android 脱离 USB/ADB reverse、关闭 Wi-Fi、移动数据／独立外网真机验收，不再将它作为本次阶段收尾阻碍；不开展长期日常测试或 Phase 3 UI/UX。
 
 ## 版本与范围

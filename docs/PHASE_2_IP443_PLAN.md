@@ -1,5 +1,7 @@
 # Phase 2：复用 DSH 公网 IP:443 的审阅方案
 
+> Historical record — retired Bridge/Web UI/Desktop architecture. P4.3.5 removes its runtime and exclusive build/test/release tooling. Commands and source links below describe their original Git revision; do not use them as current instructions. See the [documentation index](README.md) for active Oraculum 2.0 guides.
+
 **后续决定（2026-10-21）**：本设计已通过审阅，用户已接受本实例共享 origin 的风险。产品现按 [通用远程配置](REMOTE_CONFIGURATION.md) 适配；本文件记录的是部署候选和原审计基线，不再把独立域名／端口或再次讨论同源选型作为前置。实际 VPS 写入、reload 和隧道仍须现场复核后单独批准。
 
 **2026-10-21；仅完成只读审计、候选配置及本地验证，未批准部署。** 本方案依据 [Phase 2 Task 最新决定](https://app.notion.com/p/3ff5421e690b81adba14c1594346bc1d)：优先复用现有 IP HTTPS、Caddy、证书，不再等待独立域名。Task 保持 In progress。

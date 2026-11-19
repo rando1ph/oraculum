@@ -1,5 +1,7 @@
 # B：一次部署批准清单
 
+> Historical record — retired Bridge/Web UI/Desktop architecture. P4.3.5 removes its runtime and exclusive build/test/release tooling. Commands and source links below describe their original Git revision; do not use them as current instructions. See the [documentation index](README.md) for active Oraculum 2.0 guides.
+
 状态：**2026-10-21 用户已明确批准本文件限定的一次受控部署及回滚；已执行备份、原候选 reload 和独立 SSH -R；首次验收发现 Bridge 拒绝升级连接的生命周期缺陷，已按批准方案完整回滚，修复发布后以同一候选重新部署，公网链路与隧道恢复通过。** 最新收尾结果见 [PHASE_2_CLOSEOUT.md](PHASE_2_CLOSEOUT.md)。下方 15:15 的现场数据是批准前历史快照；实际执行前已重新核验。 对应 [原 Phase 2 Task 的 B/C 要求](https://app.notion.com/p/3ff5421e690b81adba14c1594346bc1d)。用户已接受同源信任关系，A 产品适配已发布为 `1a0b793e63ae62ecade5c1bf4c7020096c3d0788`，不再重复选型审批。
 
 ## 本次最新现场复核

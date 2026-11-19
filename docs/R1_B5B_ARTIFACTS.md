@@ -1,5 +1,7 @@
 # R1-B5-B host artifacts
 
+> Historical record — retired Bridge/Web UI/Desktop architecture. P4.3.5 removes its runtime and exclusive build/test/release tooling. Commands and source links below describe their original Git revision; do not use them as current instructions. See the [documentation index](README.md) for active Oraculum 2.0 guides.
+
 Read-only output access is separate from B5-A input. Input IDs and historical
 attachment cards confer no download permission. Agent text/links are never used
 to authorize a host path. No project files are written by this feature.

@@ -1,5 +1,0 @@
-#!/bin/sh
-set -eu
-entry=$(readlink -f -- "$0")
-runtime=$(CDPATH= cd -- "$(dirname -- "$entry")/.." && pwd -P)
-exec "$runtime/node/bin/node" "$runtime/launch-bridge.cjs" "$@"

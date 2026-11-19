@@ -1,5 +1,7 @@
 # Oraculum Theme API v1 · Trusted CSS Themes
 
+> Historical record — retired Bridge/Web UI/Desktop architecture. P4.3.5 removes its runtime and exclusive build/test/release tooling. Commands and source links below describe their original Git revision; do not use them as current instructions. See the [documentation index](README.md) for active Oraculum 2.0 guides.
+
 主题是本人明确安装的可信本地 **CSS + 素材目录**，不是代码插件。产品决策以 [Notion Project §6.4.1](https://app.notion.com/p/3ff5421e690b81bdae14c0675f0b3acf) 为准。3C.1 保留原 Theme Manager 与 `themeApi: 1`，取消固定 Slot、逐属性和深色亮度白名单；旧 Violet 及既装 v1 包继续可用。
 
 ## 包与安装

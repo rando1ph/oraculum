@@ -1,4 +1,4 @@
-# Oraculum Desktop 2.0 — P4.3
+# Oraculum Desktop 2.0
 
 An independent Ubuntu Electron client with its own React bundle, three approved
 themes, isolated profiles and native recovery. P4.2 adds Gateway pairing,
@@ -7,9 +7,11 @@ interactions, attachments and file access. P4.3 adds IndexedDB history, offline
 reading, durable per-conversation drafts, reading-position restoration and bounded
 long-conversation rendering, while preserving the main-process execution boundary.
 
-Source of truth: [P4.3 Task](https://app.notion.com/p/41d5421e690b81f1a436d23dc3f30ba7)
-and the [accepted P4.0 design](../../upgrade/phase4/README.md). P4.0–P4.2 are
-accepted; P4.3 remains **In progress**, subject to user review. See the
+Source of truth: [Oraculum 2.0 canon](https://app.notion.com/p/4135421e690b815eb404c3024c860134)
+and the [accepted P4.0 design](../../upgrade/phase4/README.md). P4.0–P4.3 are
+accepted, with P4.3 at `1b19e0a`. The current
+[P4.3.5 cleanup](../../upgrade/phase4/p435/README.md) remains **In progress** for
+user review. See the
 [P4.3 architecture and review guide](../../upgrade/phase4/p43/README.md) for data
 ownership, cross-store recovery, validation status and limitations. The
 [P4.2 guide](../../upgrade/phase4/p42/README.md) preserves the accepted communication
@@ -46,10 +48,11 @@ development bundle, **not** a DEB, installer or Release. No local web server or
 backend process is required. The new executable identity is `oraculum-desktop`;
 it does not install or take over the Gateway's `oraculum` CLI.
 
-Do not use the historical `build:desktop:deb` or `test:phase3:*` workflows for this
-client. They belong to the legacy application and are not current validation paths.
-The top-level `.cjs` files and splash assets are retained only as historical
-source; the new package entry and build do not import them.
+P4.3.5 removes the retired top-level `.cjs` runtime, splash assets and old
+Desktop 0.2.0 packaging chain, along with its dedicated test/release workflows.
+`build:desktop:deb` and `verify:desktop:deb` fail explicitly pending P4.4; they do
+not build or verify an old package. The new package entry is
+`dist/main/index.cjs`. Desktop DEB packaging requires separate P4.4 work.
 
 ## Local state and recovery
 
@@ -157,8 +160,7 @@ pnpm exec vitest run apps/desktop/src/main apps/desktop/src/renderer
 pnpm build:desktop
 ```
 
-`pnpm test:desktop` covers main-process tests only. The command above also covers
-renderer tests. `scripts/desktop-p43-fixtures.ts` runs the built sandboxed Electron
+`pnpm test:desktop` covers both main-process and renderer tests. `scripts/desktop-p43-fixtures.ts` runs the built sandboxed Electron
 app on GNOME/Wayland with an isolated profile, real Chromium IndexedDB and generated
 business data. It covers storage faults, recovery, interaction and a synthetic
 long-history workload without connecting to Gateway. See the P4.3 guide for the
@@ -166,10 +168,11 @@ verified host sandbox invocation, output location and final evidence status.
 Run GUI acceptance only after building, without a concurrent build or another GUI
 acceptance process. Fixtures and real Gateway/native desktop evidence stay separate.
 
-`pnpm test:desktop:gui` is the historical P4.1 foundation script. Real P4.3 testing
-uses the authorized existing Gateway and the dedicated `p42-review` client profile; it does not
-create a test Gateway or authorize service changes. No formal DEB or Release is
-produced in this phase.
+`pnpm test:desktop:gui` selects the current P4.3 fixture harness. The superseded
+P4.1 harness has been removed. Real Gateway acceptance uses the authorized existing
+Gateway and the dedicated `p42-review` client profile; it does not create a test
+Gateway or authorize service changes. No formal Desktop DEB or Release is produced
+in P4.3.5.
 
 P4.2 was accepted at `85b303c`. P4.3 implementation steps `df9962e`, `093a807`,
 `02ef260`, `9b3b277` and the final visual fix `f2e7b67` have been committed and
@@ -201,5 +204,5 @@ Real pending approvals and Plan
 execution remain fixture-only; real lock/wake was not separately tested. Forced
 termination recovery covers committed data, not an unfinished last edit.
 HTTPS/WSS configuration does not imply real remote/TLS acceptance. P4.4, DEB
-installation and Release publication remain outside this phase. The task stays
-**In progress** for review.
+installation and Release publication remain outside P4.3.5. P4.3 is accepted;
+the cleanup task stays **In progress** for review.

@@ -1,5 +1,7 @@
 # Phase 4D.2 — native session lifecycle
 
+> Historical record — retired Bridge/Web UI/Desktop architecture. P4.3.5 removes its runtime and exclusive build/test/release tooling. Commands and source links below describe their original Git revision; do not use them as current instructions. See the [documentation index](README.md) for active Oraculum 2.0 guides.
+
 Evidence for the [4D.2 Notion Task](https://app.notion.com/p/4035421e690b81478330e2da3c951f57). Notion remains the specification, and the Task stays **In progress** pending independent review. This work covers archive, restore, and deletion only.
 
 ## Native contract checked on 2026-10-24

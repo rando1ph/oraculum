@@ -1,5 +1,32 @@
 # Release build and verification
 
+## Current Oraculum 2.0 entrypoints
+
+Gateway, native Android and independent Desktop are separate products. Gateway
+package identity comes from `packaging/gateway/metadata.json`; Android identity
+comes from the top-level `version` and `androidVersionCode` in `release.json`.
+Retired Bridge/Desktop 0.2.0 component metadata has been removed.
+
+- Gateway: `pnpm build:gateway:runtime`, `pnpm build:gateway:deb` and
+  `pnpm verify:gateway:deb` retain their independent build and verification
+  contracts. See [Gateway](../gateway/README.md). Builds require clean committed
+  source; they do not install a package or modify a service.
+- Android: `bash scripts/android-release-build.sh --unsigned` and
+  `python3 scripts/android-signing.py release --auto` retain their existing
+  build/signing contract, described under **Android Release and local key
+  custody** below. Signing/publication requires the corresponding user request.
+- Desktop: `pnpm build:desktop` produces the current independent development
+  bundle. The old 0.2.0 builder, Forge configuration, verifier and component
+  candidate CI have been removed. `build:desktop:deb` and `verify:desktop:deb`
+  fail explicitly pending separately authorized P4.4 work. There is no combined
+  `build:deb` or Bridge release path.
+
+The release-specific approvals, deployment instructions and versioned evidence
+below are historical records, not authorization to repeat those operations.
+Published tags and assets remain immutable. P4.3.5 does not publish a Release,
+build/install a formal Desktop DEB, change Gateway Beta 3 or advance to P4.4.
+See the [documentation index](README.md) and [cleanup guide](../upgrade/phase4/p435/README.md).
+
 ## Gateway Beta 3 and Android Beta 2
 
 The components continue independently: Gateway `2.0.0~beta.3` (npm
@@ -32,11 +59,12 @@ inheritance. Roll back program bytes if needed; never restore an old database
 over current receipts or replay an unknown write. This does not authorize
 Android installation or changes to VPS, tunnels or global network settings.
 
-Bridge/Desktop now use the independent [component candidate workflow](COMPONENT_RELEASES.md)
-and [phase B installation handoff](PHASE_B_SPLIT_PACKAGES.md). Their versions come
-from `release.json.components`; Desktop no longer embeds Bridge or server Node.
-The bundled runtime instructions below describe the historical 0.1.x release.
-The Android section uses the top-level version/code.
+The [component candidate workflow record](COMPONENT_RELEASES.md) and
+[phase B installation handoff](PHASE_B_SPLIT_PACKAGES.md) describe the retired
+Bridge/Desktop architecture. That workflow and its 0.2.0 packaging implementation
+are removed in P4.3.5. The bundled runtime instructions below preserve the
+historical 0.1.x release; the Android signing section remains the current launcher
+contract.
 
 ## Oraculum 2.0 Beta 1
 
@@ -100,6 +128,8 @@ original signing command and upgrade guide are in [the release handoff](R1_B8_RE
 The automatic signing workflow below supersedes its historical manual-only policy.
 
 ## Production runtime
+
+> Retired 0.1.x–0.2.0 runtime. The following Bridge runtime, recovery, brand and DEB sections describe historical builds. Their commands and paths are not current entrypoints; use the Gateway and Desktop guides above.
 
 `pnpm build:runtime` builds the Web UI and a standalone Linux amd64 tree under
 `dist/runtime`. It contains compiled Bridge/trust entry points, locked production
@@ -233,7 +263,7 @@ hashes outside Git. DEB direct local installation needs no GPG repository signin
 
 ## Android Release and local key custody
 
-`release.json` also defines Android `versionName` and `versionCode`. Keep the
+`release.json` defines Android `versionName` and `versionCode`. Keep the
 application ID `dev.oraculum.poc` and increment the code for each published update.
 `bash scripts/android-release-build.sh --unsigned` runs Release compilation,
 lint and unit tests without a key. Its unsigned output is only a preflight result,
@@ -341,4 +371,5 @@ and [apksigner](https://developer.android.com/tools/apksigner).
 Inspect the actual installed APK certificate before attempting an update. A
 different certificate cannot qualify as a normal same-ID update; versionName or
 the debuggable flag alone does not establish compatibility. Device installation,
-actual upgrade and private WebView state migration remain user acceptance work.
+actual upgrade remain separately authorized user acceptance work. Legacy WebView
+application state is not migrated by Oraculum 2.0.

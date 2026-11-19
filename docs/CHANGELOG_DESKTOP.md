@@ -1,5 +1,7 @@
 # Oraculum Desktop changelog
 
+> Historical record — retired Bridge/Web UI/Desktop architecture. P4.3.5 removes its runtime and exclusive build/test/release tooling. Commands and source links below describe their original Git revision; do not use them as current instructions. See the [documentation index](README.md) for active Oraculum 2.0 guides.
+
 ## 0.2.0 — review candidate
 
 - Keeps the existing `oraculum` Debian package identity while removing the bundled Bridge and its private Node runtime.

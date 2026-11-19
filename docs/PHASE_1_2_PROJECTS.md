@@ -1,5 +1,7 @@
 # Phase 1+2 host project patch — implementation evidence
 
+> Historical record — retired Bridge/Web UI/Desktop architecture. P4.3.5 removes its runtime and exclusive build/test/release tooling. Commands and source links below describe their original Git revision; do not use them as current instructions. See the [documentation index](README.md) for active Oraculum 2.0 guides.
+
 Canonical scope and acceptance remain in [the Notion Task](https://app.notion.com/p/4005421e690b818c8fefebf4a3d31dcd). This report records implementation and observed tests; it does not mark the Task accepted.
 
 ## Behavior

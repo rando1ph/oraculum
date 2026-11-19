@@ -1,5 +1,7 @@
 # Independent Bridge and Desktop release candidates
 
+> Historical record — retired Bridge/Web UI/Desktop architecture. P4.3.5 removes its runtime and exclusive build/test/release tooling. Commands and source links below describe their original Git revision; do not use them as current instructions. See the [documentation index](README.md) for active Oraculum 2.0 guides.
+
 The Notion project and phase B task authorize source changes, build artifacts and
 isolated validation. Phase B does not authorize public GitHub Releases or production
 installation. The task stays In progress until independent review and user acceptance.

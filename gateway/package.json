@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "dependencies": {
+    "@oraculum/shared": "workspace:*",
     "@fastify/websocket": "11.3.4",
     "@oraculum/gateway-protocol": "workspace:*",
     "fastify": "5.12.7",

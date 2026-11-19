@@ -1,5 +1,7 @@
 # Phase 4D.1 — native permission selector
 
+> Historical record — retired Bridge/Web UI/Desktop architecture. P4.3.5 removes its runtime and exclusive build/test/release tooling. Commands and source links below describe their original Git revision; do not use them as current instructions. See the [documentation index](README.md) for active Oraculum 2.0 guides.
+
 Implementation/verification record for the [4D.1 Notion Task](https://app.notion.com/p/4035421e690b8199b339fd9c4a1968c3). Notion remains the specification; this task stays **In progress** pending user and independent review. No 4D.2–4D.6 work or production installation is included.
 
 ## Native contract verified on this host

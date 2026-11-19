@@ -1,8 +1,8 @@
 packages:
   - gateway
-  - bridge
-  - packages/*
-  - apps/*
+  - packages/gateway-protocol
+  - packages/shared
+  - apps/desktop
 onlyBuiltDependencies:
   - esbuild
   - electron

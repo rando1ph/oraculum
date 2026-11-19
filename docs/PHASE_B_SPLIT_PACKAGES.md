@@ -1,5 +1,7 @@
 # 阶段 B：双 DEB 与 Bridge 更新交接
 
+> Historical record — retired Bridge/Web UI/Desktop architecture. P4.3.5 removes its runtime and exclusive build/test/release tooling. Commands and source links below describe their original Git revision; do not use them as current instructions. See the [documentation index](README.md) for active Oraculum 2.0 guides.
+
 项目规格与授权以 Notion 正典、阶段 B Task 和关联方案为准。本阶段交付源码、候选包及隔离演练；任务保持 In progress。正式安装、生产服务入口切换与 Android 真机验收属于另行批准的阶段 D。
 
 ## 文件归属与兼容

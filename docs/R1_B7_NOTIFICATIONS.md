@@ -1,5 +1,7 @@
 # R1-B7 — Native notifications and recovery
 
+> Historical record — retired Bridge/Web UI/Desktop architecture. P4.3.5 removes its runtime and exclusive build/test/release tooling. Commands and source links below describe their original Git revision; do not use them as current instructions. See the [documentation index](README.md) for active Oraculum 2.0 guides.
+
 Canonical task: https://app.notion.com/p/4085421e690b81eda79ad442c3bb5732
 
 ## Implementation

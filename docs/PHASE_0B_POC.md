@@ -1,5 +1,7 @@
 # Phase 0B：真实 Codex 与双端最小 PoC
 
+> Historical record — retired Bridge/Web UI/Desktop architecture. P4.3.5 removes its runtime and exclusive build/test/release tooling. Commands and source links below describe their original Git revision; do not use them as current instructions. See the [documentation index](README.md) for active Oraculum 2.0 guides.
+
 实施日期：2026-10-20 至 2026-10-21（Asia/Shanghai）。**代码与本轮检查完成，待审阅；不是正式验收。**
 
 - [Project 正典](https://app.notion.com/p/3ff5421e690b81bdae14c0675f0b3acf)

@@ -1,5 +1,7 @@
 # 远程入口配置
 
+> Historical record — retired Bridge/Web UI/Desktop architecture. P4.3.5 removes its runtime and exclusive build/test/release tooling. Commands and source links below describe their original Git revision; do not use them as current instructions. See the [documentation index](README.md) for active Oraculum 2.0 guides.
+
 Oraculum 的产品代码不依赖任何 VPS、云厂商、代理软件、域名或固定子路径。Bridge 仍只监听本机 `127.0.0.1`，通过用户自己的 HTTPS/WSS 代理和受保护隧道访问；官方 Codex 凭据始终留在执行主机。当前用户的基础设施方案另见 [IP:443 部署方案](PHASE_2_IP443_PLAN.md)。
 
 ## 产品参数

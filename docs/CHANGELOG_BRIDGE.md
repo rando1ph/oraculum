@@ -1,5 +1,7 @@
 # Oraculum Bridge changelog
 
+> Historical record — retired Bridge/Web UI/Desktop architecture. P4.3.5 removes its runtime and exclusive build/test/release tooling. Commands and source links below describe their original Git revision; do not use them as current instructions. See the [documentation index](README.md) for active Oraculum 2.0 guides.
+
 ## 0.2.0 — review candidate
 
 - Introduces the independent `oraculum-bridge` Ubuntu amd64 DEB, with private Node 24, compiled Bridge, shared Web UI, themes and licenses.

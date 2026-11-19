@@ -1,5 +1,7 @@
 # Oraculum 0.1.2 — R1-B8 发布交接
 
+> Historical record — retired Bridge/Web UI/Desktop architecture. P4.3.5 removes its runtime and exclusive build/test/release tooling. Commands and source links below describe their original Git revision; do not use them as current instructions. See the [documentation index](README.md) for active Oraculum 2.0 guides.
+
 日期：2026-10-30。Codex 工程阶段交付；B8 Task 保持 In progress，等待用户亲自签名、正式双端安装与验收。
 
 ## 版本与产物

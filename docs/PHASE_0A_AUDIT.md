@@ -1,5 +1,7 @@
 # Phase 0A：只读环境审计
 
+> Historical record — retired Bridge/Web UI/Desktop architecture. P4.3.5 removes its runtime and exclusive build/test/release tooling. Commands and source links below describe their original Git revision; do not use them as current instructions. See the [documentation index](README.md) for active Oraculum 2.0 guides.
+
 审计日期：2026-10-20（Asia/Shanghai）。状态：审计完成，等待用户审阅；未进入 Phase 0B。
 
 - 决策依据：[Oraculum 项目正典](https://app.notion.com/p/3ff5421e690b81bdae14c0675f0b3acf)。

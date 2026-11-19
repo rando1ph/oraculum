@@ -1,5 +1,7 @@
 # Phase 4D.3 — Message cards and chat cleanup
 
+> Historical record — retired Bridge/Web UI/Desktop architecture. P4.3.5 removes its runtime and exclusive build/test/release tooling. Commands and source links below describe their original Git revision; do not use them as current instructions. See the [documentation index](README.md) for active Oraculum 2.0 guides.
+
 Scope follows the [Notion Task](https://app.notion.com/p/4035421e690b81ef9918c4f2d290431a).
 
 User and assistant messages share left-aligned cards and avatar/name headers. Defaults are

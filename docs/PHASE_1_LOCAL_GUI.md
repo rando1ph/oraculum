@@ -1,5 +1,7 @@
 # Phase 1：本地 Codex GUI 实施与验证
 
+> Historical record — retired Bridge/Web UI/Desktop architecture. P4.3.5 removes its runtime and exclusive build/test/release tooling. Commands and source links below describe their original Git revision; do not use them as current instructions. See the [documentation index](README.md) for active Oraculum 2.0 guides.
+
 实施日期：2026-10-21（Asia/Shanghai）。**本轮实施与验证完成，等待独立审阅；Notion Task 保留 In progress，不自行标记 Done。**
 
 - [Project 正典](https://app.notion.com/p/3ff5421e690b81bdae14c0675f0b3acf)
