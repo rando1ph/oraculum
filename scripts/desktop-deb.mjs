@@ -31,6 +31,12 @@ const runtimeFiles = [
   'icudtl.dat', 'libffmpeg.so', 'libvk_swiftshader.so', 'libvulkan.so.1', 'resources.pak',
   'snapshot_blob.bin', 'v8_context_snapshot.bin', 'version', 'vk_swiftshader_icd.json',
 ];
+const executableModes = new Map([
+  [`${runtimePath}/${component}`, 0o755],
+  [`${runtimePath}/chrome_crashpad_handler`, 0o755],
+  // dpkg-deb sets root ownership when archiving the upstream Chromium helper.
+  [`${runtimePath}/chrome-sandbox`, 0o4755],
+]);
 const appFiles = ['main/index.cjs', 'preload/index.cjs', 'icon.png', 'package.json', 'renderer-manifest.json', 'build-info.json'];
 const dependencies = [
   'libc6 (>= 2.39)', 'libasound2t64', 'libatk-bridge2.0-0t64', 'libatk1.0-0t64', 'libatspi2.0-0t64',
@@ -67,6 +73,15 @@ async function files(base, directory = base) {
     else assert.equal(relative(base, file), cliPath, 'Unexpected non-regular package entry');
   }
   return result.sort();
+}
+
+async function normalizePermissions(base, directory = base) {
+  await chmod(directory, 0o755);
+  for (const entry of await readdir(directory, { withFileTypes: true })) {
+    const path = join(directory, entry.name);
+    if (entry.isDirectory()) await normalizePermissions(base, path);
+    else if (entry.isFile()) await chmod(path, executableModes.get(relative(base, path)) ?? 0o644);
+  }
 }
 
 async function writeChecksums(candidate) {
@@ -109,11 +124,6 @@ async function build(target) {
     await mkdir(runtime, { recursive: true });
     run('unzip', ['-q', archive, '-x', 'resources/default_app.asar', '-d', runtime]);
     await rename(join(runtime, 'electron'), join(runtime, component));
-    for (const library of ['libffmpeg.so', 'libvk_swiftshader.so', 'libvulkan.so.1']) {
-      await chmod(join(runtime, library), 0o644);
-    }
-    // Assemble the official helper with root:root ownership in the archive.
-    await chmod(join(runtime, 'chrome-sandbox'), 0o4755);
     await mkdir(app, { recursive: true });
     await cp(join(dist, 'renderer'), join(app, 'renderer'), { recursive: true });
     for (const file of appFiles) {
@@ -152,6 +162,7 @@ Description: Oraculum Desktop client for the official Codex App Server
  Independent Electron client for Oraculum Gateway, with local drafts and
  offline reading of previously loaded conversations.
 `);
+    await normalizePermissions(payload);
     await mkdir(candidate);
     const artifact = join(candidate, name);
     run('dpkg-deb', ['--build', '--root-owner-group', '-Zxz', payload, artifact], {
