@@ -18,7 +18,7 @@ and security baseline.
 
 ## Ubuntu Desktop 2.0.0 Beta 1
 
-Download `oraculum-desktop_2.0.0~beta.1_amd64.deb` and `SHA256SUMS` from the
+Download `oraculum-desktop_2.0.0-beta.1_amd64.deb` and `SHA256SUMS` from the
 [Desktop Beta 1 Pre-release](https://github.com/rando1ph/oraculum/releases/tag/desktop-v2.0.0-beta.1).
 The four assets include `desktop-release.json`, which records the exact source
 revision, package identity, runtime requirements and DEB hash, and
@@ -30,7 +30,7 @@ menu. The corresponding terminal commands are:
 
 ```bash
 sha256sum --check --ignore-missing SHA256SUMS
-sudo apt install ./oraculum-desktop_2.0.0~beta.1_amd64.deb
+sudo apt install ./oraculum-desktop_2.0.0-beta.1_amd64.deb
 oraculum-desktop
 # Remove the system package and keep the per-user profile:
 sudo apt remove oraculum-desktop
@@ -49,6 +49,13 @@ refinement and English localization are outside this release. See
 [Apache-2.0](../../LICENSE) and the [third-party and brand notes](../../THIRD_PARTY.md).
 Electron, Chromium and bundled dependency license notices are installed under
 `/usr/share/doc/oraculum-desktop/`.
+
+The release build is from `2af4be315c6c36a362cdba131fc9343ed69d0b27`. The DEB
+passed APT installation and removal, desktop-entry startup, profile retention,
+Secret Service detection and renderer sandbox checks in an isolated Ubuntu
+24.04.5 LTS amd64 guest with X11. That guest had loopback networking only during
+the launch checks. Live Gateway pairing, public HTTPS/WSS and a packaged GNOME
+Wayland launch were outside this smoke test.
 
 ## Build and run
 
@@ -100,6 +107,12 @@ package, rebuilds the app, and records the clean Git revision in the installed
 bundle and release manifest. An existing Electron ZIP may be supplied via
 `ORACULUM_ELECTRON_ZIP`; the same digest check applies. Build and verification
 operate on files and leave installation to the OS package manager.
+
+The Beta 1 tag's builder uses the Debian version spelling `2.0.0~beta.1` in its
+local filename. The published filename uses `2.0.0-beta.1` for GitHub asset
+compatibility. The DEB bytes and internal Debian version are the same. Use the
+tag's verifier for the local tag build and the `main` verifier for downloaded
+assets.
 
 ## Local state and recovery
 

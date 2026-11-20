@@ -17,7 +17,8 @@ const architecture = 'amd64';
 const tag = `desktop-v${version}`;
 const electronVersion = settings.devDependencies.electron;
 const archiveName = `electron-v${electronVersion}-linux-x64.zip`;
-const name = `${component}_${debVersion}_${architecture}.deb`;
+// GitHub normalizes tildes in asset names. Keep the Debian version in the control file.
+const name = `${component}_${version}_${architecture}.deb`;
 const runtimePath = `usr/lib/${component}`;
 const docPath = `usr/share/doc/${component}`;
 const menuPath = `usr/share/applications/${component}.desktop`;
