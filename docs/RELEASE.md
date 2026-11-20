@@ -15,17 +15,12 @@ Retired Bridge/Desktop 0.2.0 component metadata has been removed.
   `python3 scripts/android-signing.py release --auto` retain their existing
   build/signing contract, described under **Android Release and local key
   custody** below. Signing/publication requires the corresponding user request.
-- Desktop: `pnpm build:desktop` produces the current independent development
-  bundle. The old 0.2.0 builder, Forge configuration, verifier and component
-  candidate CI have been removed. `build:desktop:deb` and `verify:desktop:deb`
-  fail explicitly pending separately authorized P4.4 work. There is no combined
-  `build:deb` or Bridge release path.
+- Desktop uses `pnpm build:desktop:deb` and `pnpm verify:desktop:deb <release-directory>`
+  for the independent Ubuntu DEB. See the [Desktop release and build guide](../apps/desktop/README.md).
+  The Desktop package version is maintained in `apps/desktop/package.json`.
 
-The release-specific approvals, deployment instructions and versioned evidence
-below are historical records, not authorization to repeat those operations.
-Published tags and assets remain immutable. P4.3.5 does not publish a Release,
-build/install a formal Desktop DEB, change Gateway Beta 3 or advance to P4.4.
-See the [documentation index](README.md) and [cleanup guide](../upgrade/phase4/p435/README.md).
+Published tags and assets remain immutable. See the [documentation index](README.md)
+for current release entrypoints and historical records.
 
 ## Gateway Beta 3 and Android Beta 2
 

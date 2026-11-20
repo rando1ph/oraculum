@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=神谕 · Oraculum Desktop
+Comment=Connect to Oraculum Gateway
+Exec=/usr/bin/oraculum-desktop
+Icon=oraculum-desktop
+StartupWMClass=oraculum-desktop
+Terminal=false
+Categories=Development;

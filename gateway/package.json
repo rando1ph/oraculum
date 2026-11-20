@@ -9,5 +9,6 @@
     "@oraculum/gateway-protocol": "workspace:*",
     "fastify": "5.12.7",
     "ws": "8.22.0"
-  }
+  },
+  "license": "Apache-2.0"
 }

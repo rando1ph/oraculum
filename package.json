@@ -27,8 +27,8 @@
     "verify:gateway:deb": "node scripts/verify-gateway-deb.mjs",
     "test:gateway:packaging": "vitest run scripts/build-gateway.test.mjs",
     "build": "pnpm build:desktop && pnpm build:gateway:runtime",
-    "build:desktop:deb": "node -e \"console.error('Desktop DEB packaging is unavailable: the retired 0.2.0 pipeline was removed in P4.3.5. P4.4 must implement and approve the new independent Desktop packaging. Use pnpm build:desktop for a bundle only.'); process.exit(1)\"",
-    "verify:desktop:deb": "node -e \"console.error('Desktop DEB packaging is unavailable: the retired 0.2.0 pipeline was removed in P4.3.5. P4.4 must implement and approve the new independent Desktop packaging. Use pnpm build:desktop for a bundle only.'); process.exit(1)\""
+    "build:desktop:deb": "node scripts/desktop-deb.mjs build",
+    "verify:desktop:deb": "node scripts/desktop-deb.mjs verify"
   },
   "devDependencies": {
     "@playwright/test": "1.64.1",
@@ -41,5 +41,6 @@
     "typescript": "5.9.3",
     "vitest": "3.2.7",
     "ws": "8.22.0"
-  }
+  },
+  "license": "Apache-2.0"
 }

@@ -53,18 +53,19 @@ Android installation, signing and publication are separate operations. See the
 [release guide](docs/RELEASE.md) for the existing signing and Gateway package
 contracts; a build does not authorize installation or service changes.
 
-## Desktop packaging status
+## Ubuntu Desktop Beta 1
 
-P4.0–P4.3 are accepted. [P4.3.5](upgrade/phase4/p435/README.md) removes the retired
-Bridge, shared Web UI, Theme API v1 and the old Desktop 0.2.0 runtime and packaging
-chain. `pnpm build:desktop` produces the current runnable development bundle.
-`build:desktop:deb` and `verify:desktop:deb` fail with an explicit P4.4 pending
-message. They cannot build or validate the retired package.
+[Download Oraculum Desktop 2.0.0 Beta 1](https://github.com/rando1ph/oraculum/releases/tag/desktop-v2.0.0-beta.1)
+for Ubuntu amd64. The independent Pre-release includes the DEB, source and
+artifact metadata, release notes and SHA-256 checksums. See the
+[Desktop guide](apps/desktop/README.md) for installation, removal, build and
+verification. The interface is in Simplified Chinese.
 
-P4.4 will define the new Desktop DEB contract after separate authorization. There
-is no active Bridge/Desktop candidate workflow or combined `build:deb` command.
-Published tags and Release assets are preserved; historical source is available
-through Git history. No legacy user data is migrated or removed by this cleanup.
+## License
 
-[Documentation index](docs/README.md) distinguishes current guides from historical
-records, whose old commands are not current development or deployment entrypoints.
+Original Oraculum 2.0 code is available under [Apache-2.0](LICENSE).
+See [NOTICE](NOTICE) and [third-party and brand resources](THIRD_PARTY.md) for
+upstream licenses, notices and the scope of the brand assets.
+
+[Documentation index](docs/README.md) distinguishes current guides from
+historical records.

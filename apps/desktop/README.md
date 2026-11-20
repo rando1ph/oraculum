@@ -9,13 +9,46 @@ long-conversation rendering, while preserving the main-process execution boundar
 
 Source of truth: [Oraculum 2.0 canon](https://app.notion.com/p/4135421e690b815eb404c3024c860134)
 and the [accepted P4.0 design](../../upgrade/phase4/README.md). P4.0–P4.3 are
-accepted, with P4.3 at `1b19e0a`. The current
-[P4.3.5 cleanup](../../upgrade/phase4/p435/README.md) remains **In progress** for
-user review. See the
+accepted, with P4.3 at `1b19e0a`. The
+[P4.3.5 cleanup](../../upgrade/phase4/p435/README.md) is also accepted. See the
 [P4.3 architecture and review guide](../../upgrade/phase4/p43/README.md) for data
 ownership, cross-store recovery, validation status and limitations. The
 [P4.2 guide](../../upgrade/phase4/p42/README.md) preserves the accepted communication
 and security baseline.
+
+## Ubuntu Desktop 2.0.0 Beta 1
+
+Download `oraculum-desktop_2.0.0~beta.1_amd64.deb` and `SHA256SUMS` from the
+[Desktop Beta 1 Pre-release](https://github.com/rando1ph/oraculum/releases/tag/desktop-v2.0.0-beta.1).
+The four assets include `desktop-release.json`, which records the exact source
+revision, package identity, runtime requirements and DEB hash, and
+`RELEASE_NOTES.md`.
+
+On Ubuntu 24.04 LTS (amd64), open the DEB in a graphical package manager that
+supports local packages and launch **神谕 · Oraculum Desktop** from the application
+menu. The corresponding terminal commands are:
+
+```bash
+sha256sum --check --ignore-missing SHA256SUMS
+sudo apt install ./oraculum-desktop_2.0.0~beta.1_amd64.deb
+oraculum-desktop
+# Remove the system package and keep the per-user profile:
+sudo apt remove oraculum-desktop
+```
+
+Desktop connects to an existing Gateway speaking protocol 2.1. Pair it as a new
+device. A session with GNOME Keyring / Secret Service is required for pairing and
+stored credentials. The package installs Electron under
+`/usr/lib/oraculum-desktop` with the upstream Chromium sandbox helper owned by root
+at mode `4755`. It works with Ubuntu's default sandbox policy on a filesystem
+that permits setuid. Installation registers the menu entry and icon through the
+standard package paths and needs no application maintainer scripts.
+
+Beta 1 uses the accepted Simplified Chinese interface. The planned visual
+refinement and English localization are outside this release. See
+[Apache-2.0](../../LICENSE) and the [third-party and brand notes](../../THIRD_PARTY.md).
+Electron, Chromium and bundled dependency license notices are installed under
+`/usr/share/doc/oraculum-desktop/`.
 
 ## Build and run
 
@@ -48,11 +81,25 @@ development bundle, **not** a DEB, installer or Release. No local web server or
 backend process is required. The new executable identity is `oraculum-desktop`;
 it does not install or take over the Gateway's `oraculum` CLI.
 
-P4.3.5 removes the retired top-level `.cjs` runtime, splash assets and old
-Desktop 0.2.0 packaging chain, along with its dedicated test/release workflows.
-`build:desktop:deb` and `verify:desktop:deb` fail explicitly pending P4.4; they do
-not build or verify an old package. The new package entry is
-`dist/main/index.cjs`. Desktop DEB packaging requires separate P4.4 work.
+## Build and verify the DEB
+
+Use a clean checkout of the release tag or committed main on Linux amd64 with
+Node 24 and the pinned pnpm version. The package scripts require `dpkg-deb`,
+`unzip`, `curl`, `readelf` (binutils) and `desktop-file-validate`
+(desktop-file-utils).
+
+```bash
+pnpm install --frozen-lockfile
+pnpm build:desktop:deb
+pnpm verify:desktop:deb "dist/desktop/$(git rev-parse HEAD)"
+```
+
+The builder uses the checked-in desktop package version and frozen dependency
+versions, verifies the upstream Electron ZIP against the pinned Electron npm
+package, rebuilds the app, and records the clean Git revision in the installed
+bundle and release manifest. An existing Electron ZIP may be supplied via
+`ORACULUM_ELECTRON_ZIP`; the same digest check applies. Build and verification
+operate on files and leave installation to the OS package manager.
 
 ## Local state and recovery
 

@@ -8,11 +8,11 @@ The [repository guide](../README.md) describes the active products and commands.
 
 - [Gateway](../gateway/README.md): standalone runtime, HTTP/WS contract and DEB verification.
 - [Gateway Protocol](../packages/gateway-protocol/README.md): shared schema and generated clients.
-- [Desktop](../apps/desktop/README.md): independent bundle, profiles, IPC and local persistence.
+- [Desktop](../apps/desktop/README.md): Ubuntu Beta 1, DEB build, profiles, IPC and local persistence.
 - [Android Phase 3](../upgrade/phase3/README.md): native Compose implementation and engineering evidence.
 - [Android Studio handoff](../upgrade/phase3/ANDROID_STUDIO_AGENT_HANDOFF.md): user-directed visual refinement.
-- [Release guide](RELEASE.md): current Gateway and Android build/signing entrypoints, followed by historical release records.
-- [P4.3.5 cleanup](../upgrade/phase4/p435/README.md): removed code, retained dependencies and the P4.4 packaging boundary.
+- [Release guide](RELEASE.md): current Desktop, Gateway and Android release entrypoints, followed by historical release records.
+- [P4.3.5 cleanup](../upgrade/phase4/p435/README.md): accepted cleanup and retained dependencies.
 
 ## Historical records
 
